@@ -1,0 +1,11 @@
+{
+  "name": "@skribbl-duels/challenge-definitions",
+  "version": "2.6.1",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@skribbl-duels/challenge-engine": "file:../challenge-engine",
+    "@skribbl-duels/telemetry-contracts": "file:../telemetry-contracts"
+  }
+}

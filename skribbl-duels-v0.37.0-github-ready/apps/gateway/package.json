@@ -1,0 +1,12 @@
+{
+  "name": "@skribbl-duels/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "../../dist/gateway/index.js",
+  "dependencies": {
+    "@skribbl-duels/gateway-contracts": "0.1.0",
+    "@supabase/supabase-js": "2.110.8",
+    "socket.io": "4.8.3"
+  }
+}

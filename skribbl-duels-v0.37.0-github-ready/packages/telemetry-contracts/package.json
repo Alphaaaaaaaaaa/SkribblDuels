@@ -1,0 +1,7 @@
+{
+  "name": "@skribbl-duels/telemetry-contracts",
+  "version": "1.0.3",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts"
+}

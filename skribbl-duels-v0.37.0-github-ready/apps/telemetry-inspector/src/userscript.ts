@@ -1,0 +1,632 @@
+import { BehaviorSubject, merge } from 'rxjs';
+import {
+  TELEMETRY_CONTRACT_VERSION,
+  TELEMETRY_SCHEMA_VERSION,
+  createTelemetryProviderDescriptor,
+  type TelemetryEvent,
+  type TelemetryEventOf,
+  type TelemetryEventType,
+  type TelemetryExportOptions,
+  type TelemetryProvider
+} from '@skribbl-duels/telemetry-contracts';
+import {
+  AvatarTelemetryAdapter,
+  CanvasSnapshotTelemetryAdapter,
+  CanvasWhiteTelemetryAdapter,
+  HomeInteractionTelemetryAdapter,
+  CORE_SUPPORTED_TELEMETRY_EVENTS,
+  IndexedDbRawPacketStore,
+  LobbyStateStore,
+  ProtocolDecoder,
+  RawPacketRecorder,
+  StrokeTelemetryAdapter,
+  TypoDropTelemetryAdapter,
+  TypoAutodrawTelemetryAdapter,
+  TypoChallengeTelemetryAdapter,
+  TelemetryStore,
+  TypoRelayBridge,
+  decodeRawRecord,
+  filterDecodedRecords,
+  filterRawRecords,
+  selectDrawer,
+  selectEstimatedServerTime,
+  selectPlayers,
+  selectSelf,
+  type CanonicalLobbyState,
+  type DecodedSocketRecord,
+  type LobbyStateChange,
+  type PacketExportOptions,
+  type RawSocketRecord,
+  type RelayEnvelope
+} from '@skribbl-duels/telemetry-core';
+import {
+  TelemetryReplayProvider,
+  createFixtureFromProvider,
+  parseTelemetryFixture,
+  validateTelemetryFixture,
+  type CreateTelemetryFixtureOptions,
+  type ReplayOptions,
+  type ReplayResult,
+  type ReplayState,
+  type TelemetryFixture
+} from '@skribbl-duels/telemetry-replay';
+import {
+  ChallengeEngine,
+  LocalStorageChallengePersistence,
+  CHALLENGE_ENGINE_VERSION,
+  type ChallengeActivation,
+  type ChallengeDefinition,
+  type ChallengeEngineEvent,
+  type ChallengeEngineSnapshot,
+  type ChallengeDefinitionSummary,
+  type ChallengeEngineStats,
+  type ChallengeRuntimeSnapshot,
+  type CompletionResolution
+} from '@skribbl-duels/challenge-engine';
+import {
+  CHALLENGE_DEFINITIONS_VERSION,
+  activateStarterSandbox,
+  deactivateStarterSandbox,
+  registerStarterChallengeDefinitions,
+  starterChallengeDefinitions,
+  starterSandboxInstanceIds,
+  loadOfficialWordList,
+  getOfficialWordListStatus,
+  getOfficialWords,
+  getOfficialWordLengthMetrics,
+  getOfficialWordLetterLength,
+  subscribeOfficialWordListStatus,
+  type OfficialWordListStatus
+} from '@skribbl-duels/challenge-definitions';
+import { DebugPanel } from './debugPanel';
+import { DuelProductFoundation } from './duelProductUi';
+
+const BUILD_VERSION = '0.37.0';
+
+interface ProtocolPublicApi {
+  getStats(): ReturnType<ProtocolDecoder['getStats']>;
+  getRecent(): DecodedSocketRecord[];
+  decodeRecord(record: RawSocketRecord): ReturnType<typeof decodeRawRecord>;
+  exportSession(options?: PacketExportOptions): Promise<unknown>;
+  exportBoth(options?: PacketExportOptions): Promise<unknown>;
+}
+
+interface LobbyPublicApi {
+  getState(): CanonicalLobbyState;
+  getStats(): ReturnType<LobbyStateStore['getStats']>;
+  getRecentChanges(): LobbyStateChange[];
+  subscribe(listener: (state: CanonicalLobbyState) => void): () => void;
+  subscribeChanges(listener: (change: LobbyStateChange) => void): () => void;
+  exportState(): unknown;
+  getPlayers(): ReturnType<typeof selectPlayers>;
+  getSelf(): ReturnType<typeof selectSelf>;
+  getDrawer(): ReturnType<typeof selectDrawer>;
+  getEstimatedServerTime(): number | null;
+  getRoundIndex(): number | null;
+  getRoundNumber(): number | null;
+}
+
+interface TelemetryPublicApi extends TelemetryProvider {
+  exportSession(options?: TelemetryExportOptions): unknown;
+}
+
+
+interface ReplayPublicApi extends TelemetryProvider {
+  createFixture(options?: CreateTelemetryFixtureOptions): TelemetryFixture;
+  validateFixture(value: unknown): ReturnType<typeof validateTelemetryFixture>;
+  parseFixture(json: string): ReturnType<typeof parseTelemetryFixture>;
+  load(value: unknown): TelemetryFixture;
+  getFixture(): TelemetryFixture | null;
+  getState(): ReplayState;
+  subscribeState(listener: (state: ReplayState) => void): () => void;
+  play(options?: ReplayOptions): Promise<ReplayResult>;
+  step(count?: number): TelemetryEvent[];
+  pause(): void;
+  resume(): void;
+  stop(): void;
+  reset(): void;
+}
+
+type ChallengeSource = 'live' | 'replay' | 'detached';
+
+interface ChallengeEnginePublicApi {
+  readonly version: typeof CHALLENGE_ENGINE_VERSION;
+  getSource(): ChallengeSource;
+  useLive(): void;
+  useReplay(): void;
+  detachSource(): void;
+  register<TInternalState, TParameters>(
+    definition: ChallengeDefinition<TInternalState, TParameters>
+  ): void;
+  activate<TParameters = unknown>(
+    activation: ChallengeActivation<TParameters>
+  ): ChallengeRuntimeSnapshot;
+  deactivate(instanceId: string, reason?: string): boolean;
+  process(event: TelemetryEvent): ChallengeEngineEvent[];
+  processMany(events: readonly TelemetryEvent[]): ChallengeEngineEvent[];
+  resolveCompletion(
+    instanceId: string,
+    resolution: CompletionResolution
+  ): ChallengeRuntimeSnapshot;
+  expire(instanceId: string, reason?: string): ChallengeRuntimeSnapshot;
+  reset(reason?: string): void;
+  getDefinitionIds(): string[];
+  getDefinitions(): ChallengeDefinitionSummary[];
+  getInstance(instanceId: string): ChallengeRuntimeSnapshot | null;
+  getInstances(): ChallengeRuntimeSnapshot[];
+  getStats(): ChallengeEngineStats;
+  exportSnapshot(): ChallengeEngineSnapshot;
+  restore(): Promise<ChallengeEngineSnapshot | null>;
+  clearPersistence(): Promise<void>;
+  subscribe(listener: (event: ChallengeEngineEvent) => void): () => void;
+  subscribeState(listener: (instances: ChallengeRuntimeSnapshot[]) => void): () => void;
+}
+
+
+
+interface WordListPublicApi {
+  getStatus(languageId?: number, languageName?: string | null): OfficialWordListStatus;
+  getWords(languageId?: number): readonly string[];
+  getLengthMetrics(languageId?: number): ReturnType<typeof getOfficialWordLengthMetrics>;
+  getLetterLength(word: string): number;
+  load(languageId?: number, languageName?: string | null, force?: boolean): Promise<OfficialWordListStatus>;
+  subscribe(listener: (status: OfficialWordListStatus) => void): () => void;
+}
+
+interface ChallengeDefinitionsPublicApi {
+  readonly version: typeof CHALLENGE_DEFINITIONS_VERSION;
+  list(): Array<{
+    id: string;
+    version: number;
+    metadata: ChallengeDefinitionSummary['metadata'];
+    defaultParameters: unknown;
+    sandboxInstanceId: string;
+  }>;
+  registerAll(): string[];
+  activateStarterSet(): ChallengeRuntimeSnapshot[];
+  deactivateStarterSet(): number;
+}
+
+interface InspectorPublicApi {
+  version: string;
+  sessionId: string;
+  protocol: ProtocolPublicApi;
+  lobby: LobbyPublicApi;
+  telemetry: TelemetryPublicApi;
+  exportSession(options?: PacketExportOptions): Promise<unknown>;
+  exportAll(options?: PacketExportOptions): Promise<unknown>;
+  clearAll(): Promise<void>;
+  getStats(): ReturnType<RawPacketRecorder['getStats']>;
+  isPanelMounted(): boolean;
+  remountPanel(): void;
+  setPanelVisible(visible: boolean): void;
+}
+
+declare global {
+  interface Window {
+    scdRawRecorder?: InspectorPublicApi;
+    skribblDuelsTelemetry?: TelemetryPublicApi;
+    skribblDuelsReplay?: ReplayPublicApi;
+    skribblDuelsChallengeEngine?: ChallengeEnginePublicApi;
+    skribblDuelsChallengeDefinitions?: ChallengeDefinitionsPublicApi;
+    skribblDuelsWordLists?: WordListPublicApi;
+  }
+}
+
+async function bootstrap(): Promise<void> {
+  const bridge = new TypoRelayBridge();
+  const store = new IndexedDbRawPacketStore();
+  bridge.start();
+
+  const recorder = new RawPacketRecorder(
+    store,
+    bridge.incoming$ as import('rxjs').Observable<RelayEnvelope>,
+    bridge.outgoing$ as import('rxjs').Observable<RelayEnvelope>,
+    BUILD_VERSION
+  );
+  const decoder = new ProtocolDecoder(recorder.records$);
+  const lobbyStore = new LobbyStateStore(decoder.decoded$);
+  const telemetryStore = new TelemetryStore(decoder.decoded$, lobbyStore.changes$, lobbyStore);
+  const avatarTelemetryAdapter = new AvatarTelemetryAdapter(telemetryStore);
+  const strokeTelemetryAdapter = new StrokeTelemetryAdapter(telemetryStore, lobbyStore);
+  const canvasSnapshotTelemetryAdapter = new CanvasSnapshotTelemetryAdapter(telemetryStore);
+  const canvasWhiteTelemetryAdapter = new CanvasWhiteTelemetryAdapter(telemetryStore);
+  const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
+  const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
+  const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
+  const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
+  const replayProvider = new TelemetryReplayProvider();
+  const loadWordListWithWarning = async (
+    languageId: number,
+    languageName?: string | null,
+    force = false
+  ): Promise<OfficialWordListStatus> => {
+    const status = await loadOfficialWordList(languageId, languageName, force);
+    if (status.warning) console.warn('[Skribbl Duels Word Lists]', status.warning, status);
+    return status;
+  };
+
+  const preloadHomepageWordList = (force = false): void => {
+    const select = document.querySelector<HTMLSelectElement>('#home select');
+    if (!select) return;
+    const languageId = Number(select.value);
+    const languageName = select.options[select.selectedIndex]?.textContent?.trim() ?? null;
+    if (!Number.isInteger(languageId)) return;
+    void loadWordListWithWarning(languageId, languageName, force);
+  };
+
+  document.addEventListener('change', event => {
+    const target = event.target;
+    if (target instanceof HTMLSelectElement && target.matches('#home select')) {
+      preloadHomepageWordList(true);
+    }
+  }, true);
+  document.addEventListener('click', event => {
+    const target = event.target;
+    if (target instanceof Element && target.closest('.button-play,.button-create')) {
+      preloadHomepageWordList(false);
+    }
+  }, true);
+  preloadHomepageWordList(false);
+
+  telemetryStore.events$.subscribe(event => {
+    if (event.type === 'LOBBY_HYDRATED' && event.context.languageId !== null) {
+      void loadWordListWithWarning(event.context.languageId, event.context.languageName);
+    }
+  });
+  const challengeEngine = new ChallengeEngine({
+    persistence: new LocalStorageChallengePersistence(
+      'skribblDuelsChallengeEngineInspectorV1'
+    ),
+    autoPersist: true
+  });
+  registerStarterChallengeDefinitions(challengeEngine);
+  await challengeEngine.restore();
+
+  const challengeSource$ = new BehaviorSubject<ChallengeSource>('detached');
+  let detachChallengeProvider: (() => void) | null = null;
+
+  const setChallengeSource = (source: ChallengeSource): void => {
+    detachChallengeProvider?.();
+    detachChallengeProvider = null;
+
+    if (source === 'live') {
+      detachChallengeProvider = challengeEngine.attachProvider(
+        telemetryStoreAsProvider(),
+        'live-telemetry'
+      );
+    } else if (source === 'replay') {
+      detachChallengeProvider = challengeEngine.attachProvider(
+        replayProvider,
+        'telemetry-replay'
+      );
+    }
+
+    challengeSource$.next(source);
+  };
+
+  function telemetryStoreAsProvider(): TelemetryProvider {
+    const descriptor = createTelemetryProviderDescriptor(
+      'Skribbl Duels Telemetry Core',
+      BUILD_VERSION,
+      CORE_SUPPORTED_TELEMETRY_EVENTS
+    );
+    return {
+      descriptor,
+      getStats: () => telemetryStore.getStats(),
+      getRecent: options => telemetryStore.getRecent(options),
+      getByType<TType extends TelemetryEventType>(type: TType): TelemetryEventOf<TType>[] {
+        return telemetryStore.getByType(type);
+      },
+      subscribe(listener) {
+        const subscription = telemetryStore.events$.subscribe(event => listener(event));
+        return () => subscription.unsubscribe();
+      }
+    };
+  }
+
+  const panel = new DebugPanel({
+    recorder,
+    decoder,
+    lobbyStore,
+    telemetryStore,
+    replayProvider,
+    challengeEngine,
+    challengeSource$: challengeSource$.asObservable(),
+    useChallengeLive: () => setChallengeSource('live'),
+    useChallengeReplay: () => setChallengeSource('replay'),
+    detachChallengeSource: () => setChallengeSource('detached'),
+    activateStarterChallenges: () => activateStarterSandbox(challengeEngine),
+    deactivateStarterChallenges: () => deactivateStarterSandbox(challengeEngine),
+    store,
+    incomingStatus$: bridge.incomingStatus$,
+    outgoingStatus$: bridge.outgoingStatus$
+  });
+  panel.mount();
+
+  merge(bridge.incoming$, bridge.outgoing$).subscribe(envelope => {
+    const packet = envelope.data;
+    const packetId = typeof packet === 'object' && packet !== null &&
+      'id' in packet && typeof (packet as { id?: unknown }).id === 'number'
+      ? (packet as { id: number }).id
+      : null;
+    if (packetId !== 19) console.debug('[Skribbl Duels Raw]', envelope);
+  });
+
+  decoder.decoded$.subscribe(record => {
+    if (record.decoded.packetId !== 19) {
+      console.debug('[Skribbl Duels Decoded]', record.decoded.kind, record.decoded.payload, record.decoded.issues);
+    }
+  });
+  lobbyStore.changes$.subscribe(change => {
+    console.debug('[Skribbl Duels State]', change.kind, change.payload);
+  });
+  telemetryStore.events$.subscribe(event => {
+    if (!event.highVolume) console.debug('[Skribbl Duels Telemetry]', event.type, event.payload);
+  });
+  replayProvider.events$.subscribe(event => {
+    if (!event.highVolume) console.debug('[Skribbl Duels Replay]', event.type, event.payload);
+  });
+  challengeEngine.events$.subscribe(event => {
+    console.debug('[Skribbl Duels Challenge Engine]', event.type, event.runtime);
+  });
+
+  const protocolApi: ProtocolPublicApi = {
+    getStats: () => decoder.getStats(),
+    getRecent: () => decoder.getRecent(),
+    decodeRecord: record => decodeRawRecord(record),
+    async exportSession(options = {}) {
+      await recorder.flushPending();
+      const rawRecords = await store.getSessionRecords(recorder.getSessionId());
+      const filtered = filterDecodedRecords(decoder.decodeMany(rawRecords), options);
+      return {
+        exportedAt: Date.now(),
+        sessionId: recorder.getSessionId(),
+        filter: filtered.summary,
+        lobbyState: lobbyStore.getSnapshot(),
+        decodedRecords: filtered.records
+      };
+    },
+    async exportBoth(options = {}) {
+      await recorder.flushPending();
+      const allRecords = await store.getSessionRecords(recorder.getSessionId());
+      const rawFiltered = filterRawRecords(allRecords, options);
+      const decodedFiltered = filterDecodedRecords(decoder.decodeMany(allRecords), options);
+      return {
+        exportedAt: Date.now(),
+        sessionId: recorder.getSessionId(),
+        filter: rawFiltered.summary,
+        lobbyState: lobbyStore.getSnapshot(),
+        stateStats: lobbyStore.getStats(),
+        recentStateChanges: lobbyStore.getRecentChanges(),
+        telemetry: telemetryStore.exportSnapshot(),
+        records: rawFiltered.records,
+        decodedRecords: decodedFiltered.records
+      };
+    }
+  };
+
+  const lobbyApi: LobbyPublicApi = {
+    getState: () => lobbyStore.getSnapshot(),
+    getStats: () => lobbyStore.getStats(),
+    getRecentChanges: () => lobbyStore.getRecentChanges(),
+    subscribe(listener) {
+      const subscription = lobbyStore.state$.subscribe(listener);
+      return () => subscription.unsubscribe();
+    },
+    subscribeChanges(listener) {
+      const subscription = lobbyStore.changes$.subscribe(listener);
+      return () => subscription.unsubscribe();
+    },
+    exportState() {
+      return {
+        exportedAt: Date.now(),
+        sessionId: recorder.getSessionId(),
+        lobbyState: lobbyStore.getSnapshot(),
+        stateStats: lobbyStore.getStats(),
+        recentStateChanges: lobbyStore.getRecentChanges()
+      };
+    },
+    getPlayers: () => selectPlayers(lobbyStore.getSnapshot()),
+    getSelf: () => selectSelf(lobbyStore.getSnapshot()),
+    getDrawer: () => selectDrawer(lobbyStore.getSnapshot()),
+    getEstimatedServerTime: () => selectEstimatedServerTime(lobbyStore.getSnapshot()),
+    getRoundIndex: () => lobbyStore.getSnapshot().serverRoundIndex,
+    getRoundNumber: () => lobbyStore.getSnapshot().round
+  };
+
+  const descriptor = createTelemetryProviderDescriptor(
+    'Skribbl Duels Telemetry Core',
+    BUILD_VERSION,
+    CORE_SUPPORTED_TELEMETRY_EVENTS
+  );
+
+  const telemetryApi: TelemetryPublicApi = {
+    descriptor,
+    getStats: () => telemetryStore.getStats(),
+    getRecent: options => telemetryStore.getRecent(options),
+    getByType<TType extends TelemetryEventType>(type: TType): TelemetryEventOf<TType>[] {
+      return telemetryStore.getByType(type);
+    },
+    subscribe(listener) {
+      const subscription = telemetryStore.events$.subscribe(event => listener(event as TelemetryEvent));
+      return () => subscription.unsubscribe();
+    },
+    exportSession(options = {}) {
+      return {
+        sessionId: recorder.getSessionId(),
+        contractVersion: TELEMETRY_CONTRACT_VERSION,
+        schemaVersion: TELEMETRY_SCHEMA_VERSION,
+        ...(telemetryStore.exportSnapshot(options) as Record<string, unknown>)
+      };
+    }
+  };
+
+  window.skribblDuelsTelemetry = telemetryApi;
+
+  const replayApi: ReplayPublicApi = {
+    get descriptor() {
+      return replayProvider.descriptor;
+    },
+    getStats: () => replayProvider.getStats(),
+    getRecent: options => replayProvider.getRecent(options),
+    getByType<TType extends TelemetryEventType>(type: TType): TelemetryEventOf<TType>[] {
+      return replayProvider.getByType(type);
+    },
+    subscribe(listener) {
+      return replayProvider.subscribe(listener);
+    },
+    createFixture(options = {}) {
+      return createFixtureFromProvider(telemetryApi, options);
+    },
+    validateFixture: value => validateTelemetryFixture(value),
+    parseFixture: json => parseTelemetryFixture(json),
+    load: value => replayProvider.load(value),
+    getFixture: () => replayProvider.getFixture(),
+    getState: () => replayProvider.getState(),
+    subscribeState: listener => replayProvider.subscribeState(listener),
+    play: options => replayProvider.play(options),
+    step: count => replayProvider.step(count),
+    pause: () => replayProvider.pause(),
+    resume: () => replayProvider.resume(),
+    stop: () => replayProvider.stop(),
+    reset: () => replayProvider.reset()
+  };
+
+  window.skribblDuelsReplay = replayApi;
+
+  const challengeApi: ChallengeEnginePublicApi = {
+    version: CHALLENGE_ENGINE_VERSION,
+    getSource: () => challengeSource$.value,
+    useLive: () => setChallengeSource('live'),
+    useReplay: () => setChallengeSource('replay'),
+    detachSource: () => setChallengeSource('detached'),
+    register: definition => challengeEngine.register(definition),
+    activate: activation => challengeEngine.activate(activation),
+    deactivate: (instanceId, reason) => challengeEngine.deactivate(instanceId, reason),
+    process: event => challengeEngine.process(event),
+    processMany: events => challengeEngine.processMany(events),
+    resolveCompletion: (instanceId, resolution) =>
+      challengeEngine.resolveCompletion(instanceId, resolution),
+    expire: (instanceId, reason) => challengeEngine.expire(instanceId, reason),
+    reset: reason => challengeEngine.reset(reason),
+    getDefinitionIds: () => challengeEngine.getDefinitionIds(),
+    getDefinitions: () => challengeEngine.getDefinitions(),
+    getInstance: instanceId => challengeEngine.getInstance(instanceId),
+    getInstances: () => challengeEngine.getInstances(),
+    getStats: () => challengeEngine.getStats(),
+    exportSnapshot: () => challengeEngine.exportSnapshot(),
+    restore: () => challengeEngine.restore(),
+    clearPersistence: () => challengeEngine.clearPersistence(),
+    subscribe: listener => challengeEngine.subscribe(listener),
+    subscribeState: listener => challengeEngine.subscribeState(listener)
+  };
+  window.skribblDuelsChallengeEngine = challengeApi;
+
+  const wordListApi: WordListPublicApi = {
+    getStatus(languageId = lobbyStore.getSnapshot().languageId ?? -1, languageName = lobbyStore.getSnapshot().languageName) {
+      return getOfficialWordListStatus(languageId, languageName);
+    },
+    getWords(languageId = lobbyStore.getSnapshot().languageId ?? -1) {
+      return getOfficialWords(languageId);
+    },
+    getLengthMetrics(languageId = lobbyStore.getSnapshot().languageId ?? -1) {
+      return getOfficialWordLengthMetrics(languageId);
+    },
+    getLetterLength(word) {
+      return getOfficialWordLetterLength(word);
+    },
+    load(languageId = lobbyStore.getSnapshot().languageId ?? -1, languageName = lobbyStore.getSnapshot().languageName, force = false) {
+      return loadWordListWithWarning(languageId, languageName, force);
+    },
+    subscribe: listener => subscribeOfficialWordListStatus(listener)
+  };
+  window.skribblDuelsWordLists = wordListApi;
+
+  const challengeDefinitionsApi: ChallengeDefinitionsPublicApi = {
+    version: CHALLENGE_DEFINITIONS_VERSION,
+    list: () => starterChallengeDefinitions.map(definition => ({
+      id: definition.id,
+      version: definition.version,
+      metadata: structuredClone(definition.metadata),
+      defaultParameters: structuredClone(definition.defaultParameters),
+      sandboxInstanceId: starterSandboxInstanceIds[definition.id as keyof typeof starterSandboxInstanceIds]
+    })),
+    registerAll: () => registerStarterChallengeDefinitions(challengeEngine),
+    activateStarterSet: () => activateStarterSandbox(challengeEngine),
+    deactivateStarterSet: () => deactivateStarterSandbox(challengeEngine)
+  };
+  window.skribblDuelsChallengeDefinitions = challengeDefinitionsApi;
+
+  const productFoundation = new DuelProductFoundation({
+    definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,
+    challengeDefinitions: challengeEngine.getDefinitions(),
+    challengeEngine,
+    subscribeTelemetry(listener) {
+      const subscription = telemetryStore.events$.subscribe(event => listener(event));
+      return () => subscription.unsubscribe();
+    },
+    getSelfName() {
+      return selectSelf(lobbyStore.getSnapshot())?.name ?? 'Alpha';
+    }
+  });
+  const productApi = productFoundation.start();
+
+  setChallengeSource('live');
+  avatarTelemetryAdapter.start();
+  homeInteractionTelemetryAdapter.start();
+  typoDropTelemetryAdapter.start();
+  typoAutodrawTelemetryAdapter.start();
+  typoChallengeTelemetryAdapter.start();
+
+  window.scdRawRecorder = {
+    version: BUILD_VERSION,
+    sessionId: recorder.getSessionId(),
+    protocol: protocolApi,
+    lobby: lobbyApi,
+    telemetry: telemetryApi,
+    async exportSession(options = {}) {
+      await recorder.flushPending();
+      const allRecords = await store.getSessionRecords(recorder.getSessionId());
+      const filtered = filterRawRecords(allRecords, options);
+      return {
+        exportedAt: Date.now(),
+        sessionId: recorder.getSessionId(),
+        filter: filtered.summary,
+        lobbyState: lobbyStore.getSnapshot(),
+        records: filtered.records
+      };
+    },
+    async exportAll(options = {}) {
+      await recorder.flushPending();
+      const [sessions, allRecords] = await Promise.all([
+        store.getAllSessions(),
+        store.getAllRecords()
+      ]);
+      const filtered = filterRawRecords(allRecords, options);
+      return { exportedAt: Date.now(), filter: filtered.summary, sessions, records: filtered.records };
+    },
+    clearAll: () => store.clearAll(),
+    getStats: () => recorder.getStats(),
+    isPanelMounted: () => panel.isMounted(),
+    remountPanel: () => panel.ensureMounted(),
+    setPanelVisible: visible => panel.setVisible(visible)
+  };
+
+  console.info('[Skribbl Duels Telemetry Inspector] Initialized', {
+    version: BUILD_VERSION,
+    contractVersion: TELEMETRY_CONTRACT_VERSION,
+    sessionId: recorder.getSessionId(),
+    telemetry: window.skribblDuelsTelemetry,
+    replay: window.skribblDuelsReplay,
+    challengeEngine: window.skribblDuelsChallengeEngine,
+    challengeDefinitions: window.skribblDuelsChallengeDefinitions,
+    wordList: window.skribblDuelsWordLists?.getStatus(),
+    product: productApi,
+    inspector: window.scdRawRecorder
+  });
+}
+
+void bootstrap().catch(error => {
+  console.error('[Skribbl Duels Telemetry Inspector] Bootstrap failed', error);
+});

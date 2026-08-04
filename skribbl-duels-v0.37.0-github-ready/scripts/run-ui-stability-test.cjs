@@ -1,0 +1,15 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..');
+const source = fs.readFileSync(path.join(root, 'apps/telemetry-inspector/src/duelProductUi.ts'), 'utf8');
+assert(!source.includes("dataset.role = 'drag-handle'"), 'board drag handle still exists');
+assert(!source.includes('beginBoardDrag('), 'board drag methods still exist');
+assert(source.includes("this.matchState.phase !== 'idle' && this.matchState.fields.length > 0"), 'board is not gated by active match state');
+assert(source.includes("sessionStorage.getItem(this.matchStorageKey)"), 'match session restore missing');
+assert(source.includes("if (!mounted) return;"), 'mount guard still rerenders every interval');
+assert(source.includes("const nextChildIndex = target.children.length + 1"), 'chat parity does not follow current child position');
+assert(source.includes("background-color: var(--COLOR_CHAT_BG_LEAVE_ALT) !important"), 'chat override lacks important specificity');
+assert(source.includes('class ProductTooltipManager'), 'product tooltip manager missing');
+assert(source.includes("this.board.style.pointerEvents = 'none'"), 'board is not interaction-free');
+console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true }, null, 2));

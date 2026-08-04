@@ -1,0 +1,628 @@
+{
+  "fixtureVersion": 1,
+  "metadata": {
+    "fixtureId": "45863c49-2283-4c53-a61c-091b80b8a0e2",
+    "name": "Typo live regression: Pasta, Zweig, Goldfisch",
+    "description": "Regression modeled after the live telemetry where Deaf Guess lacked a prior state event and Blind Guess was missed by the old canvas selector.",
+    "createdAt": 1785751000000,
+    "source": "synthetic",
+    "tags": [
+      "typo",
+      "live-regression",
+      "deaf-guess",
+      "drunk-vision",
+      "blind-guess"
+    ],
+    "contractVersion": "1.0.0",
+    "schemaVersion": 1,
+    "eventCount": 11,
+    "durationMs": 2210,
+    "eventTypes": [
+      "CORRECT_GUESS",
+      "ROUND_STARTED",
+      "TYPO_CHALLENGE_GUESS_ATTEMPT",
+      "TYPO_CHALLENGE_STATE_CHANGED"
+    ],
+    "omittedHighVolumeEvents": false
+  },
+  "events": [
+    {
+      "offsetMs": 0,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-deaf-round",
+        "telemetrySequence": 1,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1785750000000,
+        "monotonicMs": 0,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-deaf-pasta"
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "drawerId": 77,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80,
+          "players": [],
+          "roundSessionId": "live-deaf-pasta"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-deaf-attempt",
+        "telemetrySequence": 2,
+        "type": "TYPO_CHALLENGE_GUESS_ATTEMPT",
+        "category": "guessing",
+        "occurredAt": 1785750000100,
+        "monotonicMs": 100,
+        "actor": {
+          "playerId": 25,
+          "name": "Müsli",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-deaf-pasta"
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "sourceGuessEventId": "live-deaf-submit",
+          "message": "pasta",
+          "activeChallengeKeys": [
+            "deaf-guess"
+          ],
+          "selectedChallengeKeys": [],
+          "method": "dom-fallback"
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 210,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-deaf-correct",
+        "telemetrySequence": 3,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1785750000210,
+        "monotonicMs": 210,
+        "actor": {
+          "playerId": 25,
+          "name": "Müsli",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-deaf-pasta"
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 25,
+          "position": 1,
+          "elapsedMs": 15000,
+          "estimatedTimeAtGuess": 65,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true,
+          "word": "Pasta"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 1000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-drunk-round",
+        "telemetrySequence": 4,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1785750001000,
+        "monotonicMs": 1000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-drunk-zweig"
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "drawerId": 77,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80,
+          "players": [],
+          "roundSessionId": "live-drunk-zweig"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 1050,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-drunk-active",
+        "telemetrySequence": 5,
+        "type": "TYPO_CHALLENGE_STATE_CHANGED",
+        "category": "system",
+        "occurredAt": 1785750001050,
+        "monotonicMs": 1050,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-drunk-zweig"
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "challengeId": 2,
+          "challengeKey": "drunk-vision",
+          "challengeName": "Drunk Vision",
+          "selected": null,
+          "effectActive": true,
+          "featureActive": null,
+          "reason": "dom-fallback",
+          "method": "dom-fallback"
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 1100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-drunk-attempt",
+        "telemetrySequence": 6,
+        "type": "TYPO_CHALLENGE_GUESS_ATTEMPT",
+        "category": "guessing",
+        "occurredAt": 1785750001100,
+        "monotonicMs": 1100,
+        "actor": {
+          "playerId": 25,
+          "name": "Müsli",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-drunk-zweig"
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "sourceGuessEventId": "live-drunk-submit",
+          "message": "zweig",
+          "activeChallengeKeys": [
+            "drunk-vision"
+          ],
+          "selectedChallengeKeys": [],
+          "method": "dom-fallback"
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 1210,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-drunk-correct",
+        "telemetrySequence": 7,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1785750001210,
+        "monotonicMs": 1210,
+        "actor": {
+          "playerId": 25,
+          "name": "Müsli",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-drunk-zweig"
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 25,
+          "position": 1,
+          "elapsedMs": 15000,
+          "estimatedTimeAtGuess": 65,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true,
+          "word": "Zweig"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 2000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-blind-round",
+        "telemetrySequence": 8,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1785750002000,
+        "monotonicMs": 2000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-blind-goldfisch"
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "drawerId": 77,
+          "word": null,
+          "wordLengths": [
+            9
+          ],
+          "initialTime": 80,
+          "players": [],
+          "roundSessionId": "live-blind-goldfisch"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 2050,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-blind-active",
+        "telemetrySequence": 9,
+        "type": "TYPO_CHALLENGE_STATE_CHANGED",
+        "category": "system",
+        "occurredAt": 1785750002050,
+        "monotonicMs": 2050,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-blind-goldfisch"
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "challengeId": 1,
+          "challengeKey": "blind-guess",
+          "challengeName": "Blind Guess",
+          "selected": null,
+          "effectActive": true,
+          "featureActive": null,
+          "reason": "dom-fallback",
+          "method": "dom-fallback"
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 2100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-blind-attempt",
+        "telemetrySequence": 10,
+        "type": "TYPO_CHALLENGE_GUESS_ATTEMPT",
+        "category": "guessing",
+        "occurredAt": 1785750002100,
+        "monotonicMs": 2100,
+        "actor": {
+          "playerId": 25,
+          "name": "Müsli",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-blind-goldfisch"
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "sourceGuessEventId": "live-blind-submit",
+          "message": "goldfisch",
+          "activeChallengeKeys": [
+            "blind-guess"
+          ],
+          "selectedChallengeKeys": [],
+          "method": "dom-fallback"
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 2210,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-blind-correct",
+        "telemetrySequence": 11,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1785750002210,
+        "monotonicMs": 2210,
+        "actor": {
+          "playerId": 25,
+          "name": "Müsli",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-typo-regression-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "LIVEFIX1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "live-typo-regression-game",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 25,
+          "drawerId": 77,
+          "roundSessionId": "live-blind-goldfisch"
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 25,
+          "position": 1,
+          "elapsedMs": 15000,
+          "estimatedTimeAtGuess": 65,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true,
+          "word": "Goldfisch"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    }
+  ]
+}

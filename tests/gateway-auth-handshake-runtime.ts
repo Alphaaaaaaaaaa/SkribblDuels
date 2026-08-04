@@ -100,7 +100,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.37.1-test',
+  clientVersion: '0.37.2-test',
   capabilities: ['skribbl-telemetry']
 });
 const connectedPromise = waitForSnapshot(client, snapshot => snapshot.status === 'connected');
@@ -123,7 +123,7 @@ const welcomePromise = waitForMessage(rawSocket, message => message.type === 'WE
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.37.1-test',
+  clientVersion: '0.37.2-test',
   capabilities: ['skribbl-telemetry']
 });
 assert.equal((await welcomePromise).type, 'WELCOME');

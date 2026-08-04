@@ -8,7 +8,7 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.37.1',
+  clientVersion: '0.37.2',
   capabilities: ['skribbl-telemetry']
 } as const;
 

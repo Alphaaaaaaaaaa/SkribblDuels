@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
         userscript: {
           name: 'Skribbl Duels - Telemetry Inspector',
           namespace: 'https://github.com/skribbl-duels',
-          version: '0.37.1',
+          version: '0.37.2',
           description: 'Authenticated Socket.IO Gateway handshake for Skribbl Duels.',
           author: 'Alpha',
           match: ['https://skribbl.io/*'],

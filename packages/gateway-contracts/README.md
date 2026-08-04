@@ -4,4 +4,4 @@ Versioned Socket.IO messages between the Skribbl Duels userscript and the author
 
 The Supabase access token is sent only through the Socket.IO handshake `auth` payload. Once middleware has verified that token, the client sends a token-free `HELLO` through the shared `gateway:message` event. The server responds with `WELCOME` after loading the authenticated database profile.
 
-Later phases use the same event for matchmaking, draft, claim, telemetry and Duel-chat messages. The server remains authoritative for identity, queue state, match snapshots/events, claim resolutions and chat delivery.
+Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. Draft, claim, telemetry and Duel-chat messages continue on the versioned contract in later phases.

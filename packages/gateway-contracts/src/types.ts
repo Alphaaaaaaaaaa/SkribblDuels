@@ -32,6 +32,7 @@ export interface GatewayMatchmakingJoinMessage {
   type: 'MATCHMAKING_JOIN';
   requestId: string;
   format: 'casual' | 'ranked';
+  page: 'home';
 }
 
 export interface GatewayMatchmakingLeaveMessage {
@@ -109,23 +110,51 @@ export interface GatewayAuthRequiredMessage {
 
 export interface GatewayQueueStatusMessage {
   type: 'QUEUE_STATUS';
+  requestId: string;
   format: 'casual' | 'ranked';
   queued: boolean;
   position: number | null;
+  joinedAt: number | null;
+}
+
+export interface GatewayMatchmakingParticipant {
+  accountId: string;
+  displayName: string;
+  ready: boolean;
+  simulated: boolean;
+}
+
+export interface GatewayMatchmakingState {
+  format: 'casual' | 'ranked';
+  phase: 'ready-check' | 'draft' | 'cancelled';
+  participants: readonly GatewayMatchmakingParticipant[];
+  readyDeadlineAt: number | null;
+  startingAccountId: string;
+  createdAt: number;
+}
+
+export interface GatewayMatchmakingEvent {
+  type:
+    | 'MATCH_ABORTED'
+    | 'READY_CHANGED'
+    | 'READY_CHECK_COMPLETED'
+    | 'READY_CHECK_EXPIRED';
+  accountId: string | null;
+  reason: string | null;
 }
 
 export interface GatewayMatchSnapshotMessage {
   type: 'MATCH_SNAPSHOT';
   matchId: string;
   revision: number;
-  state: unknown;
+  state: GatewayMatchmakingState;
 }
 
 export interface GatewayMatchEventMessage {
   type: 'MATCH_EVENT';
   matchId: string;
   revision: number;
-  event: unknown;
+  event: GatewayMatchmakingEvent;
 }
 
 export interface GatewayClaimResolutionMessage {

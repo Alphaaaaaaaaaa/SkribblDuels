@@ -8,7 +8,7 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.37.2',
+  clientVersion: '0.38.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
@@ -18,6 +18,34 @@ assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
 assert.equal(isGatewayClientMessage({ ...hello, capabilities: ['unknown'] }), false);
 assert.equal(isGatewayClientMessage({ type: 'WELCOME' }), false);
+assert.equal(isGatewayClientMessage({
+  type: 'MATCHMAKING_JOIN',
+  requestId: 'queue-1',
+  format: 'ranked',
+  page: 'home'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'MATCHMAKING_JOIN',
+  requestId: 'queue-1',
+  format: 'ranked',
+  page: 'game'
+}), false);
+assert.equal(isGatewayServerMessage({
+  type: 'MATCH_SNAPSHOT',
+  matchId: 'match-1',
+  revision: 1,
+  state: {
+    format: 'ranked',
+    phase: 'ready-check',
+    participants: [
+      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true }
+    ],
+    readyDeadlineAt: 31_000,
+    startingAccountId: 'a',
+    createdAt: 1_000
+  }
+}), true);
 assert.equal(isGatewayServerMessage({
   type: 'CLAIM_RESOLUTION',
   matchId: 'match-1',

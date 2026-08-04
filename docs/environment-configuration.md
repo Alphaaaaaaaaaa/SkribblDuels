@@ -21,7 +21,7 @@ The production Gateway URL is already the browser-build default. `VITE_GATEWAY_U
 
 The Gateway owns a separate runtime environment. Copy `apps/gateway/.env.example` to `apps/gateway/.env` for local development, or enter the same variables in the deployment dashboard. The local file is ignored by Git.
 
-Gateway v0.37.1 needs:
+Gateway v0.38.0 needs:
 
 ```text
 NODE_ENV=development
@@ -29,7 +29,12 @@ PORT=3000
 CLIENT_ORIGIN=https://skribbl.io
 SUPABASE_URL=https://PROJECT_REF.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+MATCHMAKING_SIMULATED_PLAYERS=true
 ```
+
+`MATCHMAKING_SIMULATED_PLAYERS=true` creates a server-owned test opponent after
+a short queue delay. Remove it or set it to `false` before real two-player beta
+testing. Real authenticated players are always paired before a simulated player.
 
 `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are the same public values used by the browser build. No Supabase secret/service-role key or database URL is required: token verification uses Supabase Auth and the profile query runs with the authenticated user's bearer token under RLS.
 

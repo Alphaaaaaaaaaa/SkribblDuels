@@ -43,6 +43,39 @@ function stringArray(value: unknown, maxItems = 256): value is string[] {
   return Array.isArray(value) && value.length <= maxItems && value.every(item => nonEmptyString(item));
 }
 
+function matchmakingParticipant(value: unknown): boolean {
+  const participant = record(value);
+  return Boolean(participant
+    && nonEmptyString(participant.accountId)
+    && nonEmptyString(participant.displayName, 128)
+    && typeof participant.ready === 'boolean'
+    && typeof participant.simulated === 'boolean');
+}
+
+function matchmakingState(value: unknown): boolean {
+  const state = record(value);
+  return Boolean(state
+    && (state.format === 'casual' || state.format === 'ranked')
+    && (state.phase === 'ready-check' || state.phase === 'draft' || state.phase === 'cancelled')
+    && Array.isArray(state.participants)
+    && state.participants.length === 2
+    && state.participants.every(matchmakingParticipant)
+    && (state.readyDeadlineAt === null || finiteNumber(state.readyDeadlineAt))
+    && nonEmptyString(state.startingAccountId)
+    && finiteNumber(state.createdAt));
+}
+
+function matchmakingEvent(value: unknown): boolean {
+  const event = record(value);
+  return Boolean(event
+    && (event.type === 'MATCH_ABORTED'
+      || event.type === 'READY_CHANGED'
+      || event.type === 'READY_CHECK_COMPLETED'
+      || event.type === 'READY_CHECK_EXPIRED')
+    && (event.accountId === null || nonEmptyString(event.accountId))
+    && (event.reason === null || nonEmptyString(event.reason, 128)));
+}
+
 export function isGatewayHelloMessage(value: unknown): value is GatewayHelloMessage {
   const message = record(value);
   return Boolean(message
@@ -64,7 +97,8 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
       return isGatewayHelloMessage(message);
     case 'MATCHMAKING_JOIN':
       return nonEmptyString(message.requestId)
-        && (message.format === 'casual' || message.format === 'ranked');
+        && (message.format === 'casual' || message.format === 'ranked')
+        && message.page === 'home';
     case 'MATCHMAKING_LEAVE':
       return nonEmptyString(message.requestId);
     case 'READY_SET':
@@ -118,13 +152,19 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         || message.reason === 'invalid-token'
         || message.reason === 'expired-token';
     case 'QUEUE_STATUS':
-      return (message.format === 'casual' || message.format === 'ranked')
+      return nonEmptyString(message.requestId)
+        && (message.format === 'casual' || message.format === 'ranked')
         && typeof message.queued === 'boolean'
-        && (message.position === null || nonNegativeInteger(message.position));
+        && (message.position === null || nonNegativeInteger(message.position))
+        && (message.joinedAt === null || finiteNumber(message.joinedAt));
     case 'MATCH_SNAPSHOT':
-      return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision);
+      return nonEmptyString(message.matchId)
+        && nonNegativeInteger(message.revision)
+        && matchmakingState(message.state);
     case 'MATCH_EVENT':
-      return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision);
+      return nonEmptyString(message.matchId)
+        && nonNegativeInteger(message.revision)
+        && matchmakingEvent(message.event);
     case 'CLAIM_RESOLUTION':
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.candidateId)

@@ -1,15 +1,17 @@
-# Skribbl Duels Gateway Connected v0.37.2
+# Skribbl Duels Matchmaking v0.38.0
 
-This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v1, Discord OAuth through Supabase Auth, the persistent account profile schema, and the first authenticated Socket.IO Gateway handshake.
+This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v1, Discord OAuth through Supabase Auth, persistent account profiles, authenticated Socket.IO transport, homepage matchmaking and the ready-check state machine.
 
-## v0.37.2
+## v0.38.0
 
-- Publishes the complete current userscript at
-  `userscript/skribbl-duels-telemetry-inspector.user.js`.
-- Makes the published JavaScript ASCII-safe while preserving localized and
-  typographic UI text at runtime.
-- Rejects known UTF-8/Windows-1252 mojibake during the release build.
-- Keeps Gateway, Supabase, challenge and match behavior unchanged from v0.37.1.
+- Enforces one owned userscript runtime and one active match lifecycle.
+- Aborts and clears older local/server match state before every new start.
+- Allows queue entry only from the visible skribbl.io homepage.
+- Adds authoritative Casual and Ranked Gateway queues.
+- Adds a 30-second ready check with leave, disconnect and timeout cancellation.
+- Supports server-created simulated opponents for single-player development.
+- Randomly selects the first player for the upcoming draft.
+- Preserves the ASCII-safe stable userscript release path introduced in v0.37.2.
 
 ## Install the userscript
 
@@ -18,16 +20,18 @@ Open the current
 and install it in Tampermonkey. The stable path is updated in place for each
 release; the userscript metadata contains the exact version.
 
-## Gateway foundation
+## Gateway and matchmaking
 
 - Adds an independently deployable Node/Socket.IO Gateway under `apps/gateway`.
 - Verifies the Supabase access token during the Socket.IO connection handshake.
 - Loads authoritative player identity from the RLS-protected `public.profiles` table.
-- Implements Contract v1 `HELLO`, `WELCOME`, `PING`, `PONG`, `AUTH_REQUIRED`, and `ERROR` messages.
+- Implements Contract v1 authentication, queue, ready-check, match snapshot and heartbeat messages.
 - Provides `/healthz` for deployment health checks.
 - Uses `https://skribblduels-production.up.railway.app` as the production userscript default.
 - Keeps `VITE_GATEWAY_URL` available as a public build-time override.
-- Records the live authenticated Railway `WELCOME` handshake as verified; matchmaking, ready checks, drafting, claims, ratings, results, and Duel chat remain the next server milestones.
+- Records the live authenticated Railway `WELCOME` handshake as verified.
+- Keeps queue membership, opponent identity, supersession and ready deadlines authoritative on the Gateway.
+- Requires `MATCHMAKING_SIMULATED_PLAYERS=true` only while simulated queue opponents are desired.
 - Preserves the v0.36.0 profile migration and its read-only client security boundary.
 - Preserves all Product Foundation, match-freeze, UI-stability, drafting, and 46-challenge behavior.
 
@@ -62,7 +66,7 @@ The verification must report RLS enabled, authenticated read access, no anonymou
 
 Never include the Discord client secret, Supabase database password, Supabase secret/service-role key, or refresh credentials in the userscript. Rotate any secret that has been shared or committed.
 
-See `docs/gateway-deployment-v0.37.1.md`, `docs/gateway-auth-handshake-v0.37.0.md`, `docs/profile-foundation-v0.36.0.md`, `docs/auth-foundation-v0.35.0.md`, and `docs/environment-configuration.md`.
+See `docs/matchmaking-ready-check-v0.38.0.md`, `docs/gateway-deployment-v0.37.1.md`, `docs/gateway-auth-handshake-v0.37.0.md`, and `docs/environment-configuration.md`.
 
 The current implementation sequence is documented in
 [`docs/development-roadmap.md`](docs/development-roadmap.md). Release packaging

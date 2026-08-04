@@ -21,7 +21,11 @@ const config: GatewayServerConfig = {
   supabaseUrl: 'https://example.supabase.co',
   supabasePublishableKey: 'sb_publishable_test',
   helloTimeoutMs: 1_000,
-  heartbeatIntervalMs: 25_000
+  heartbeatIntervalMs: 25_000,
+  matchmakingReadyTimeoutMs: 30_000,
+  simulatedPlayersEnabled: true,
+  simulatedMatchDelayMs: 10,
+  simulatedReadyDelayMs: 10
 };
 
 const gateway = createGatewayServer({
@@ -100,7 +104,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.37.2-test',
+  clientVersion: '0.38.0-test',
   capabilities: ['skribbl-telemetry']
 });
 const connectedPromise = waitForSnapshot(client, snapshot => snapshot.status === 'connected');
@@ -110,6 +114,17 @@ assert.equal(connected.identity?.accountId, 'c27ea4b9-984e-4efb-bfba-e9f77b28f1f
 assert.equal(connected.identity?.displayName, 'analphabetism');
 assert.equal(connected.identity?.discordUserId, '459399117307904000');
 assert.ok(connected.connectionId);
+
+client.joinMatchmaking('ranked');
+const readyCheck = await waitForSnapshot(client, snapshot =>
+  snapshot.match?.state.phase === 'ready-check'
+  && snapshot.match.state.participants.some(participant => participant.simulated && participant.ready)
+);
+assert.equal(readyCheck.queue, null);
+assert.equal(readyCheck.match?.state.participants.length, 2);
+client.setReady(readyCheck.match!.matchId, true);
+const draftReady = await waitForSnapshot(client, snapshot => snapshot.match?.state.phase === 'draft');
+assert.equal(draftReady.match?.state.readyDeadlineAt, null);
 
 const rawSocket = io(endpoint, {
   auth: { accessToken: 'valid-test-token' },
@@ -123,7 +138,7 @@ const welcomePromise = waitForMessage(rawSocket, message => message.type === 'WE
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.37.2-test',
+  clientVersion: '0.38.0-test',
   capabilities: ['skribbl-telemetry']
 });
 assert.equal((await welcomePromise).type, 'WELCOME');
@@ -155,6 +170,8 @@ console.log(JSON.stringify({
   healthcheck: true,
   handshakeTokenVerified: true,
   authoritativeProfileWelcome: true,
+  homepageMatchmaking: true,
+  simulatedReadyCheck: true,
   pingPong: true,
   missingTokenRejected: true
 }, null, 2));

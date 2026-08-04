@@ -5,6 +5,7 @@ import {
   isGatewayConnectErrorData,
   isGatewayServerMessage,
   type GatewayClientMessage,
+  type GatewayMatchmakingJoinMessage,
   type GatewayServerMessage,
   type GatewaySocketAuth
 } from '@skribbl-duels/gateway-contracts';
@@ -31,6 +32,9 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     identity: null,
     connectedAt: null,
     serverTimeOffsetMs: null,
+    queue: null,
+    match: null,
+    lastMatchEvent: null,
     error: null
   };
 }
@@ -104,6 +108,28 @@ export class SocketIoGatewayClient {
     this.listeners.clear();
   }
 
+  public joinMatchmaking(format: GatewayMatchmakingJoinMessage['format']): string {
+    const requestId = this.createRequestId('queue');
+    this.emit({
+      type: 'MATCHMAKING_JOIN',
+      requestId,
+      format,
+      page: 'home'
+    });
+    this.update({ ...this.state, queue: null, match: null, lastMatchEvent: null, error: null });
+    return requestId;
+  }
+
+  public leaveMatchmaking(): string {
+    const requestId = this.createRequestId('leave');
+    this.emit({ type: 'MATCHMAKING_LEAVE', requestId });
+    return requestId;
+  }
+
+  public setReady(matchId: string, ready: boolean): void {
+    this.emit({ type: 'READY_SET', matchId, ready });
+  }
+
   private connect(): void {
     const endpoint = this.options.endpoint;
     const accessToken = this.accessToken;
@@ -170,6 +196,9 @@ export class SocketIoGatewayClient {
         identity: value.identity,
         connectedAt: Date.now(),
         serverTimeOffsetMs: value.serverTime - Date.now(),
+        queue: null,
+        match: null,
+        lastMatchEvent: null,
         error: null
       });
       return;
@@ -188,7 +217,47 @@ export class SocketIoGatewayClient {
         status: value.recoverable && this.state.connectionId ? this.state.status : 'error',
         error: value.message
       });
+      return;
     }
+    if (value.type === 'QUEUE_STATUS') {
+      this.update({
+        ...this.state,
+        queue: value.queued ? structuredClone(value) : null,
+        match: value.queued ? null : this.state.match,
+        lastMatchEvent: value.queued ? null : this.state.lastMatchEvent,
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'MATCH_SNAPSHOT') {
+      if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
+      this.update({
+        ...this.state,
+        queue: null,
+        match: structuredClone(value),
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'MATCH_EVENT') {
+      if (this.state.lastMatchEvent?.matchId === value.matchId &&
+          this.state.lastMatchEvent.revision > value.revision) return;
+      this.update({ ...this.state, lastMatchEvent: structuredClone(value), error: null });
+    }
+  }
+
+  private emit(message: GatewayClientMessage): void {
+    if (this.state.status !== 'connected' || !this.socket?.connected) {
+      throw new Error('The authenticated Gateway must be connected before matchmaking.');
+    }
+    this.socket.emit(GATEWAY_SOCKET_EVENT, message);
+  }
+
+  private createRequestId(prefix: string): string {
+    const suffix = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    return `${prefix}-${suffix}`;
   }
 
   private disconnectSocket(): void {

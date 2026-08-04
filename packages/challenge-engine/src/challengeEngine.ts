@@ -331,6 +331,17 @@ export class ChallengeEngine {
     this.publishState();
   }
 
+  public destroy(): void {
+    if (this.persistTimer !== null) clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    this.instances.clear();
+    this.processedEventIds.clear();
+    this.processedEventOrder.length = 0;
+    this.eventSubject.complete();
+    this.stateSubject.complete();
+    this.statsSubject.complete();
+  }
+
   public getDefinitionIds(): string[] {
     return Array.from(this.definitions.keys()).sort();
   }

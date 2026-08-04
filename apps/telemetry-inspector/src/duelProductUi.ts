@@ -39,6 +39,7 @@ import {
 } from '@skribbl-duels/auth-client';
 
 interface ProductFoundationOptions {
+  runtimeId: string;
   definitionsVersion: string;
   challengeDefinitions: ReturnType<ChallengeEngine['getDefinitions']>;
   challengeEngine: ChallengeEngine;
@@ -64,7 +65,7 @@ interface DuelChatMessage {
 }
 
 interface PersistedProductMatch {
-  version: 1;
+  version: 2;
   state: MatchState;
   board: DraftBoard | null;
 }
@@ -86,6 +87,9 @@ interface ProductPublicApi {
     getState(): GatewayConnectionSnapshot;
     subscribe(listener: (state: GatewayConnectionSnapshot) => void): () => void;
     reconnect(): void;
+    joinMatchmaking(format: 'casual' | 'ranked'): string;
+    leaveMatchmaking(): string;
+    setReady(matchId: string, ready: boolean): void;
   };
   manifest: {
     get(): ChallengeManifestSnapshot;
@@ -119,6 +123,7 @@ interface ProductPublicApi {
     toggle(): void;
     remount(): void;
   };
+  dispose(reason?: string): void;
   chat: {
     insertCompletion(message: CompletionMessage): void;
     getMessages(): readonly DuelChatMessage[];
@@ -173,7 +178,10 @@ class CompletionChatAdapter {
   private pending: CompletionMessage[] = [];
   private mountGuard: number | null = null;
 
-  public constructor(private readonly enabled: () => boolean) {}
+  public constructor(
+    private readonly enabled: () => boolean,
+    private readonly runtimeId: string
+  ) {}
 
   public start(): void {
     this.ensureStyles();
@@ -187,6 +195,18 @@ class CompletionChatAdapter {
     this.insertedClaimIds.add(message.claimId);
     this.pending.push(message);
     this.flush();
+  }
+
+  public reset(): void {
+    this.insertedClaimIds.clear();
+    this.pending = [];
+    document.querySelectorAll('.skribbl-duels-completion').forEach(node => node.remove());
+  }
+
+  public stop(): void {
+    if (this.mountGuard !== null) window.clearInterval(this.mountGuard);
+    this.mountGuard = null;
+    this.reset();
   }
 
   private ensureStyles(): void {
@@ -262,6 +282,7 @@ class CompletionChatAdapter {
       const parity = nextChildIndex % 2 === 0 ? 'alt' : 'base';
       const paragraph = document.createElement('p');
       paragraph.className = `skribbl-duels-completion ${message.side === 'self' ? 'own' : 'opponent'} ${parity}`;
+      paragraph.dataset.scdRuntimeId = this.runtimeId;
       paragraph.dataset.skribblDuelsClaimId = message.claimId;
       const bold = document.createElement('b');
       bold.textContent = `${message.playerName} has completed '${message.challengeName}'!`;
@@ -278,9 +299,17 @@ class ProductTooltipManager {
   private readonly pointerOver = (event: PointerEvent) => this.handlePointerOver(event);
   private readonly pointerLeave = () => this.hide();
 
+  public constructor(private readonly runtimeId: string) {}
+
   public start(): void {
     document.addEventListener('pointerover', this.pointerOver, true);
     document.documentElement.addEventListener('pointerleave', this.pointerLeave);
+  }
+
+  public stop(): void {
+    document.removeEventListener('pointerover', this.pointerOver, true);
+    document.documentElement.removeEventListener('pointerleave', this.pointerLeave);
+    this.hide();
   }
 
   public register(target: HTMLElement, title: string, lock?: 'X' | 'Y'): void {
@@ -329,6 +358,7 @@ class ProductTooltipManager {
       anchorY = rect.top + rect.height / 2;
     }
     const tooltip = element('div', `scd-tooltip ${direction}`);
+    tooltip.dataset.scdRuntimeId = this.runtimeId;
     tooltip.style.left = `${anchorX}px`;
     tooltip.style.top = `${anchorY}px`;
     tooltip.append(element('div', 'scd-tooltip-arrow'), element('div', 'scd-tooltip-title', title));
@@ -377,7 +407,7 @@ export class DuelProductFoundation {
   public readonly telemetryGateway: MatchTelemetryGateway;
   public readonly settingsStore = new LocalStorageProductUiSettingsStore();
 
-  private readonly matchStorageKey = 'skribblDuelsProductMatchSessionV1';
+  private readonly matchStorageKey = 'skribblDuelsProductMatchSessionV2';
   private currentBoard: DraftBoard | null = null;
   private launcher: HTMLButtonElement | null = null;
   private panel: HTMLDivElement | null = null;
@@ -390,13 +420,18 @@ export class DuelProductFoundation {
   private chatAdapter: CompletionChatAdapter;
   private duelChatMessages: DuelChatMessage[] = [];
   private activeTab: ProductUiSettings['panelTab'];
-  private readonly tooltips = new ProductTooltipManager();
+  private readonly tooltips: ProductTooltipManager;
   private readonly authClient = new SupabaseDiscordAuthClient();
   private readonly gatewayClient: SocketIoGatewayClient;
   private authState: AuthSnapshot;
   private gatewayState: GatewayConnectionSnapshot;
+  private readonly unsubscribers: Array<() => void> = [];
+  private lastGatewayMatchId: string | null = null;
+  private matchmakingError: string | null = null;
+  private destroyed = false;
 
   public constructor(private readonly options: ProductFoundationOptions) {
+    this.tooltips = new ProductTooltipManager(options.runtimeId);
     this.manifest = createChallengeManifest({
       definitionsVersion: options.definitionsVersion,
       definitions: options.challengeDefinitions
@@ -408,7 +443,10 @@ export class DuelProductFoundation {
     this.settings = this.settingsStore.get();
     this.matchState = this.matchStore.getState();
     this.activeTab = this.settings.panelTab;
-    this.chatAdapter = new CompletionChatAdapter(() => this.settings.completionMessages);
+    this.chatAdapter = new CompletionChatAdapter(
+      () => this.settings.completionMessages,
+      options.runtimeId
+    );
     this.authState = this.authClient.getState();
     this.gatewayClient = new SocketIoGatewayClient({
       endpoint: GATEWAY_URL,
@@ -419,23 +457,26 @@ export class DuelProductFoundation {
   }
 
   public start(): ProductPublicApi {
+    this.installRuntimeIsolationStyle();
+    this.removeForeignRuntimeDom();
     this.chatAdapter.start();
     this.tooltips.start();
-    this.gatewayClient.subscribe(state => {
+    this.unsubscribers.push(this.gatewayClient.subscribe(state => {
       this.gatewayState = state;
+      this.handleGatewayMatchState(state);
       if (this.activeTab === 'duel' || this.activeTab === 'match' || this.activeTab === 'about') {
         this.renderPanel();
       }
-    });
-    this.authClient.subscribe(state => {
+    }));
+    this.unsubscribers.push(this.authClient.subscribe(state => {
       this.authState = state;
       this.gatewayClient.setAccessToken(
         state.status === 'signed-in' ? state.accessToken : null
       );
       if (this.activeTab === 'duel' || this.activeTab === 'about') this.renderPanel();
-    });
+    }));
     void this.authClient.start();
-    this.settingsStore.subscribe(settings => {
+    this.unsubscribers.push(this.settingsStore.subscribe(settings => {
       const tabChanged = this.activeTab !== settings.panelTab;
       this.settings = settings;
       this.activeTab = settings.panelTab;
@@ -443,24 +484,30 @@ export class DuelProductFoundation {
       this.renderBoardPosition();
       this.renderBoard();
       if (tabChanged) this.renderPanel();
-    });
-    this.matchStore.subscribeState(state => {
+    }));
+    this.unsubscribers.push(this.matchStore.subscribeState(state => {
       this.matchState = state;
       this.persistMatch();
       this.renderVisibility();
       this.renderBoard();
       if (this.activeTab === 'duel' || this.activeTab === 'match') this.renderPanel();
-    });
-    this.options.challengeEngine.subscribe(event => this.handleChallengeEngineEvent(event));
-    this.options.subscribeTelemetry(event => {
+    }));
+    this.unsubscribers.push(this.options.challengeEngine.subscribe(event => this.handleChallengeEngineEvent(event)));
+    this.unsubscribers.push(this.options.subscribeTelemetry(event => {
       void this.telemetryGateway.observe(event);
-    });
+    }));
 
     this.ensureMounted();
-    this.mountGuard = window.setInterval(() => this.ensureMounted(), 700);
+    this.mountGuard = window.setInterval(() => {
+      this.removeForeignRuntimeDom();
+      this.ensureMounted();
+      if (this.activeTab === 'duel' && this.gatewayState.match?.state.phase === 'ready-check') {
+        this.renderPanel();
+      }
+    }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.37.2',
+      version: '0.38.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -475,7 +522,10 @@ export class DuelProductFoundation {
       gateway: {
         getState: () => this.gatewayClient.getState(),
         subscribe: listener => this.gatewayClient.subscribe(listener),
-        reconnect: () => this.gatewayClient.reconnect()
+        reconnect: () => this.gatewayClient.reconnect(),
+        joinMatchmaking: format => this.beginMatchmaking(format),
+        leaveMatchmaking: () => this.cancelMatchmaking(),
+        setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready)
       },
       manifest: {
         get: () => structuredClone(this.manifest),
@@ -519,13 +569,67 @@ export class DuelProductFoundation {
       chat: {
         insertCompletion: message => this.chatAdapter.insert(message),
         getMessages: () => structuredClone(this.duelChatMessages)
-      }
+      },
+      dispose: reason => this.destroy(reason)
     };
     window.skribblDuelsProduct = api;
     return api;
   }
 
+  public destroy(reason = 'runtime-disposed'): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.abortLocalMatch(reason);
+    for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
+    if (this.mountGuard !== null) window.clearInterval(this.mountGuard);
+    this.mountGuard = null;
+    this.chatAdapter.stop();
+    this.tooltips.stop();
+    this.gatewayClient.stop();
+    this.authClient.stop();
+    this.launcher?.remove();
+    this.panel?.remove();
+    this.board?.remove();
+    this.launcher = null;
+    this.panel = null;
+    this.panelBody = null;
+    this.board = null;
+    this.boardGrid = null;
+    const isolation = document.getElementById('skribbl-duels-runtime-isolation');
+    if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
+    if (window.skribblDuelsProduct?.version === '0.38.0') delete window.skribblDuelsProduct;
+  }
+
+  private installRuntimeIsolationStyle(): void {
+    document.getElementById('skribbl-duels-runtime-isolation')?.remove();
+    const style = document.createElement('style');
+    style.id = 'skribbl-duels-runtime-isolation';
+    style.dataset.scdRuntimeId = this.options.runtimeId;
+    const runtime = this.options.runtimeId;
+    style.textContent = `
+#scd-raw-recorder-panel:not([data-scd-runtime-id='${runtime}']),
+#skribbl-duels-launcher:not([data-scd-runtime-id='${runtime}']),
+#skribbl-duels-panel:not([data-scd-runtime-id='${runtime}']),
+#skribbl-duels-board:not([data-scd-runtime-id='${runtime}']) { display:none !important; }
+`;
+    (document.head ?? document.documentElement).appendChild(style);
+  }
+
+  private removeForeignRuntimeDom(): void {
+    for (const selector of [
+      '#scd-raw-recorder-panel',
+      '#skribbl-duels-launcher',
+      '#skribbl-duels-panel',
+      '#skribbl-duels-board'
+    ]) {
+      document.querySelectorAll<HTMLElement>(selector).forEach(node => {
+        if (node.dataset.scdRuntimeId !== this.options.runtimeId) node.remove();
+      });
+    }
+  }
+
   private ensureMounted(): void {
+    if (this.destroyed) return;
     const target = document.body ?? document.documentElement;
     if (!target) return;
     let mounted = false;
@@ -545,6 +649,7 @@ export class DuelProductFoundation {
   private createLauncher(): HTMLButtonElement {
     const launcher = element('button') as HTMLButtonElement;
     launcher.id = 'skribbl-duels-launcher';
+    launcher.dataset.scdRuntimeId = this.options.runtimeId;
     launcher.type = 'button';
     launcher.textContent = 'SD';
     launcher.style.cssText = [
@@ -571,6 +676,7 @@ export class DuelProductFoundation {
   private createPanel(): HTMLDivElement {
     const panel = element('div');
     panel.id = 'skribbl-duels-panel';
+    panel.dataset.scdRuntimeId = this.options.runtimeId;
     panel.style.cssText = [
       'position:fixed',
       'right:64px',
@@ -591,7 +697,7 @@ export class DuelProductFoundation {
     header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.12)';
     const title = element('strong', '', 'Skribbl Duels');
     title.style.cssText = 'font-size:16px;flex:1';
-    const version = element('span', 'scd-muted', 'Gateway Connected 0.37.2');
+    const version = element('span', 'scd-muted', 'Matchmaking 0.38.0');
     version.style.fontSize = '10px';
     const close = element('button', 'scd-button', '×') as HTMLButtonElement;
     close.type = 'button';
@@ -627,6 +733,7 @@ export class DuelProductFoundation {
   private createBoard(): HTMLDivElement {
     const board = element('div');
     board.id = 'skribbl-duels-board';
+    board.dataset.scdRuntimeId = this.options.runtimeId;
     board.style.cssText = [
       'position:fixed',
       'z-index:2147483643',
@@ -867,17 +974,7 @@ export class DuelProductFoundation {
       gatewayConnection.appendChild(reconnect);
     }
 
-    const actions = element('div', 'scd-card scd-stack');
-    actions.appendChild(element('strong', '', 'Development board'));
-    const row = element('div', 'scd-row');
-    const casual = element('button', 'scd-button', 'Generate 3×3') as HTMLButtonElement;
-    const ranked = element('button', 'scd-button primary', 'Generate 5×5') as HTMLButtonElement;
-    casual.addEventListener('click', () => this.startDemoMatch('casual'));
-    ranked.addEventListener('click', () => this.startDemoMatch('ranked'));
-    this.tooltips.register(casual, 'Generate and start a casual 3×3 development match');
-    this.tooltips.register(ranked, 'Generate and start a ranked 5×5 development match');
-    row.append(casual, ranked);
-    actions.appendChild(row);
+    const matchmaking = this.createMatchmakingCard();
 
     const compatibility = element('div', 'scd-card');
     compatibility.append(
@@ -885,8 +982,84 @@ export class DuelProductFoundation {
       element('p', 'scd-muted', 'Blind Guess and Drunk Vision share the conflict key “primary-visual-obstruction” and can never appear together. Deaf Guess may appear with either one.')
     );
 
-    stack.append(account, gatewayConnection, intro, actions, compatibility);
+    stack.append(account, gatewayConnection, matchmaking, intro, compatibility);
     this.panelBody.appendChild(stack);
+  }
+
+  private createMatchmakingCard(): HTMLDivElement {
+    const card = element('div', 'scd-card scd-stack');
+    card.appendChild(element('strong', '', 'Homepage matchmaking'));
+    const homepage = this.isHomepageVisible();
+    const gatewayMatch = this.gatewayState.match;
+    const queue = this.gatewayState.queue;
+    const connected = this.gatewayState.status === 'connected';
+    const selfAccountId = this.gatewayState.identity?.accountId ?? null;
+
+    if (!homepage) {
+      card.appendChild(element('div', 'scd-muted', 'Matchmaking is available only on the Skribbl homepage. Return home before entering a queue.'));
+    }
+    if (this.matchmakingError) card.appendChild(element('div', 'scd-auth-error', this.matchmakingError));
+
+    if (gatewayMatch) {
+      const state = gatewayMatch.state;
+      const self = state.participants.find(participant => participant.accountId === selfAccountId);
+      const opponent = state.participants.find(participant => participant.accountId !== selfAccountId);
+      if (state.phase === 'ready-check') {
+        const remaining = Math.max(0, Math.ceil(((state.readyDeadlineAt ?? Date.now()) - Date.now()) / 1000));
+        card.append(
+          element('div', '', `${state.format === 'casual' ? 'Casual 3×3' : 'Ranked 5×5'} opponent: ${opponent?.displayName ?? 'Waiting…'}${opponent?.simulated ? ' (simulated)' : ''}`),
+          element('div', 'scd-muted', `Ready check: ${remaining}s · You ${self?.ready ? '✓' : '…'} · Opponent ${opponent?.ready ? '✓' : '…'}`)
+        );
+        const row = element('div', 'scd-row');
+        const ready = element('button', 'scd-button primary', self?.ready ? 'Not ready' : 'Ready') as HTMLButtonElement;
+        ready.addEventListener('click', () => this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready));
+        const cancel = element('button', 'scd-button danger', 'Cancel') as HTMLButtonElement;
+        cancel.addEventListener('click', () => this.cancelMatchmaking());
+        row.append(ready, cancel);
+        card.appendChild(row);
+        return card;
+      }
+      if (state.phase === 'draft') {
+        const starter = state.participants.find(participant => participant.accountId === state.startingAccountId);
+        card.append(
+          element('div', '', `Ready check complete against ${opponent?.displayName ?? 'opponent'}.`),
+          element('div', 'scd-muted', `${starter?.displayName ?? 'A player'} was selected randomly to start the upcoming draft.`),
+          element('div', 'scd-muted', 'The server-authoritative 15-second draft is the next implementation milestone.')
+        );
+        const leave = element('button', 'scd-button danger', 'Abort match') as HTMLButtonElement;
+        leave.addEventListener('click', () => this.cancelMatchmaking());
+        card.appendChild(leave);
+        return card;
+      }
+      card.appendChild(element('div', 'scd-muted', `Previous match was cancelled: ${this.gatewayState.lastMatchEvent?.event.reason ?? 'superseded'}.`));
+    }
+
+    if (queue) {
+      card.append(
+        element('div', '', `Queued for ${queue.format === 'casual' ? 'Casual 3×3' : 'Ranked 5×5'}`),
+        element('div', 'scd-muted', `Queue position: ${queue.position ?? '-'} · Waiting for a player in a separate Skribbl lobby flow.`)
+      );
+      const cancel = element('button', 'scd-button danger', 'Leave queue') as HTMLButtonElement;
+      cancel.addEventListener('click', () => this.cancelMatchmaking());
+      card.appendChild(cancel);
+      return card;
+    }
+
+    const row = element('div', 'scd-row');
+    const casual = element('button', 'scd-button', 'Find Casual 3×3') as HTMLButtonElement;
+    const ranked = element('button', 'scd-button primary', 'Find Ranked 5×5') as HTMLButtonElement;
+    casual.disabled = !homepage || !connected;
+    ranked.disabled = !homepage || !connected;
+    casual.addEventListener('click', () => this.beginMatchmaking('casual'));
+    ranked.addEventListener('click', () => this.beginMatchmaking('ranked'));
+    this.tooltips.register(casual, 'Reset old match state and enter the server Casual queue');
+    this.tooltips.register(ranked, 'Reset old match state and enter the server Ranked queue');
+    row.append(casual, ranked);
+    card.appendChild(row);
+    card.appendChild(element('div', 'scd-muted', connected
+      ? 'The current Gateway test can supply a simulated queued opponent; the browser never invents the opponent itself.'
+      : 'Connect the authenticated Gateway before entering matchmaking.'));
+    return card;
   }
 
   private renderMatchTab(): void {
@@ -1079,7 +1252,7 @@ export class DuelProductFoundation {
     const gateway = element('div', 'scd-card');
     gateway.append(
       element('strong', '', `Gateway Contract v${GATEWAY_CONTRACT_VERSION}`),
-      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Token verification, RLS profile lookup and WELCOME are implemented; matchmaking remains intentionally disabled.`)
+      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage queue membership, simulated opponents and the server-authoritative 30-second ready check are implemented.`)
     );
     stack.append(architecture, authentication, freeze, gateway);
     this.panelBody.appendChild(stack);
@@ -1150,14 +1323,70 @@ export class DuelProductFoundation {
       const raw = sessionStorage.getItem(this.matchStorageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Partial<PersistedProductMatch>;
-      if (parsed.version !== 1 || !parsed.state) return null;
+      if (parsed.version !== 2 || !parsed.state) return null;
       return {
-        version: 1,
+        version: 2,
         state: parsed.state,
         board: parsed.board && typeof parsed.board === 'object' ? parsed.board as DraftBoard : null
       };
     } catch {
       return null;
+    }
+  }
+
+  private isHomepageVisible(): boolean {
+    if (window.location.pathname !== '/') return false;
+    const home = document.querySelector<HTMLElement>('#home');
+    if (!home) return false;
+    const style = getComputedStyle(home);
+    return style.display !== 'none'
+      && style.visibility !== 'hidden'
+      && home.getClientRects().length > 0;
+  }
+
+  private beginMatchmaking(format: 'casual' | 'ranked'): string {
+    this.matchmakingError = null;
+    if (!this.isHomepageVisible()) {
+      this.matchmakingError = 'Matchmaking can only start from the visible Skribbl homepage.';
+      this.renderPanel();
+      throw new Error(this.matchmakingError);
+    }
+    this.abortLocalMatch('new-matchmaking-request');
+    try {
+      const requestId = this.gatewayClient.joinMatchmaking(format);
+      this.openPanel('duel');
+      return requestId;
+    } catch (error) {
+      this.matchmakingError = error instanceof Error ? error.message : String(error);
+      this.renderPanel();
+      throw error;
+    }
+  }
+
+  private cancelMatchmaking(): string {
+    this.matchmakingError = null;
+    this.abortLocalMatch('matchmaking-cancelled');
+    try {
+      return this.gatewayClient.leaveMatchmaking();
+    } catch (error) {
+      this.matchmakingError = error instanceof Error ? error.message : String(error);
+      this.renderPanel();
+      throw error;
+    }
+  }
+
+  private handleGatewayMatchState(state: GatewayConnectionSnapshot): void {
+    const snapshot = state.match;
+    if (!snapshot) {
+      if (!state.queue) this.lastGatewayMatchId = null;
+      return;
+    }
+    if (snapshot.matchId !== this.lastGatewayMatchId) {
+      this.abortLocalMatch('gateway-match-superseded-local-state');
+      this.lastGatewayMatchId = snapshot.matchId;
+    }
+    if (snapshot.state.phase === 'cancelled') {
+      this.abortLocalMatch('gateway-match-cancelled');
     }
   }
 
@@ -1168,7 +1397,7 @@ export class DuelProductFoundation {
         return;
       }
       const value: PersistedProductMatch = {
-        version: 1,
+        version: 2,
         state: this.matchState,
         board: this.currentBoard
       };
@@ -1178,10 +1407,20 @@ export class DuelProductFoundation {
     }
   }
 
-  private resetMatch(): MatchState {
+  private abortLocalMatch(reason: string): MatchState {
     this.currentBoard = null;
+    this.duelChatMessages = [];
+    this.chatAdapter.reset();
+    this.telemetryGateway.resetSession();
     try { sessionStorage.removeItem(this.matchStorageKey); } catch {}
-    return this.matchStore.reset();
+    return this.matchStore.reset(reason);
+  }
+
+  private resetMatch(): MatchState {
+    if (this.gatewayState.status === 'connected' && (this.gatewayState.queue || this.gatewayState.match)) {
+      try { this.gatewayClient.leaveMatchmaking(); } catch {}
+    }
+    return this.abortLocalMatch('manual-reset');
   }
 
   private openPanel(tab?: ProductUiSettings['panelTab']): void {
@@ -1209,6 +1448,10 @@ export class DuelProductFoundation {
   }
 
   private startDemoMatch(format: 'casual' | 'ranked'): MatchState {
+    if (this.gatewayState.status === 'connected' && (this.gatewayState.queue || this.gatewayState.match)) {
+      try { this.gatewayClient.leaveMatchmaking(); } catch {}
+    }
+    this.abortLocalMatch('new-demo-match');
     const result = this.generateBoard({ format });
     if (!result.board) {
       throw new Error(result.issues.map(issue => issue.message).join('\n'));

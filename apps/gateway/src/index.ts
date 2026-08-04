@@ -12,7 +12,8 @@ const port = await gateway.listen();
 console.info('[Skribbl Duels Gateway] Listening', {
   port,
   environment: config.nodeEnv,
-  clientOrigin: config.clientOrigin
+  clientOrigin: config.clientOrigin,
+  simulatedMatchmaking: config.simulatedPlayersEnabled
 });
 
 let closing = false;

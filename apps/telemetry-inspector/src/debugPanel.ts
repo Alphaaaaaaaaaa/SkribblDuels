@@ -28,6 +28,7 @@ import {
 } from '@skribbl-duels/telemetry-core';
 
 interface PanelOptions {
+  runtimeId: string;
   recorder: RawPacketRecorder;
   decoder: ProtocolDecoder;
   lobbyStore: LobbyStateStore;
@@ -160,6 +161,7 @@ export class DebugPanel {
     const root = document.createElement('div');
     root.id = 'scd-raw-recorder-panel';
     root.dataset.scdRawRecorder = 'panel';
+    root.dataset.scdRuntimeId = this.options.runtimeId;
     root.style.cssText = [
       'all:initial',
       'display:block',

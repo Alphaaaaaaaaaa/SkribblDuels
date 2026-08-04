@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Skribbl Duels - Telemetry Inspector
 // @namespace    https://github.com/skribbl-duels
-// @version      0.37.2
+// @version      0.38.0
 // @author       Alpha
-// @description  Authenticated Socket.IO Gateway handshake for Skribbl Duels.
+// @description  Homepage matchmaking and authoritative ready checks for Skribbl Duels.
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -1650,6 +1650,7 @@ var TypoRelayBridge = class {
 		this.incomingState.generation += 1;
 		const generation = this.incomingState.generation;
 		port.addEventListener("message", (event) => {
+			if (!this.started) return;
 			this.incomingState.messageCount += 1;
 			this.incomingStatusSubject.next({
 				relayName: "skribblMessagePort",
@@ -1680,6 +1681,7 @@ var TypoRelayBridge = class {
 		this.outgoingState.generation += 1;
 		const generation = this.outgoingState.generation;
 		port.addEventListener("message", (message) => {
+			if (!this.started) return;
 			this.outgoingState.messageCount += 1;
 			this.outgoingStatusSubject.next({
 				relayName: "skribblEmitPort",
@@ -2504,6 +2506,7 @@ var RawPacketRecorder = class {
 	stats;
 	pendingRecords = [];
 	flushTimer = null;
+	subscription;
 	recordsSubject = new Subject();
 	stats$;
 	records$ = this.recordsSubject.asObservable();
@@ -2529,17 +2532,12 @@ var RawPacketRecorder = class {
 		this.statsSubject = new BehaviorSubject({ ...this.stats });
 		this.stats$ = this.statsSubject.asObservable();
 		this.store.saveSession(this.session);
-		merge(incoming$, outgoing$).subscribe({
+		this.subscription = merge(incoming$, outgoing$).subscribe({
 			next: (envelope) => void this.record(envelope),
 			error: (error) => console.error("[SCD Raw Recorder] Relay stream failed", error)
 		});
-		window.addEventListener("pagehide", () => {
-			this.flush();
-			this.closeSession();
-		});
-		document.addEventListener("visibilitychange", () => {
-			if (document.visibilityState === "hidden") this.flush();
-		});
+		window.addEventListener("pagehide", this.handlePageHide);
+		document.addEventListener("visibilitychange", this.handleVisibilityChange);
 	}
 	getSessionId() {
 		return this.session.sessionId;
@@ -2550,6 +2548,24 @@ var RawPacketRecorder = class {
 	async flushPending() {
 		await this.flush();
 	}
+	destroy() {
+		this.subscription.unsubscribe();
+		window.removeEventListener("pagehide", this.handlePageHide);
+		document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+		if (this.flushTimer !== null) window.clearTimeout(this.flushTimer);
+		this.flushTimer = null;
+		this.flush();
+		this.closeSession();
+		this.recordsSubject.complete();
+		this.statsSubject.complete();
+	}
+	handlePageHide = () => {
+		this.flush();
+		this.closeSession();
+	};
+	handleVisibilityChange = () => {
+		if (document.visibilityState === "hidden") this.flush();
+	};
 	async record(envelope) {
 		this.sequence += 1;
 		const timestamp = now();
@@ -6078,6 +6094,16 @@ var ChallengeEngine = class {
 		this.processedEventOrder.length = 0;
 		this.emitEngineEvent("ENGINE_RESET", null, null, reason);
 		this.publishState();
+	}
+	destroy() {
+		if (this.persistTimer !== null) clearTimeout(this.persistTimer);
+		this.persistTimer = null;
+		this.instances.clear();
+		this.processedEventIds.clear();
+		this.processedEventOrder.length = 0;
+		this.eventSubject.complete();
+		this.stateSubject.complete();
+		this.statsSubject.complete();
 	}
 	getDefinitionIds() {
 		return Array.from(this.definitions.keys()).sort();
@@ -10924,6 +10950,7 @@ var DebugPanel = class {
 		const root = document.createElement("div");
 		root.id = "scd-raw-recorder-panel";
 		root.dataset.scdRawRecorder = "panel";
+		root.dataset.scdRuntimeId = this.options.runtimeId;
 		root.style.cssText = [
 			"all:initial",
 			"display:block",
@@ -11741,6 +11768,17 @@ var MatchTelemetryGateway = class {
 	setTransport(transport) {
 		this.transport = transport;
 	}
+	resetSession() {
+		this.sequence = 0;
+		this.stats = {
+			locallyObserved: 0,
+			forwarded: 0,
+			suppressedAfterFreeze: 0,
+			missingTransport: 0,
+			lastForwardedEventId: null,
+			lastSuppressedEventId: null
+		};
+	}
 	async observe(event) {
 		this.stats.locallyObserved += 1;
 		const state = this.matchStore.getState();
@@ -11917,6 +11955,18 @@ function finiteNumber(value) {
 function nonNegativeInteger(value) {
 	return Number.isInteger(value) && Number(value) >= 0;
 }
+function matchmakingParticipant(value) {
+	const participant = record(value);
+	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean");
+}
+function matchmakingState(value) {
+	const state = record(value);
+	return Boolean(state && (state.format === "casual" || state.format === "ranked") && (state.phase === "ready-check" || state.phase === "draft" || state.phase === "cancelled") && Array.isArray(state.participants) && state.participants.length === 2 && state.participants.every(matchmakingParticipant) && (state.readyDeadlineAt === null || finiteNumber(state.readyDeadlineAt)) && nonEmptyString(state.startingAccountId) && finiteNumber(state.createdAt));
+}
+function matchmakingEvent(value) {
+	const event = record(value);
+	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)));
+}
 function isGatewayServerMessage(value) {
 	const message = record(value);
 	if (!message || typeof message.type !== "string") return false;
@@ -11926,9 +11976,9 @@ function isGatewayServerMessage(value) {
 			return message.contractVersion === 1 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId))) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
-		case "QUEUE_STATUS": return (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position));
-		case "MATCH_SNAPSHOT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision);
-		case "MATCH_EVENT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision);
+		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
+		case "MATCH_SNAPSHOT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingState(message.state);
+		case "MATCH_EVENT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingEvent(message.event);
 		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision);
 		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyString(message.message, 300) && finiteNumber(message.occurredAt);
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
@@ -11945,7 +11995,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.37.2";
+var GATEWAY_CLIENT_VERSION = "0.38.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15185,6 +15235,9 @@ function initialSnapshot(endpoint) {
 		identity: null,
 		connectedAt: null,
 		serverTimeOffsetMs: null,
+		queue: null,
+		match: null,
+		lastMatchEvent: null,
 		error: null
 	};
 }
@@ -15243,6 +15296,38 @@ var SocketIoGatewayClient = class {
 		this.disconnectSocket();
 		this.update(initialSnapshot(this.options.endpoint));
 		this.listeners.clear();
+	}
+	joinMatchmaking(format) {
+		const requestId = this.createRequestId("queue");
+		this.emit({
+			type: "MATCHMAKING_JOIN",
+			requestId,
+			format,
+			page: "home"
+		});
+		this.update({
+			...this.state,
+			queue: null,
+			match: null,
+			lastMatchEvent: null,
+			error: null
+		});
+		return requestId;
+	}
+	leaveMatchmaking() {
+		const requestId = this.createRequestId("leave");
+		this.emit({
+			type: "MATCHMAKING_LEAVE",
+			requestId
+		});
+		return requestId;
+	}
+	setReady(matchId, ready) {
+		this.emit({
+			type: "READY_SET",
+			matchId,
+			ready
+		});
 	}
 	connect() {
 		const endpoint = this.options.endpoint;
@@ -15306,6 +15391,9 @@ var SocketIoGatewayClient = class {
 				identity: value.identity,
 				connectedAt: Date.now(),
 				serverTimeOffsetMs: value.serverTime - Date.now(),
+				queue: null,
+				match: null,
+				lastMatchEvent: null,
 				error: null
 			});
 			return;
@@ -15318,11 +15406,49 @@ var SocketIoGatewayClient = class {
 			});
 			return;
 		}
-		if (value.type === "ERROR") this.update({
-			...this.state,
-			status: value.recoverable && this.state.connectionId ? this.state.status : "error",
-			error: value.message
-		});
+		if (value.type === "ERROR") {
+			this.update({
+				...this.state,
+				status: value.recoverable && this.state.connectionId ? this.state.status : "error",
+				error: value.message
+			});
+			return;
+		}
+		if (value.type === "QUEUE_STATUS") {
+			this.update({
+				...this.state,
+				queue: value.queued ? structuredClone(value) : null,
+				match: value.queued ? null : this.state.match,
+				lastMatchEvent: value.queued ? null : this.state.lastMatchEvent,
+				error: null
+			});
+			return;
+		}
+		if (value.type === "MATCH_SNAPSHOT") {
+			if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
+			this.update({
+				...this.state,
+				queue: null,
+				match: structuredClone(value),
+				error: null
+			});
+			return;
+		}
+		if (value.type === "MATCH_EVENT") {
+			if (this.state.lastMatchEvent?.matchId === value.matchId && this.state.lastMatchEvent.revision > value.revision) return;
+			this.update({
+				...this.state,
+				lastMatchEvent: structuredClone(value),
+				error: null
+			});
+		}
+	}
+	emit(message) {
+		if (this.state.status !== "connected" || !this.socket?.connected) throw new Error("The authenticated Gateway must be connected before matchmaking.");
+		this.socket.emit(GATEWAY_SOCKET_EVENT, message);
+	}
+	createRequestId(prefix) {
+		return `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 	}
 	disconnectSocket() {
 		const socket = this.socket;
@@ -36151,11 +36277,13 @@ function challengeName(manifest, id) {
 }
 var CompletionChatAdapter = class {
 	enabled;
+	runtimeId;
 	insertedClaimIds = /* @__PURE__ */ new Set();
 	pending = [];
 	mountGuard = null;
-	constructor(enabled) {
+	constructor(enabled, runtimeId) {
 		this.enabled = enabled;
+		this.runtimeId = runtimeId;
 	}
 	start() {
 		this.ensureStyles();
@@ -36166,6 +36294,16 @@ var CompletionChatAdapter = class {
 		this.insertedClaimIds.add(message.claimId);
 		this.pending.push(message);
 		this.flush();
+	}
+	reset() {
+		this.insertedClaimIds.clear();
+		this.pending = [];
+		document.querySelectorAll(".skribbl-duels-completion").forEach((node) => node.remove());
+	}
+	stop() {
+		if (this.mountGuard !== null) window.clearInterval(this.mountGuard);
+		this.mountGuard = null;
+		this.reset();
 	}
 	ensureStyles() {
 		if (document.getElementById("skribbl-duels-product-styles")) return;
@@ -36237,6 +36375,7 @@ var CompletionChatAdapter = class {
 			const parity = (target.children.length + 1) % 2 === 0 ? "alt" : "base";
 			const paragraph = document.createElement("p");
 			paragraph.className = `skribbl-duels-completion ${message.side === "self" ? "own" : "opponent"} ${parity}`;
+			paragraph.dataset.scdRuntimeId = this.runtimeId;
 			paragraph.dataset.skribblDuelsClaimId = message.claimId;
 			const bold = document.createElement("b");
 			bold.textContent = `${message.playerName} has completed '${message.challengeName}'!`;
@@ -36247,13 +36386,22 @@ var CompletionChatAdapter = class {
 	}
 };
 var ProductTooltipManager = class {
+	runtimeId;
 	active = null;
 	currentTarget = null;
 	pointerOver = (event) => this.handlePointerOver(event);
 	pointerLeave = () => this.hide();
+	constructor(runtimeId) {
+		this.runtimeId = runtimeId;
+	}
 	start() {
 		document.addEventListener("pointerover", this.pointerOver, true);
 		document.documentElement.addEventListener("pointerleave", this.pointerLeave);
+	}
+	stop() {
+		document.removeEventListener("pointerover", this.pointerOver, true);
+		document.documentElement.removeEventListener("pointerleave", this.pointerLeave);
+		this.hide();
 	}
 	register(target, title, lock) {
 		target.dataset.scdTooltip = title;
@@ -36297,6 +36445,7 @@ var ProductTooltipManager = class {
 			anchorY = rect.top + rect.height / 2;
 		}
 		const tooltip = element("div", `scd-tooltip ${direction}`);
+		tooltip.dataset.scdRuntimeId = this.runtimeId;
 		tooltip.style.left = `${anchorX}px`;
 		tooltip.style.top = `${anchorY}px`;
 		tooltip.append(element("div", "scd-tooltip-arrow"), element("div", "scd-tooltip-title", title));
@@ -36347,7 +36496,7 @@ var DuelProductFoundation = class {
 	matchStore;
 	telemetryGateway;
 	settingsStore = new LocalStorageProductUiSettingsStore();
-	matchStorageKey = "skribblDuelsProductMatchSessionV1";
+	matchStorageKey = "skribblDuelsProductMatchSessionV2";
 	currentBoard = null;
 	launcher = null;
 	panel = null;
@@ -36360,13 +36509,18 @@ var DuelProductFoundation = class {
 	chatAdapter;
 	duelChatMessages = [];
 	activeTab;
-	tooltips = new ProductTooltipManager();
+	tooltips;
 	authClient = new SupabaseDiscordAuthClient();
 	gatewayClient;
 	authState;
 	gatewayState;
+	unsubscribers = [];
+	lastGatewayMatchId = null;
+	matchmakingError = null;
+	destroyed = false;
 	constructor(options) {
 		this.options = options;
+		this.tooltips = new ProductTooltipManager(options.runtimeId);
 		this.manifest = createChallengeManifest({
 			definitionsVersion: options.definitionsVersion,
 			definitions: options.challengeDefinitions
@@ -36378,7 +36532,7 @@ var DuelProductFoundation = class {
 		this.settings = this.settingsStore.get();
 		this.matchState = this.matchStore.getState();
 		this.activeTab = this.settings.panelTab;
-		this.chatAdapter = new CompletionChatAdapter(() => this.settings.completionMessages);
+		this.chatAdapter = new CompletionChatAdapter(() => this.settings.completionMessages, options.runtimeId);
 		this.authState = this.authClient.getState();
 		this.gatewayClient = new SocketIoGatewayClient({
 			endpoint: GATEWAY_URL,
@@ -36388,19 +36542,22 @@ var DuelProductFoundation = class {
 		this.gatewayState = this.gatewayClient.getState();
 	}
 	start() {
+		this.installRuntimeIsolationStyle();
+		this.removeForeignRuntimeDom();
 		this.chatAdapter.start();
 		this.tooltips.start();
-		this.gatewayClient.subscribe((state) => {
+		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
 			this.gatewayState = state;
+			this.handleGatewayMatchState(state);
 			if (this.activeTab === "duel" || this.activeTab === "match" || this.activeTab === "about") this.renderPanel();
-		});
-		this.authClient.subscribe((state) => {
+		}));
+		this.unsubscribers.push(this.authClient.subscribe((state) => {
 			this.authState = state;
 			this.gatewayClient.setAccessToken(state.status === "signed-in" ? state.accessToken : null);
 			if (this.activeTab === "duel" || this.activeTab === "about") this.renderPanel();
-		});
+		}));
 		this.authClient.start();
-		this.settingsStore.subscribe((settings) => {
+		this.unsubscribers.push(this.settingsStore.subscribe((settings) => {
 			const tabChanged = this.activeTab !== settings.panelTab;
 			this.settings = settings;
 			this.activeTab = settings.panelTab;
@@ -36408,22 +36565,26 @@ var DuelProductFoundation = class {
 			this.renderBoardPosition();
 			this.renderBoard();
 			if (tabChanged) this.renderPanel();
-		});
-		this.matchStore.subscribeState((state) => {
+		}));
+		this.unsubscribers.push(this.matchStore.subscribeState((state) => {
 			this.matchState = state;
 			this.persistMatch();
 			this.renderVisibility();
 			this.renderBoard();
 			if (this.activeTab === "duel" || this.activeTab === "match") this.renderPanel();
-		});
-		this.options.challengeEngine.subscribe((event) => this.handleChallengeEngineEvent(event));
-		this.options.subscribeTelemetry((event) => {
+		}));
+		this.unsubscribers.push(this.options.challengeEngine.subscribe((event) => this.handleChallengeEngineEvent(event)));
+		this.unsubscribers.push(this.options.subscribeTelemetry((event) => {
 			this.telemetryGateway.observe(event);
-		});
+		}));
 		this.ensureMounted();
-		this.mountGuard = window.setInterval(() => this.ensureMounted(), 700);
+		this.mountGuard = window.setInterval(() => {
+			this.removeForeignRuntimeDom();
+			this.ensureMounted();
+			if (this.activeTab === "duel" && this.gatewayState.match?.state.phase === "ready-check") this.renderPanel();
+		}, 700);
 		const api = {
-			version: "0.37.2",
+			version: "0.38.0",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 1,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -36438,7 +36599,10 @@ var DuelProductFoundation = class {
 			gateway: {
 				getState: () => this.gatewayClient.getState(),
 				subscribe: (listener) => this.gatewayClient.subscribe(listener),
-				reconnect: () => this.gatewayClient.reconnect()
+				reconnect: () => this.gatewayClient.reconnect(),
+				joinMatchmaking: (format) => this.beginMatchmaking(format),
+				leaveMatchmaking: () => this.cancelMatchmaking(),
+				setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready)
 			},
 			manifest: {
 				get: () => structuredClone(this.manifest),
@@ -36475,12 +36639,61 @@ var DuelProductFoundation = class {
 			chat: {
 				insertCompletion: (message) => this.chatAdapter.insert(message),
 				getMessages: () => structuredClone(this.duelChatMessages)
-			}
+			},
+			dispose: (reason) => this.destroy(reason)
 		};
 		window.skribblDuelsProduct = api;
 		return api;
 	}
+	destroy(reason = "runtime-disposed") {
+		if (this.destroyed) return;
+		this.destroyed = true;
+		this.abortLocalMatch(reason);
+		for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
+		if (this.mountGuard !== null) window.clearInterval(this.mountGuard);
+		this.mountGuard = null;
+		this.chatAdapter.stop();
+		this.tooltips.stop();
+		this.gatewayClient.stop();
+		this.authClient.stop();
+		this.launcher?.remove();
+		this.panel?.remove();
+		this.board?.remove();
+		this.launcher = null;
+		this.panel = null;
+		this.panelBody = null;
+		this.board = null;
+		this.boardGrid = null;
+		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
+		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
+		if (window.skribblDuelsProduct?.version === "0.38.0") delete window.skribblDuelsProduct;
+	}
+	installRuntimeIsolationStyle() {
+		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
+		const style = document.createElement("style");
+		style.id = "skribbl-duels-runtime-isolation";
+		style.dataset.scdRuntimeId = this.options.runtimeId;
+		const runtime = this.options.runtimeId;
+		style.textContent = `
+#scd-raw-recorder-panel:not([data-scd-runtime-id='${runtime}']),
+#skribbl-duels-launcher:not([data-scd-runtime-id='${runtime}']),
+#skribbl-duels-panel:not([data-scd-runtime-id='${runtime}']),
+#skribbl-duels-board:not([data-scd-runtime-id='${runtime}']) { display:none !important; }
+`;
+		(document.head ?? document.documentElement).appendChild(style);
+	}
+	removeForeignRuntimeDom() {
+		for (const selector of [
+			"#scd-raw-recorder-panel",
+			"#skribbl-duels-launcher",
+			"#skribbl-duels-panel",
+			"#skribbl-duels-board"
+		]) document.querySelectorAll(selector).forEach((node) => {
+			if (node.dataset.scdRuntimeId !== this.options.runtimeId) node.remove();
+		});
+	}
 	ensureMounted() {
+		if (this.destroyed) return;
 		const target = document.body ?? document.documentElement;
 		if (!target) return;
 		let mounted = false;
@@ -36517,6 +36730,7 @@ var DuelProductFoundation = class {
 	createLauncher() {
 		const launcher = element("button");
 		launcher.id = "skribbl-duels-launcher";
+		launcher.dataset.scdRuntimeId = this.options.runtimeId;
 		launcher.type = "button";
 		launcher.textContent = "SD";
 		launcher.style.cssText = [
@@ -36542,6 +36756,7 @@ var DuelProductFoundation = class {
 	createPanel() {
 		const panel = element("div");
 		panel.id = "skribbl-duels-panel";
+		panel.dataset.scdRuntimeId = this.options.runtimeId;
 		panel.style.cssText = [
 			"position:fixed",
 			"right:64px",
@@ -36561,7 +36776,7 @@ var DuelProductFoundation = class {
 		header.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.12)";
 		const title = element("strong", "", "Skribbl Duels");
 		title.style.cssText = "font-size:16px;flex:1";
-		const version = element("span", "scd-muted", "Gateway Connected 0.37.2");
+		const version = element("span", "scd-muted", "Matchmaking 0.38.0");
 		version.style.fontSize = "10px";
 		const close = element("button", "scd-button", "\u00D7");
 		close.type = "button";
@@ -36593,6 +36808,7 @@ var DuelProductFoundation = class {
 	createBoard() {
 		const board = element("div");
 		board.id = "skribbl-duels-board";
+		board.dataset.scdRuntimeId = this.options.runtimeId;
 		board.style.cssText = [
 			"position:fixed",
 			"z-index:2147483643",
@@ -36802,21 +37018,68 @@ var DuelProductFoundation = class {
 			this.tooltips.register(reconnect, "Start a fresh authenticated Gateway connection");
 			gatewayConnection.appendChild(reconnect);
 		}
-		const actions = element("div", "scd-card scd-stack");
-		actions.appendChild(element("strong", "", "Development board"));
-		const row = element("div", "scd-row");
-		const casual = element("button", "scd-button", "Generate 3\u00D73");
-		const ranked = element("button", "scd-button primary", "Generate 5\u00D75");
-		casual.addEventListener("click", () => this.startDemoMatch("casual"));
-		ranked.addEventListener("click", () => this.startDemoMatch("ranked"));
-		this.tooltips.register(casual, "Generate and start a casual 3\u00D73 development match");
-		this.tooltips.register(ranked, "Generate and start a ranked 5\u00D75 development match");
-		row.append(casual, ranked);
-		actions.appendChild(row);
+		const matchmaking = this.createMatchmakingCard();
 		const compatibility = element("div", "scd-card");
 		compatibility.append(element("strong", "", "Draft compatibility"), element("p", "scd-muted", "Blind Guess and Drunk Vision share the conflict key \u201Cprimary-visual-obstruction\u201D and can never appear together. Deaf Guess may appear with either one."));
-		stack.append(account, gatewayConnection, intro, actions, compatibility);
+		stack.append(account, gatewayConnection, matchmaking, intro, compatibility);
 		this.panelBody.appendChild(stack);
+	}
+	createMatchmakingCard() {
+		const card = element("div", "scd-card scd-stack");
+		card.appendChild(element("strong", "", "Homepage matchmaking"));
+		const homepage = this.isHomepageVisible();
+		const gatewayMatch = this.gatewayState.match;
+		const queue = this.gatewayState.queue;
+		const connected = this.gatewayState.status === "connected";
+		const selfAccountId = this.gatewayState.identity?.accountId ?? null;
+		if (!homepage) card.appendChild(element("div", "scd-muted", "Matchmaking is available only on the Skribbl homepage. Return home before entering a queue."));
+		if (this.matchmakingError) card.appendChild(element("div", "scd-auth-error", this.matchmakingError));
+		if (gatewayMatch) {
+			const state = gatewayMatch.state;
+			const self = state.participants.find((participant) => participant.accountId === selfAccountId);
+			const opponent = state.participants.find((participant) => participant.accountId !== selfAccountId);
+			if (state.phase === "ready-check") {
+				const remaining = Math.max(0, Math.ceil(((state.readyDeadlineAt ?? Date.now()) - Date.now()) / 1e3));
+				card.append(element("div", "", `${state.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} opponent: ${opponent?.displayName ?? "Waiting\u2026"}${opponent?.simulated ? " (simulated)" : ""}`), element("div", "scd-muted", `Ready check: ${remaining}s \u00B7 You ${self?.ready ? "\u2713" : "\u2026"} \u00B7 Opponent ${opponent?.ready ? "\u2713" : "\u2026"}`));
+				const row = element("div", "scd-row");
+				const ready = element("button", "scd-button primary", self?.ready ? "Not ready" : "Ready");
+				ready.addEventListener("click", () => this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready));
+				const cancel = element("button", "scd-button danger", "Cancel");
+				cancel.addEventListener("click", () => this.cancelMatchmaking());
+				row.append(ready, cancel);
+				card.appendChild(row);
+				return card;
+			}
+			if (state.phase === "draft") {
+				const starter = state.participants.find((participant) => participant.accountId === state.startingAccountId);
+				card.append(element("div", "", `Ready check complete against ${opponent?.displayName ?? "opponent"}.`), element("div", "scd-muted", `${starter?.displayName ?? "A player"} was selected randomly to start the upcoming draft.`), element("div", "scd-muted", "The server-authoritative 15-second draft is the next implementation milestone."));
+				const leave = element("button", "scd-button danger", "Abort match");
+				leave.addEventListener("click", () => this.cancelMatchmaking());
+				card.appendChild(leave);
+				return card;
+			}
+			card.appendChild(element("div", "scd-muted", `Previous match was cancelled: ${this.gatewayState.lastMatchEvent?.event.reason ?? "superseded"}.`));
+		}
+		if (queue) {
+			card.append(element("div", "", `Queued for ${queue.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"}`), element("div", "scd-muted", `Queue position: ${queue.position ?? "-"} \u00B7 Waiting for a player in a separate Skribbl lobby flow.`));
+			const cancel = element("button", "scd-button danger", "Leave queue");
+			cancel.addEventListener("click", () => this.cancelMatchmaking());
+			card.appendChild(cancel);
+			return card;
+		}
+		const row = element("div", "scd-row");
+		const casual = element("button", "scd-button", "Find Casual 3\u00D73");
+		const ranked = element("button", "scd-button primary", "Find Ranked 5\u00D75");
+		casual.disabled = !homepage || !connected;
+		ranked.disabled = !homepage || !connected;
+		casual.addEventListener("click", () => this.beginMatchmaking("casual"));
+		ranked.addEventListener("click", () => this.beginMatchmaking("ranked"));
+		this.tooltips.register(casual, "Reset old match state and enter the server Casual queue");
+		this.tooltips.register(ranked, "Reset old match state and enter the server Ranked queue");
+		row.append(casual, ranked);
+		card.appendChild(row);
+		card.appendChild(element("div", "scd-muted", connected ? "The current Gateway test can supply a simulated queued opponent; the browser never invents the opponent itself." : "Connect the authenticated Gateway before entering matchmaking."));
+		return card;
 	}
 	renderMatchTab() {
 		if (!this.panelBody) return;
@@ -36956,7 +37219,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Only Duel-server forwarding, board mutation and new claims are stopped after the win target is reached."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v1`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Token verification, RLS profile lookup and WELCOME are implemented; matchmaking remains intentionally disabled.`));
+		gateway.append(element("strong", "", `Gateway Contract v1`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage queue membership, simulated opponents and the server-authoritative 30-second ready check are implemented.`));
 		stack.append(architecture, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -37009,15 +37272,63 @@ var DuelProductFoundation = class {
 			const raw = sessionStorage.getItem(this.matchStorageKey);
 			if (!raw) return null;
 			const parsed = JSON.parse(raw);
-			if (parsed.version !== 1 || !parsed.state) return null;
+			if (parsed.version !== 2 || !parsed.state) return null;
 			return {
-				version: 1,
+				version: 2,
 				state: parsed.state,
 				board: parsed.board && typeof parsed.board === "object" ? parsed.board : null
 			};
 		} catch {
 			return null;
 		}
+	}
+	isHomepageVisible() {
+		if (window.location.pathname !== "/") return false;
+		const home = document.querySelector("#home");
+		if (!home) return false;
+		const style = getComputedStyle(home);
+		return style.display !== "none" && style.visibility !== "hidden" && home.getClientRects().length > 0;
+	}
+	beginMatchmaking(format) {
+		this.matchmakingError = null;
+		if (!this.isHomepageVisible()) {
+			this.matchmakingError = "Matchmaking can only start from the visible Skribbl homepage.";
+			this.renderPanel();
+			throw new Error(this.matchmakingError);
+		}
+		this.abortLocalMatch("new-matchmaking-request");
+		try {
+			const requestId = this.gatewayClient.joinMatchmaking(format);
+			this.openPanel("duel");
+			return requestId;
+		} catch (error) {
+			this.matchmakingError = error instanceof Error ? error.message : String(error);
+			this.renderPanel();
+			throw error;
+		}
+	}
+	cancelMatchmaking() {
+		this.matchmakingError = null;
+		this.abortLocalMatch("matchmaking-cancelled");
+		try {
+			return this.gatewayClient.leaveMatchmaking();
+		} catch (error) {
+			this.matchmakingError = error instanceof Error ? error.message : String(error);
+			this.renderPanel();
+			throw error;
+		}
+	}
+	handleGatewayMatchState(state) {
+		const snapshot = state.match;
+		if (!snapshot) {
+			if (!state.queue) this.lastGatewayMatchId = null;
+			return;
+		}
+		if (snapshot.matchId !== this.lastGatewayMatchId) {
+			this.abortLocalMatch("gateway-match-superseded-local-state");
+			this.lastGatewayMatchId = snapshot.matchId;
+		}
+		if (snapshot.state.phase === "cancelled") this.abortLocalMatch("gateway-match-cancelled");
 	}
 	persistMatch() {
 		try {
@@ -37026,7 +37337,7 @@ var DuelProductFoundation = class {
 				return;
 			}
 			const value = {
-				version: 1,
+				version: 2,
 				state: this.matchState,
 				board: this.currentBoard
 			};
@@ -37035,12 +37346,21 @@ var DuelProductFoundation = class {
 			console.warn("[Skribbl Duels Match Persistence] Persist failed", error);
 		}
 	}
-	resetMatch() {
+	abortLocalMatch(reason) {
 		this.currentBoard = null;
+		this.duelChatMessages = [];
+		this.chatAdapter.reset();
+		this.telemetryGateway.resetSession();
 		try {
 			sessionStorage.removeItem(this.matchStorageKey);
 		} catch {}
-		return this.matchStore.reset();
+		return this.matchStore.reset(reason);
+	}
+	resetMatch() {
+		if (this.gatewayState.status === "connected" && (this.gatewayState.queue || this.gatewayState.match)) try {
+			this.gatewayClient.leaveMatchmaking();
+		} catch {}
+		return this.abortLocalMatch("manual-reset");
 	}
 	openPanel(tab) {
 		this.settingsStore.update({
@@ -37063,6 +37383,10 @@ var DuelProductFoundation = class {
 		return result;
 	}
 	startDemoMatch(format) {
+		if (this.gatewayState.status === "connected" && (this.gatewayState.queue || this.gatewayState.match)) try {
+			this.gatewayClient.leaveMatchmaking();
+		} catch {}
+		this.abortLocalMatch("new-demo-match");
 		const result = this.generateBoard({ format });
 		if (!result.board) throw new Error(result.issues.map((issue) => issue.message).join("\n"));
 		const participants = [{
@@ -37142,24 +37466,75 @@ var DuelProductFoundation = class {
 		if (this.activeTab === "chat") this.renderPanel();
 	}
 };
-var BUILD_VERSION = "0.37.2";
-async function bootstrap() {
+var BUILD_VERSION = "0.38.0";
+function createRuntimeController() {
+	try {
+		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
+	} catch {}
+	for (const selector of [
+		"#scd-raw-recorder-panel",
+		"#skribbl-duels-launcher",
+		"#skribbl-duels-panel",
+		"#skribbl-duels-board",
+		".skribbl-duels-completion",
+		".scd-tooltip"
+	]) document.querySelectorAll(selector).forEach((node) => node.remove());
+	const runtimeId = `scd-${BUILD_VERSION}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+	const cleanups = [];
+	let disposed = false;
+	const runtime = {
+		runtimeId,
+		version: BUILD_VERSION,
+		addCleanup(cleanup) {
+			if (disposed) cleanup();
+			else cleanups.push(cleanup);
+		},
+		isActive: () => !disposed && window.skribblDuelsRuntime === runtime,
+		dispose(reason = "runtime-disposed") {
+			if (disposed) return;
+			disposed = true;
+			for (const cleanup of cleanups.splice(0).reverse()) try {
+				cleanup();
+			} catch (error) {
+				console.warn("[Skribbl Duels Runtime] Cleanup failed", reason, error);
+			}
+			if (window.skribblDuelsRuntime === runtime) delete window.skribblDuelsRuntime;
+		}
+	};
+	window.skribblDuelsRuntime = runtime;
+	return runtime;
+}
+async function bootstrap(runtime) {
 	const bridge = new TypoRelayBridge();
 	const store = new IndexedDbRawPacketStore();
 	bridge.start();
+	runtime.addCleanup(() => bridge.stop());
 	const recorder = new RawPacketRecorder(store, bridge.incoming$, bridge.outgoing$, BUILD_VERSION);
 	const decoder = new ProtocolDecoder(recorder.records$);
 	const lobbyStore = new LobbyStateStore(decoder.decoded$);
 	const telemetryStore = new TelemetryStore(decoder.decoded$, lobbyStore.changes$, lobbyStore);
 	const avatarTelemetryAdapter = new AvatarTelemetryAdapter(telemetryStore);
-	new StrokeTelemetryAdapter(telemetryStore, lobbyStore);
-	new CanvasSnapshotTelemetryAdapter(telemetryStore);
-	new CanvasWhiteTelemetryAdapter(telemetryStore);
+	const strokeTelemetryAdapter = new StrokeTelemetryAdapter(telemetryStore, lobbyStore);
+	const canvasSnapshotTelemetryAdapter = new CanvasSnapshotTelemetryAdapter(telemetryStore);
+	const canvasWhiteTelemetryAdapter = new CanvasWhiteTelemetryAdapter(telemetryStore);
 	const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
 	const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
 	const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
 	const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
 	const replayProvider = new TelemetryReplayProvider();
+	runtime.addCleanup(() => recorder.destroy());
+	runtime.addCleanup(() => decoder.destroy());
+	runtime.addCleanup(() => lobbyStore.destroy());
+	runtime.addCleanup(() => telemetryStore.destroy());
+	runtime.addCleanup(() => strokeTelemetryAdapter.destroy());
+	runtime.addCleanup(() => canvasSnapshotTelemetryAdapter.destroy());
+	runtime.addCleanup(() => canvasWhiteTelemetryAdapter.destroy());
+	runtime.addCleanup(() => avatarTelemetryAdapter.stop());
+	runtime.addCleanup(() => homeInteractionTelemetryAdapter.stop());
+	runtime.addCleanup(() => typoDropTelemetryAdapter.stop());
+	runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
+	runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
+	runtime.addCleanup(() => replayProvider.destroy());
 	const loadWordListWithWarning = async (languageId, languageName, force = false) => {
 		const status = await loadOfficialWordList(languageId, languageName, force);
 		if (status.warning) console.warn("[Skribbl Duels Word Lists]", status.warning, status);
@@ -37173,24 +37548,33 @@ async function bootstrap() {
 		if (!Number.isInteger(languageId)) return;
 		loadWordListWithWarning(languageId, languageName, force);
 	};
-	document.addEventListener("change", (event) => {
+	const handleHomepageLanguageChange = (event) => {
 		const target = event.target;
 		if (target instanceof HTMLSelectElement && target.matches("#home select")) preloadHomepageWordList(true);
-	}, true);
-	document.addEventListener("click", (event) => {
+	};
+	const handleHomepagePlayClick = (event) => {
 		const target = event.target;
 		if (target instanceof Element && target.closest(".button-play,.button-create")) preloadHomepageWordList(false);
-	}, true);
+	};
+	document.addEventListener("change", handleHomepageLanguageChange, true);
+	document.addEventListener("click", handleHomepagePlayClick, true);
+	runtime.addCleanup(() => {
+		document.removeEventListener("change", handleHomepageLanguageChange, true);
+		document.removeEventListener("click", handleHomepagePlayClick, true);
+	});
 	preloadHomepageWordList(false);
-	telemetryStore.events$.subscribe((event) => {
+	const wordListTelemetrySubscription = telemetryStore.events$.subscribe((event) => {
 		if (event.type === "LOBBY_HYDRATED" && event.context.languageId !== null) loadWordListWithWarning(event.context.languageId, event.context.languageName);
 	});
+	runtime.addCleanup(() => wordListTelemetrySubscription.unsubscribe());
 	const challengeEngine = new ChallengeEngine({
-		persistence: new LocalStorageChallengePersistence("skribblDuelsChallengeEngineInspectorV1"),
+		persistence: new LocalStorageChallengePersistence("skribblDuelsChallengeEngineInspectorV2"),
 		autoPersist: true
 	});
+	runtime.addCleanup(() => challengeEngine.destroy());
 	registerStarterChallengeDefinitions(challengeEngine);
 	await challengeEngine.restore();
+	if (!runtime.isActive()) return;
 	const challengeSource$ = new BehaviorSubject("detached");
 	let detachChallengeProvider = null;
 	const setChallengeSource = (source) => {
@@ -37200,6 +37584,11 @@ async function bootstrap() {
 		else if (source === "replay") detachChallengeProvider = challengeEngine.attachProvider(replayProvider, "telemetry-replay");
 		challengeSource$.next(source);
 	};
+	runtime.addCleanup(() => {
+		detachChallengeProvider?.();
+		detachChallengeProvider = null;
+		challengeSource$.complete();
+	});
 	function telemetryStoreAsProvider() {
 		return {
 			descriptor: createTelemetryProviderDescriptor("Skribbl Duels Telemetry Core", BUILD_VERSION, CORE_SUPPORTED_TELEMETRY_EVENTS),
@@ -37215,6 +37604,7 @@ async function bootstrap() {
 		};
 	}
 	const panel = new DebugPanel({
+		runtimeId: runtime.runtimeId,
 		recorder,
 		decoder,
 		lobbyStore,
@@ -37232,25 +37622,29 @@ async function bootstrap() {
 		outgoingStatus$: bridge.outgoingStatus$
 	});
 	panel.mount();
-	merge(bridge.incoming$, bridge.outgoing$).subscribe((envelope) => {
-		const packet = envelope.data;
-		if ((typeof packet === "object" && packet !== null && "id" in packet && typeof packet.id === "number" ? packet.id : null) !== 19) console.debug("[Skribbl Duels Raw]", envelope);
-	});
-	decoder.decoded$.subscribe((record) => {
-		if (record.decoded.packetId !== 19) console.debug("[Skribbl Duels Decoded]", record.decoded.kind, record.decoded.payload, record.decoded.issues);
-	});
-	lobbyStore.changes$.subscribe((change) => {
-		console.debug("[Skribbl Duels State]", change.kind, change.payload);
-	});
-	telemetryStore.events$.subscribe((event) => {
-		if (!event.highVolume) console.debug("[Skribbl Duels Telemetry]", event.type, event.payload);
-	});
-	replayProvider.events$.subscribe((event) => {
-		if (!event.highVolume) console.debug("[Skribbl Duels Replay]", event.type, event.payload);
-	});
-	challengeEngine.events$.subscribe((event) => {
-		console.debug("[Skribbl Duels Challenge Engine]", event.type, event.runtime);
-	});
+	runtime.addCleanup(() => panel.destroy());
+	const diagnosticSubscriptions = [
+		merge(bridge.incoming$, bridge.outgoing$).subscribe((envelope) => {
+			const packet = envelope.data;
+			if ((typeof packet === "object" && packet !== null && "id" in packet && typeof packet.id === "number" ? packet.id : null) !== 19) console.debug("[Skribbl Duels Raw]", envelope);
+		}),
+		decoder.decoded$.subscribe((record) => {
+			if (record.decoded.packetId !== 19) console.debug("[Skribbl Duels Decoded]", record.decoded.kind, record.decoded.payload, record.decoded.issues);
+		}),
+		lobbyStore.changes$.subscribe((change) => {
+			console.debug("[Skribbl Duels State]", change.kind, change.payload);
+		}),
+		telemetryStore.events$.subscribe((event) => {
+			if (!event.highVolume) console.debug("[Skribbl Duels Telemetry]", event.type, event.payload);
+		}),
+		replayProvider.events$.subscribe((event) => {
+			if (!event.highVolume) console.debug("[Skribbl Duels Replay]", event.type, event.payload);
+		}),
+		challengeEngine.events$.subscribe((event) => {
+			console.debug("[Skribbl Duels Challenge Engine]", event.type, event.runtime);
+		})
+	];
+	runtime.addCleanup(() => diagnosticSubscriptions.forEach((subscription) => subscription.unsubscribe()));
 	const protocolApi = {
 		getStats: () => decoder.getStats(),
 		getRecent: () => decoder.getRecent(),
@@ -37334,7 +37728,7 @@ async function bootstrap() {
 		}
 	};
 	window.skribblDuelsTelemetry = telemetryApi;
-	window.skribblDuelsReplay = {
+	const replayApi = {
 		get descriptor() {
 			return replayProvider.descriptor;
 		},
@@ -37362,7 +37756,8 @@ async function bootstrap() {
 		stop: () => replayProvider.stop(),
 		reset: () => replayProvider.reset()
 	};
-	window.skribblDuelsChallengeEngine = {
+	window.skribblDuelsReplay = replayApi;
+	const challengeApi = {
 		version: CHALLENGE_ENGINE_VERSION,
 		getSource: () => challengeSource$.value,
 		useLive: () => setChallengeSource("live"),
@@ -37387,7 +37782,8 @@ async function bootstrap() {
 		subscribe: (listener) => challengeEngine.subscribe(listener),
 		subscribeState: (listener) => challengeEngine.subscribeState(listener)
 	};
-	window.skribblDuelsWordLists = {
+	window.skribblDuelsChallengeEngine = challengeApi;
+	const wordListApi = {
 		getStatus(languageId = lobbyStore.getSnapshot().languageId ?? -1, languageName = lobbyStore.getSnapshot().languageName) {
 			return getOfficialWordListStatus(languageId, languageName);
 		},
@@ -37405,7 +37801,8 @@ async function bootstrap() {
 		},
 		subscribe: (listener) => subscribeOfficialWordListStatus(listener)
 	};
-	window.skribblDuelsChallengeDefinitions = {
+	window.skribblDuelsWordLists = wordListApi;
+	const challengeDefinitionsApi = {
 		version: CHALLENGE_DEFINITIONS_VERSION,
 		list: () => starterChallengeDefinitions.map((definition) => ({
 			id: definition.id,
@@ -37418,7 +37815,9 @@ async function bootstrap() {
 		activateStarterSet: () => activateStarterSandbox(challengeEngine),
 		deactivateStarterSet: () => deactivateStarterSandbox(challengeEngine)
 	};
-	const productApi = new DuelProductFoundation({
+	window.skribblDuelsChallengeDefinitions = challengeDefinitionsApi;
+	const productFoundation = new DuelProductFoundation({
+		runtimeId: runtime.runtimeId,
 		definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,
 		challengeDefinitions: challengeEngine.getDefinitions(),
 		challengeEngine,
@@ -37429,14 +37828,16 @@ async function bootstrap() {
 		getSelfName() {
 			return selectSelf(lobbyStore.getSnapshot())?.name ?? "Alpha";
 		}
-	}).start();
+	});
+	const productApi = productFoundation.start();
+	runtime.addCleanup(() => productFoundation.destroy("runtime-disposed"));
 	setChallengeSource("live");
 	avatarTelemetryAdapter.start();
 	homeInteractionTelemetryAdapter.start();
 	typoDropTelemetryAdapter.start();
 	typoAutodrawTelemetryAdapter.start();
 	typoChallengeTelemetryAdapter.start();
-	window.scdRawRecorder = {
+	const inspectorApi = {
 		version: BUILD_VERSION,
 		sessionId: recorder.getSessionId(),
 		protocol: protocolApi,
@@ -37470,6 +37871,15 @@ async function bootstrap() {
 		remountPanel: () => panel.ensureMounted(),
 		setPanelVisible: (visible) => panel.setVisible(visible)
 	};
+	window.scdRawRecorder = inspectorApi;
+	runtime.addCleanup(() => {
+		if (window.scdRawRecorder === inspectorApi) delete window.scdRawRecorder;
+		if (window.skribblDuelsTelemetry === telemetryApi) delete window.skribblDuelsTelemetry;
+		if (window.skribblDuelsReplay === replayApi) delete window.skribblDuelsReplay;
+		if (window.skribblDuelsChallengeEngine === challengeApi) delete window.skribblDuelsChallengeEngine;
+		if (window.skribblDuelsChallengeDefinitions === challengeDefinitionsApi) delete window.skribblDuelsChallengeDefinitions;
+		if (window.skribblDuelsWordLists === wordListApi) delete window.skribblDuelsWordLists;
+	});
 	console.info("[Skribbl Duels Telemetry Inspector] Initialized", {
 		version: BUILD_VERSION,
 		contractVersion: TELEMETRY_CONTRACT_VERSION,
@@ -37483,7 +37893,9 @@ async function bootstrap() {
 		inspector: window.scdRawRecorder
 	});
 }
-bootstrap().catch((error) => {
+var runtime = createRuntimeController();
+bootstrap(runtime).catch((error) => {
+	runtime.dispose("bootstrap-failed");
 	console.error("[Skribbl Duels Telemetry Inspector] Bootstrap failed", error);
 });})}}));
 System.import("./___monkey.entry.js", "./");

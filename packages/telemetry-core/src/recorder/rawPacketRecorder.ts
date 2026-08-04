@@ -1,4 +1,4 @@
-import { BehaviorSubject, merge, Subject, type Observable } from 'rxjs';
+import { BehaviorSubject, merge, Subject, type Observable, type Subscription } from 'rxjs';
 import { createId } from '../core/ids';
 import { now } from '../core/time';
 import type { RelayEnvelope } from '../bridge/relayTypes';
@@ -26,6 +26,7 @@ export class RawPacketRecorder {
   private readonly stats: RecorderStats;
   private pendingRecords: RawSocketRecord[] = [];
   private flushTimer: number | null = null;
+  private readonly subscription: Subscription;
 
   private readonly recordsSubject = new Subject<RawSocketRecord>();
 
@@ -62,19 +63,13 @@ export class RawPacketRecorder {
 
     void this.store.saveSession(this.session);
 
-    merge(incoming$, outgoing$).subscribe({
+    this.subscription = merge(incoming$, outgoing$).subscribe({
       next: envelope => void this.record(envelope),
       error: error => console.error('[SCD Raw Recorder] Relay stream failed', error)
     });
 
-    window.addEventListener('pagehide', () => {
-      void this.flush();
-      void this.closeSession();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void this.flush();
-    });
+    window.addEventListener('pagehide', this.handlePageHide);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
   public getSessionId(): string {
@@ -88,6 +83,27 @@ export class RawPacketRecorder {
   public async flushPending(): Promise<void> {
     await this.flush();
   }
+
+  public destroy(): void {
+    this.subscription.unsubscribe();
+    window.removeEventListener('pagehide', this.handlePageHide);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    if (this.flushTimer !== null) window.clearTimeout(this.flushTimer);
+    this.flushTimer = null;
+    void this.flush();
+    void this.closeSession();
+    this.recordsSubject.complete();
+    this.statsSubject.complete();
+  }
+
+  private readonly handlePageHide = (): void => {
+    void this.flush();
+    void this.closeSession();
+  };
+
+  private readonly handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') void this.flush();
+  };
 
   private async record(envelope: RelayEnvelope): Promise<void> {
     this.sequence += 1;

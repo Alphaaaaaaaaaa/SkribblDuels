@@ -6,6 +6,10 @@ export interface GatewayServerConfig {
   supabasePublishableKey: string;
   helloTimeoutMs: number;
   heartbeatIntervalMs: number;
+  matchmakingReadyTimeoutMs: number;
+  simulatedPlayersEnabled: boolean;
+  simulatedMatchDelayMs: number;
+  simulatedReadyDelayMs: number;
 }
 
 function requiredValue(env: NodeJS.ProcessEnv, name: string): string {
@@ -45,6 +49,10 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
     supabaseUrl: validUrl(requiredValue(env, 'SUPABASE_URL'), 'SUPABASE_URL'),
     supabasePublishableKey: requiredValue(env, 'SUPABASE_PUBLISHABLE_KEY'),
     helloTimeoutMs: 10_000,
-    heartbeatIntervalMs: 25_000
+    heartbeatIntervalMs: 25_000,
+    matchmakingReadyTimeoutMs: 30_000,
+    simulatedPlayersEnabled: env.MATCHMAKING_SIMULATED_PLAYERS?.trim().toLowerCase() === 'true',
+    simulatedMatchDelayMs: 800,
+    simulatedReadyDelayMs: 900
   };
 }

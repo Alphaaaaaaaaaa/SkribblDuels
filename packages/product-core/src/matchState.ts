@@ -316,6 +316,18 @@ export class MatchTelemetryGateway {
     this.transport = transport;
   }
 
+  public resetSession(): void {
+    this.sequence = 0;
+    this.stats = {
+      locallyObserved: 0,
+      forwarded: 0,
+      suppressedAfterFreeze: 0,
+      missingTransport: 0,
+      lastForwardedEventId: null,
+      lastSuppressedEventId: null
+    };
+  }
+
   public async observe(event: TelemetryEvent): Promise<OutboundTelemetryEnvelope | null> {
     this.stats.locallyObserved += 1;
     const state = this.matchStore.getState();

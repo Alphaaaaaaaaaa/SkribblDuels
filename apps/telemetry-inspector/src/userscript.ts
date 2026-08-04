@@ -81,7 +81,18 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.37.2';
+const BUILD_VERSION = '0.38.0';
+
+interface RuntimePublicApi {
+  readonly runtimeId: string;
+  readonly version: string;
+  dispose(reason?: string): void;
+}
+
+interface RuntimeController extends RuntimePublicApi {
+  addCleanup(cleanup: () => void): void;
+  isActive(): boolean;
+}
 
 interface ProtocolPublicApi {
   getStats(): ReturnType<ProtocolDecoder['getStats']>;
@@ -210,13 +221,53 @@ declare global {
     skribblDuelsChallengeEngine?: ChallengeEnginePublicApi;
     skribblDuelsChallengeDefinitions?: ChallengeDefinitionsPublicApi;
     skribblDuelsWordLists?: WordListPublicApi;
+    skribblDuelsRuntime?: RuntimePublicApi;
   }
 }
 
-async function bootstrap(): Promise<void> {
+function createRuntimeController(): RuntimeController {
+  try { window.skribblDuelsRuntime?.dispose('superseded-by-new-runtime'); } catch {}
+  for (const selector of [
+    '#scd-raw-recorder-panel',
+    '#skribbl-duels-launcher',
+    '#skribbl-duels-panel',
+    '#skribbl-duels-board',
+    '.skribbl-duels-completion',
+    '.scd-tooltip'
+  ]) {
+    document.querySelectorAll(selector).forEach(node => node.remove());
+  }
+  const runtimeId = `scd-${BUILD_VERSION}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const cleanups: Array<() => void> = [];
+  let disposed = false;
+  const runtime: RuntimeController = {
+    runtimeId,
+    version: BUILD_VERSION,
+    addCleanup(cleanup) {
+      if (disposed) cleanup();
+      else cleanups.push(cleanup);
+    },
+    isActive: () => !disposed && window.skribblDuelsRuntime === runtime,
+    dispose(reason = 'runtime-disposed') {
+      if (disposed) return;
+      disposed = true;
+      for (const cleanup of cleanups.splice(0).reverse()) {
+        try { cleanup(); } catch (error) {
+          console.warn('[Skribbl Duels Runtime] Cleanup failed', reason, error);
+        }
+      }
+      if (window.skribblDuelsRuntime === runtime) delete window.skribblDuelsRuntime;
+    }
+  };
+  window.skribblDuelsRuntime = runtime;
+  return runtime;
+}
+
+async function bootstrap(runtime: RuntimeController): Promise<void> {
   const bridge = new TypoRelayBridge();
   const store = new IndexedDbRawPacketStore();
   bridge.start();
+  runtime.addCleanup(() => bridge.stop());
 
   const recorder = new RawPacketRecorder(
     store,
@@ -236,6 +287,19 @@ async function bootstrap(): Promise<void> {
   const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
   const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
   const replayProvider = new TelemetryReplayProvider();
+  runtime.addCleanup(() => recorder.destroy());
+  runtime.addCleanup(() => decoder.destroy());
+  runtime.addCleanup(() => lobbyStore.destroy());
+  runtime.addCleanup(() => telemetryStore.destroy());
+  runtime.addCleanup(() => strokeTelemetryAdapter.destroy());
+  runtime.addCleanup(() => canvasSnapshotTelemetryAdapter.destroy());
+  runtime.addCleanup(() => canvasWhiteTelemetryAdapter.destroy());
+  runtime.addCleanup(() => avatarTelemetryAdapter.stop());
+  runtime.addCleanup(() => homeInteractionTelemetryAdapter.stop());
+  runtime.addCleanup(() => typoDropTelemetryAdapter.stop());
+  runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
+  runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
+  runtime.addCleanup(() => replayProvider.destroy());
   const loadWordListWithWarning = async (
     languageId: number,
     languageName?: string | null,
@@ -255,33 +319,42 @@ async function bootstrap(): Promise<void> {
     void loadWordListWithWarning(languageId, languageName, force);
   };
 
-  document.addEventListener('change', event => {
+  const handleHomepageLanguageChange = (event: Event): void => {
     const target = event.target;
     if (target instanceof HTMLSelectElement && target.matches('#home select')) {
       preloadHomepageWordList(true);
     }
-  }, true);
-  document.addEventListener('click', event => {
+  };
+  const handleHomepagePlayClick = (event: MouseEvent): void => {
     const target = event.target;
     if (target instanceof Element && target.closest('.button-play,.button-create')) {
       preloadHomepageWordList(false);
     }
-  }, true);
+  };
+  document.addEventListener('change', handleHomepageLanguageChange, true);
+  document.addEventListener('click', handleHomepagePlayClick, true);
+  runtime.addCleanup(() => {
+    document.removeEventListener('change', handleHomepageLanguageChange, true);
+    document.removeEventListener('click', handleHomepagePlayClick, true);
+  });
   preloadHomepageWordList(false);
 
-  telemetryStore.events$.subscribe(event => {
+  const wordListTelemetrySubscription = telemetryStore.events$.subscribe(event => {
     if (event.type === 'LOBBY_HYDRATED' && event.context.languageId !== null) {
       void loadWordListWithWarning(event.context.languageId, event.context.languageName);
     }
   });
+  runtime.addCleanup(() => wordListTelemetrySubscription.unsubscribe());
   const challengeEngine = new ChallengeEngine({
     persistence: new LocalStorageChallengePersistence(
-      'skribblDuelsChallengeEngineInspectorV1'
+      'skribblDuelsChallengeEngineInspectorV2'
     ),
     autoPersist: true
   });
+  runtime.addCleanup(() => challengeEngine.destroy());
   registerStarterChallengeDefinitions(challengeEngine);
   await challengeEngine.restore();
+  if (!runtime.isActive()) return;
 
   const challengeSource$ = new BehaviorSubject<ChallengeSource>('detached');
   let detachChallengeProvider: (() => void) | null = null;
@@ -304,6 +377,11 @@ async function bootstrap(): Promise<void> {
 
     challengeSource$.next(source);
   };
+  runtime.addCleanup(() => {
+    detachChallengeProvider?.();
+    detachChallengeProvider = null;
+    challengeSource$.complete();
+  });
 
   function telemetryStoreAsProvider(): TelemetryProvider {
     const descriptor = createTelemetryProviderDescriptor(
@@ -326,6 +404,7 @@ async function bootstrap(): Promise<void> {
   }
 
   const panel = new DebugPanel({
+    runtimeId: runtime.runtimeId,
     recorder,
     decoder,
     lobbyStore,
@@ -343,33 +422,36 @@ async function bootstrap(): Promise<void> {
     outgoingStatus$: bridge.outgoingStatus$
   });
   panel.mount();
+  runtime.addCleanup(() => panel.destroy());
 
-  merge(bridge.incoming$, bridge.outgoing$).subscribe(envelope => {
+  const diagnosticSubscriptions = [
+    merge(bridge.incoming$, bridge.outgoing$).subscribe(envelope => {
     const packet = envelope.data;
     const packetId = typeof packet === 'object' && packet !== null &&
       'id' in packet && typeof (packet as { id?: unknown }).id === 'number'
       ? (packet as { id: number }).id
       : null;
     if (packetId !== 19) console.debug('[Skribbl Duels Raw]', envelope);
-  });
-
-  decoder.decoded$.subscribe(record => {
+    }),
+    decoder.decoded$.subscribe(record => {
     if (record.decoded.packetId !== 19) {
       console.debug('[Skribbl Duels Decoded]', record.decoded.kind, record.decoded.payload, record.decoded.issues);
     }
-  });
-  lobbyStore.changes$.subscribe(change => {
+    }),
+    lobbyStore.changes$.subscribe(change => {
     console.debug('[Skribbl Duels State]', change.kind, change.payload);
-  });
-  telemetryStore.events$.subscribe(event => {
+    }),
+    telemetryStore.events$.subscribe(event => {
     if (!event.highVolume) console.debug('[Skribbl Duels Telemetry]', event.type, event.payload);
-  });
-  replayProvider.events$.subscribe(event => {
+    }),
+    replayProvider.events$.subscribe(event => {
     if (!event.highVolume) console.debug('[Skribbl Duels Replay]', event.type, event.payload);
-  });
-  challengeEngine.events$.subscribe(event => {
+    }),
+    challengeEngine.events$.subscribe(event => {
     console.debug('[Skribbl Duels Challenge Engine]', event.type, event.runtime);
-  });
+    })
+  ];
+  runtime.addCleanup(() => diagnosticSubscriptions.forEach(subscription => subscription.unsubscribe()));
 
   const protocolApi: ProtocolPublicApi = {
     getStats: () => decoder.getStats(),
@@ -559,6 +641,7 @@ async function bootstrap(): Promise<void> {
   window.skribblDuelsChallengeDefinitions = challengeDefinitionsApi;
 
   const productFoundation = new DuelProductFoundation({
+    runtimeId: runtime.runtimeId,
     definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,
     challengeDefinitions: challengeEngine.getDefinitions(),
     challengeEngine,
@@ -571,6 +654,7 @@ async function bootstrap(): Promise<void> {
     }
   });
   const productApi = productFoundation.start();
+  runtime.addCleanup(() => productFoundation.destroy('runtime-disposed'));
 
   setChallengeSource('live');
   avatarTelemetryAdapter.start();
@@ -579,7 +663,7 @@ async function bootstrap(): Promise<void> {
   typoAutodrawTelemetryAdapter.start();
   typoChallengeTelemetryAdapter.start();
 
-  window.scdRawRecorder = {
+  const inspectorApi: InspectorPublicApi = {
     version: BUILD_VERSION,
     sessionId: recorder.getSessionId(),
     protocol: protocolApi,
@@ -612,6 +696,15 @@ async function bootstrap(): Promise<void> {
     remountPanel: () => panel.ensureMounted(),
     setPanelVisible: visible => panel.setVisible(visible)
   };
+  window.scdRawRecorder = inspectorApi;
+  runtime.addCleanup(() => {
+    if (window.scdRawRecorder === inspectorApi) delete window.scdRawRecorder;
+    if (window.skribblDuelsTelemetry === telemetryApi) delete window.skribblDuelsTelemetry;
+    if (window.skribblDuelsReplay === replayApi) delete window.skribblDuelsReplay;
+    if (window.skribblDuelsChallengeEngine === challengeApi) delete window.skribblDuelsChallengeEngine;
+    if (window.skribblDuelsChallengeDefinitions === challengeDefinitionsApi) delete window.skribblDuelsChallengeDefinitions;
+    if (window.skribblDuelsWordLists === wordListApi) delete window.skribblDuelsWordLists;
+  });
 
   console.info('[Skribbl Duels Telemetry Inspector] Initialized', {
     version: BUILD_VERSION,
@@ -627,6 +720,8 @@ async function bootstrap(): Promise<void> {
   });
 }
 
-void bootstrap().catch(error => {
+const runtime = createRuntimeController();
+void bootstrap(runtime).catch(error => {
+  runtime.dispose('bootstrap-failed');
   console.error('[Skribbl Duels Telemetry Inspector] Bootstrap failed', error);
 });

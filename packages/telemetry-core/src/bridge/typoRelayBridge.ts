@@ -96,6 +96,7 @@ export class TypoRelayBridge {
     const generation = this.incomingState.generation;
 
     port.addEventListener('message', (event: MessageEvent<unknown>) => {
+      if (!this.started) return;
       this.incomingState.messageCount += 1;
       this.incomingStatusSubject.next({
         relayName: 'skribblMessagePort',
@@ -132,6 +133,7 @@ export class TypoRelayBridge {
     const generation = this.outgoingState.generation;
 
     port.addEventListener('message', (message: MessageEvent<unknown>) => {
+      if (!this.started) return;
       this.outgoingState.messageCount += 1;
       this.outgoingStatusSubject.next({
         relayName: 'skribblEmitPort',

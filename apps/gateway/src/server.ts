@@ -13,6 +13,7 @@ import type {
   AuthenticatedGatewayAccount,
   GatewayAccessAuthenticator
 } from './authenticate';
+import { GatewayMatchmaker } from './matchmaking';
 
 interface ClientToServerEvents {
   'gateway:message': (message: unknown) => void;
@@ -83,6 +84,13 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       callback(null, origin === undefined || origin === config.clientOrigin);
     }
   });
+  const activeConnections = new Map<string, string>();
+  const matchmaker = new GatewayMatchmaker({
+    readyTimeoutMs: config.matchmakingReadyTimeoutMs,
+    simulatedPlayersEnabled: config.simulatedPlayersEnabled,
+    simulatedMatchDelayMs: config.simulatedMatchDelayMs,
+    simulatedReadyDelayMs: config.simulatedReadyDelayMs
+  });
 
   io.use(async (socket, next) => {
     try {
@@ -145,6 +153,12 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         clearTimeout(helloTimer);
         socket.data.helloAccepted = true;
         socket.data.clientVersion = message.clientVersion;
+        const accountId = socket.data.account.identity.accountId;
+        const previousSocketId = activeConnections.get(accountId);
+        if (previousSocketId && previousSocketId !== socket.id) {
+          io.sockets.sockets.get(previousSocketId)?.disconnect(true);
+        }
+        activeConnections.set(accountId, socket.id);
         emitMessage(socket, {
           type: 'WELCOME',
           contractVersion: GATEWAY_CONTRACT_VERSION,
@@ -164,6 +178,24 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         });
         return;
       }
+      if (message.type === 'MATCHMAKING_JOIN') {
+        matchmaker.join({
+          identity: socket.data.account.identity,
+          send: outgoing => emitMessage(socket, outgoing)
+        }, message);
+        return;
+      }
+      if (message.type === 'MATCHMAKING_LEAVE') {
+        matchmaker.leave(socket.data.account.identity.accountId, message.requestId);
+        return;
+      }
+      if (message.type === 'READY_SET') {
+        const decision = matchmaker.setReady(socket.data.account.identity.accountId, message);
+        if (!decision.ok) {
+          emitMessage(socket, contractError(decision.code, decision.message, true));
+        }
+        return;
+      }
       if (message.type === 'HELLO') {
         emitMessage(socket, contractError('HELLO_ALREADY_ACCEPTED', 'HELLO may only be sent once.'));
         return;
@@ -178,6 +210,11 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     socket.once('disconnect', () => {
       clearTimeout(helloTimer);
       if (expiryTimer) clearTimeout(expiryTimer);
+      const accountId = socket.data.account.identity.accountId;
+      if (activeConnections.get(accountId) === socket.id) {
+        activeConnections.delete(accountId);
+        matchmaker.disconnect(accountId);
+      }
     });
   });
 
@@ -195,6 +232,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       });
     },
     close() {
+      matchmaker.close();
       return new Promise<void>(resolve => {
         io.close(() => resolve());
       });

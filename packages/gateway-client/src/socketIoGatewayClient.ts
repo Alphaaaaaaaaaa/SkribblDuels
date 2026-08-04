@@ -130,6 +130,15 @@ export class SocketIoGatewayClient {
     this.emit({ type: 'READY_SET', matchId, ready });
   }
 
+  public pickDraftChallenge(matchId: string, challengeId: string, clientRevision: number): void {
+    this.emit({
+      type: 'DRAFT_PICK',
+      matchId,
+      challengeId,
+      clientRevision
+    });
+  }
+
   private connect(): void {
     const endpoint = this.options.endpoint;
     const accessToken = this.accessToken;

@@ -3,6 +3,7 @@ import {
   type GatewayAuthRequiredMessage,
   type GatewayClientCapability,
   type GatewayClientMessage,
+  type GatewayDraftState,
   type GatewayErrorMessage,
   type GatewayHelloMessage,
   type GatewayServerMessage
@@ -52,17 +53,108 @@ function matchmakingParticipant(value: unknown): boolean {
     && typeof participant.simulated === 'boolean');
 }
 
+function draftPick(value: unknown): boolean {
+  const pick = record(value);
+  return Boolean(pick
+    && nonNegativeInteger(pick.pickNumber)
+    && nonEmptyString(pick.accountId)
+    && nonEmptyString(pick.challengeId)
+    && nonNegativeInteger(pick.definitionVersion)
+    && typeof pick.automatic === 'boolean'
+    && finiteNumber(pick.pickedAt));
+}
+
+function draftBoardField(value: unknown): boolean {
+  const field = record(value);
+  return Boolean(field
+    && nonNegativeInteger(field.fieldIndex)
+    && nonEmptyString(field.challengeId)
+    && nonNegativeInteger(field.definitionVersion));
+}
+
+function draftBoard(value: unknown): boolean {
+  const board = record(value);
+  if (!board
+      || !nonEmptyString(board.boardId)
+      || (board.format !== 'casual' && board.format !== 'ranked')
+      || (board.size !== 9 && board.size !== 25)
+      || (board.winTarget !== 5 && board.winTarget !== 13)
+      || !nonNegativeInteger(board.seed)
+      || !finiteNumber(board.createdAt)
+      || !Array.isArray(board.fields)
+      || !board.fields.every(draftBoardField)
+      || board.manifestVersion !== 1) return false;
+  return board.fields.length === board.size;
+}
+
+function draftState(value: unknown): value is GatewayDraftState {
+  const draft = record(value);
+  if (!draft
+      || (draft.status !== 'selecting' && draft.status !== 'complete')
+      || (draft.requiredPickCount !== 9 && draft.requiredPickCount !== 25)
+      || (draft.turnAccountId !== null && !nonEmptyString(draft.turnAccountId))
+      || (draft.selectionDeadlineAt !== null && !finiteNumber(draft.selectionDeadlineAt))
+      || !Array.isArray(draft.picks)
+      || draft.picks.length > draft.requiredPickCount
+      || !draft.picks.every(draftPick)
+      || !stringArray(draft.availableChallengeIds, 64)
+      || (draft.board !== null && !draftBoard(draft.board))) return false;
+  if (draft.status === 'selecting') {
+    return nonEmptyString(draft.turnAccountId)
+      && finiteNumber(draft.selectionDeadlineAt)
+      && draft.picks.length < draft.requiredPickCount
+      && draft.availableChallengeIds.length > 0
+      && draft.board === null;
+  }
+  return draft.turnAccountId === null
+    && draft.selectionDeadlineAt === null
+    && draft.picks.length === draft.requiredPickCount
+    && draft.availableChallengeIds.length === 0
+    && draft.board !== null;
+}
+
 function matchmakingState(value: unknown): boolean {
   const state = record(value);
-  return Boolean(state
-    && (state.format === 'casual' || state.format === 'ranked')
-    && (state.phase === 'ready-check' || state.phase === 'draft' || state.phase === 'cancelled')
-    && Array.isArray(state.participants)
-    && state.participants.length === 2
-    && state.participants.every(matchmakingParticipant)
-    && (state.readyDeadlineAt === null || finiteNumber(state.readyDeadlineAt))
-    && nonEmptyString(state.startingAccountId)
-    && finiteNumber(state.createdAt));
+  if (!state
+      || (state.format !== 'casual' && state.format !== 'ranked')
+      || (state.phase !== 'ready-check'
+        && state.phase !== 'draft'
+        && state.phase !== 'countdown'
+        && state.phase !== 'running'
+        && state.phase !== 'cancelled')
+      || !Array.isArray(state.participants)
+      || state.participants.length !== 2
+      || !state.participants.every(matchmakingParticipant)
+      || (state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt))
+      || (state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt))
+      || (state.startedAt !== null && !finiteNumber(state.startedAt))
+      || !nonEmptyString(state.startingAccountId)
+      || !finiteNumber(state.createdAt)) return false;
+  if (state.phase === 'draft') {
+    return state.readyDeadlineAt === null
+      && state.countdownEndsAt === null
+      && state.startedAt === null
+      && (state.draft === undefined || draftState(state.draft));
+  }
+  if (state.phase === 'countdown') {
+    return state.readyDeadlineAt === null
+      && finiteNumber(state.countdownEndsAt)
+      && state.countdownEndsAt > state.createdAt
+      && state.startedAt === null
+      && draftState(state.draft)
+      && state.draft.status === 'complete';
+  }
+  if (state.phase === 'running') {
+    return state.readyDeadlineAt === null
+      && state.countdownEndsAt === null
+      && finiteNumber(state.startedAt)
+      && state.startedAt >= state.createdAt
+      && draftState(state.draft)
+      && state.draft.status === 'complete';
+  }
+  return state.countdownEndsAt === null
+    && state.startedAt === null
+    && (state.draft === undefined || state.draft === null);
 }
 
 function matchmakingEvent(value: unknown): boolean {
@@ -71,9 +163,18 @@ function matchmakingEvent(value: unknown): boolean {
     && (event.type === 'MATCH_ABORTED'
       || event.type === 'READY_CHANGED'
       || event.type === 'READY_CHECK_COMPLETED'
-      || event.type === 'READY_CHECK_EXPIRED')
+      || event.type === 'READY_CHECK_EXPIRED'
+      || event.type === 'DRAFT_STARTED'
+      || event.type === 'DRAFT_PICKED'
+      || event.type === 'DRAFT_PICK_TIMED_OUT'
+      || event.type === 'DRAFT_COMPLETED'
+      || event.type === 'MATCH_COUNTDOWN_STARTED'
+      || event.type === 'MATCH_STARTED')
     && (event.accountId === null || nonEmptyString(event.accountId))
-    && (event.reason === null || nonEmptyString(event.reason, 128)));
+    && (event.reason === null || nonEmptyString(event.reason, 128))
+    && (event.challengeId === undefined || nonEmptyString(event.challengeId))
+    && (event.pickNumber === undefined || nonNegativeInteger(event.pickNumber))
+    && (event.automatic === undefined || typeof event.automatic === 'boolean'));
 }
 
 export function isGatewayHelloMessage(value: unknown): value is GatewayHelloMessage {

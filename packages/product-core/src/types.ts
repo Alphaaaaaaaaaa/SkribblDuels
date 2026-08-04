@@ -4,8 +4,8 @@ import type {
 } from '@skribbl-duels/challenge-engine';
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const PRODUCT_CORE_VERSION = '0.2.0' as const;
-export const MATCH_STATE_CONTRACT_VERSION = 1 as const;
+export const PRODUCT_CORE_VERSION = '0.3.0' as const;
+export const MATCH_STATE_CONTRACT_VERSION = 2 as const;
 export const UI_SETTINGS_VERSION = 1 as const;
 
 export type DuelFormat = 'casual' | 'ranked';
@@ -136,6 +136,7 @@ export interface MatchState {
   participants: readonly DuelParticipant[];
   scores: Readonly<Record<DuelPlayerSide, number>>;
   winner: DuelPlayerSide | null;
+  countdownEndsAt: number | null;
   startedAt: number | null;
   finishedAt: number | null;
   freeze: MatchFreezeState;
@@ -144,6 +145,7 @@ export interface MatchState {
 
 export interface MatchStateEvent {
   type:
+    | 'MATCH_COUNTDOWN_STARTED'
     | 'MATCH_STARTED'
     | 'FIELD_PENDING'
     | 'FIELD_CLAIMED'

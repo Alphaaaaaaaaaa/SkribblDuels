@@ -1,17 +1,17 @@
-# Skribbl Duels Matchmaking v0.38.0
+# Skribbl Duels Synchronized Match Start v0.40.0
 
-This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v1, Discord OAuth through Supabase Auth, persistent account profiles, authenticated Socket.IO transport, homepage matchmaking and the ready-check state machine.
+This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v1, Discord OAuth through Supabase Auth, persistent account profiles, authenticated Socket.IO transport, homepage matchmaking, ready checks and the server-authoritative draft state machine.
 
-## v0.38.0
+## v0.40.0
 
-- Enforces one owned userscript runtime and one active match lifecycle.
-- Aborts and clears older local/server match state before every new start.
-- Allows queue entry only from the visible skribbl.io homepage.
-- Adds authoritative Casual and Ranked Gateway queues.
-- Adds a 30-second ready check with leave, disconnect and timeout cancellation.
-- Supports server-created simulated opponents for single-player development.
-- Randomly selects the first player for the upcoming draft.
-- Preserves the ASCII-safe stable userscript release path introduced in v0.37.2.
+- Starts an authoritative 10-second countdown immediately after the completed draft.
+- Publishes one exact server timestamp shared by both participants.
+- Preserves the validated 3×3 or 5×5 board unchanged through match start.
+- Prepares the floating board during countdown while keeping claims and telemetry locked.
+- Activates only the drafted challenges at the synchronized start time.
+- Moves the Gateway match into a revisioned `running` phase with authoritative `startedAt`.
+- Clears countdown timers and challenge state when a match is aborted or superseded.
+- Preserves v0.39.0 alternating picks, timeout autopicks and server-side conflict enforcement.
 
 ## Install the userscript
 
@@ -25,12 +25,12 @@ release; the userscript metadata contains the exact version.
 - Adds an independently deployable Node/Socket.IO Gateway under `apps/gateway`.
 - Verifies the Supabase access token during the Socket.IO connection handshake.
 - Loads authoritative player identity from the RLS-protected `public.profiles` table.
-- Implements Contract v1 authentication, queue, ready-check, match snapshot and heartbeat messages.
+- Implements Contract v1 authentication, queue, ready-check, draft, countdown, running-match snapshot and heartbeat messages.
 - Provides `/healthz` for deployment health checks.
 - Uses `https://skribblduels-production.up.railway.app` as the production userscript default.
 - Keeps `VITE_GATEWAY_URL` available as a public build-time override.
 - Records the live authenticated Railway `WELCOME` handshake as verified.
-- Keeps queue membership, opponent identity, supersession and ready deadlines authoritative on the Gateway.
+- Keeps queue membership, opponent identity, supersession, ready deadlines, draft turns, picks, final boards and match start time authoritative on the Gateway.
 - Requires `MATCHMAKING_SIMULATED_PLAYERS=true` only while simulated queue opponents are desired.
 - Preserves the v0.36.0 profile migration and its read-only client security boundary.
 - Preserves all Product Foundation, match-freeze, UI-stability, drafting, and 46-challenge behavior.
@@ -66,7 +66,7 @@ The verification must report RLS enabled, authenticated read access, no anonymou
 
 Never include the Discord client secret, Supabase database password, Supabase secret/service-role key, or refresh credentials in the userscript. Rotate any secret that has been shared or committed.
 
-See `docs/matchmaking-ready-check-v0.38.0.md`, `docs/gateway-deployment-v0.37.1.md`, `docs/gateway-auth-handshake-v0.37.0.md`, and `docs/environment-configuration.md`.
+See `docs/synchronized-match-start-v0.40.0.md`, `docs/server-authoritative-draft-v0.39.0.md`, `docs/matchmaking-ready-check-v0.38.0.md`, `docs/gateway-deployment-v0.37.1.md`, `docs/gateway-auth-handshake-v0.37.0.md`, and `docs/environment-configuration.md`.
 
 The current implementation sequence is documented in
 [`docs/development-roadmap.md`](docs/development-roadmap.md). Release packaging

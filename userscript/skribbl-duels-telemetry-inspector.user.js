@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Skribbl Duels - Telemetry Inspector
 // @namespace    https://github.com/skribbl-duels
-// @version      0.38.0
+// @version      0.40.0
 // @author       Alpha
-// @description  Homepage matchmaking and authoritative ready checks for Skribbl Duels.
+// @description  Server-authoritative 15-second challenge drafts for Skribbl Duels.
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -1854,7 +1854,7 @@ function numberArray(value) {
 	if (!Array.isArray(value) || !value.every(isNumber)) return null;
 	return value;
 }
-function stringArray(value) {
+function stringArray$1(value) {
 	if (!Array.isArray(value) || !value.every(isString)) return null;
 	return value;
 }
@@ -2055,7 +2055,7 @@ function parseGameState(value, issues) {
 			stateName: "WORD_SELECTION",
 			time,
 			drawerId: numberField(rawData, "id"),
-			availableWords: stringArray(rawData.words),
+			availableWords: stringArray$1(rawData.words),
 			rawData
 		};
 	}
@@ -11155,7 +11155,7 @@ var DebugPanel = class {
 		].join("\n");
 	}
 };
-var PRODUCT_CORE_VERSION = "0.2.0";
+var PRODUCT_CORE_VERSION = "0.3.0";
 var WORD_LIST_IDS = /* @__PURE__ */ new Set([
 	"mogged",
 	"smol-words",
@@ -11491,7 +11491,7 @@ function generateDraftBoard(manifest, request, now = Date.now()) {
 }
 function initialMatchState() {
 	return {
-		contractVersion: 1,
+		contractVersion: 2,
 		matchId: null,
 		phase: "idle",
 		format: null,
@@ -11504,6 +11504,7 @@ function initialMatchState() {
 			opponent: 0
 		},
 		winner: null,
+		countdownEndsAt: null,
 		startedAt: null,
 		finishedAt: null,
 		freeze: {
@@ -11564,7 +11565,7 @@ function normalizeMatchState(value) {
 	const phase = validPhases.has(String(input.phase)) ? input.phase : "idle";
 	const frozen = phase === "finished" || input.freeze?.frozen === true;
 	return {
-		contractVersion: 1,
+		contractVersion: 2,
 		matchId: typeof input.matchId === "string" ? input.matchId : null,
 		phase,
 		format: validFormats.has(String(input.format)) ? input.format : null,
@@ -11577,6 +11578,7 @@ function normalizeMatchState(value) {
 			opponent: opponentScore
 		},
 		winner: input.winner === "self" || input.winner === "opponent" ? input.winner : null,
+		countdownEndsAt: phase === "countdown" && Number.isFinite(input.countdownEndsAt) ? Number(input.countdownEndsAt) : null,
 		startedAt: Number.isFinite(input.startedAt) ? Number(input.startedAt) : null,
 		finishedAt: Number.isFinite(input.finishedAt) ? Number(input.finishedAt) : null,
 		freeze: {
@@ -11612,7 +11614,7 @@ var MatchStateStore = class {
 	}
 	startMatch(matchId, board, participants, startedAt = Date.now()) {
 		this.state = {
-			contractVersion: 1,
+			contractVersion: 2,
 			matchId,
 			phase: "running",
 			format: board.format,
@@ -11632,6 +11634,7 @@ var MatchStateStore = class {
 				opponent: 0
 			},
 			winner: null,
+			countdownEndsAt: null,
 			startedAt,
 			finishedAt: null,
 			freeze: {
@@ -11642,6 +11645,53 @@ var MatchStateStore = class {
 			revision: this.state.revision + 1
 		};
 		return this.emit("MATCH_STARTED", null, null, null, startedAt);
+	}
+	prepareMatchCountdown(matchId, board, participants, countdownEndsAt, occurredAt = Date.now()) {
+		if (!Number.isFinite(countdownEndsAt) || countdownEndsAt <= occurredAt) throw new RangeError("Match countdown must end after it starts.");
+		this.state = {
+			contractVersion: 2,
+			matchId,
+			phase: "countdown",
+			format: board.format,
+			boardId: board.boardId,
+			winTarget: board.winTarget,
+			fields: board.fields.map((field) => ({
+				...field,
+				status: "available",
+				owner: null,
+				pendingCandidateId: null,
+				claimId: null,
+				updatedAt: occurredAt
+			})),
+			participants: participants.map((participant) => ({ ...participant })),
+			scores: {
+				self: 0,
+				opponent: 0
+			},
+			winner: null,
+			countdownEndsAt,
+			startedAt: null,
+			finishedAt: null,
+			freeze: {
+				frozen: false,
+				reason: null,
+				frozenAt: null
+			},
+			revision: this.state.revision + 1
+		};
+		return this.emit("MATCH_COUNTDOWN_STARTED", null, null, "server-authoritative-countdown", occurredAt);
+	}
+	startPreparedMatch(matchId, startedAt = Date.now()) {
+		if (this.state.matchId === matchId && this.state.phase === "running") return this.getState();
+		if (this.state.matchId !== matchId || this.state.phase !== "countdown") throw new Error("Only the prepared countdown match can be started.");
+		this.state = {
+			...this.state,
+			phase: "running",
+			countdownEndsAt: null,
+			startedAt,
+			revision: this.state.revision + 1
+		};
+		return this.emit("MATCH_STARTED", null, null, "server-authoritative-start", startedAt);
 	}
 	markPending(challengeId, candidateId, side, occurredAt = Date.now()) {
 		if (!this.isMutable()) return this.getState();
@@ -11955,17 +12005,43 @@ function finiteNumber(value) {
 function nonNegativeInteger(value) {
 	return Number.isInteger(value) && Number(value) >= 0;
 }
+function stringArray(value, maxItems = 256) {
+	return Array.isArray(value) && value.length <= maxItems && value.every((item) => nonEmptyString(item));
+}
 function matchmakingParticipant(value) {
 	const participant = record(value);
 	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean");
 }
+function draftPick(value) {
+	const pick = record(value);
+	return Boolean(pick && nonNegativeInteger(pick.pickNumber) && nonEmptyString(pick.accountId) && nonEmptyString(pick.challengeId) && nonNegativeInteger(pick.definitionVersion) && typeof pick.automatic === "boolean" && finiteNumber(pick.pickedAt));
+}
+function draftBoardField(value) {
+	const field = record(value);
+	return Boolean(field && nonNegativeInteger(field.fieldIndex) && nonEmptyString(field.challengeId) && nonNegativeInteger(field.definitionVersion));
+}
+function draftBoard(value) {
+	const board = record(value);
+	if (!board || !nonEmptyString(board.boardId) || board.format !== "casual" && board.format !== "ranked" || board.size !== 9 && board.size !== 25 || board.winTarget !== 5 && board.winTarget !== 13 || !nonNegativeInteger(board.seed) || !finiteNumber(board.createdAt) || !Array.isArray(board.fields) || !board.fields.every(draftBoardField) || board.manifestVersion !== 1) return false;
+	return board.fields.length === board.size;
+}
+function draftState(value) {
+	const draft = record(value);
+	if (!draft || draft.status !== "selecting" && draft.status !== "complete" || draft.requiredPickCount !== 9 && draft.requiredPickCount !== 25 || draft.turnAccountId !== null && !nonEmptyString(draft.turnAccountId) || draft.selectionDeadlineAt !== null && !finiteNumber(draft.selectionDeadlineAt) || !Array.isArray(draft.picks) || draft.picks.length > draft.requiredPickCount || !draft.picks.every(draftPick) || !stringArray(draft.availableChallengeIds, 64) || draft.board !== null && !draftBoard(draft.board)) return false;
+	if (draft.status === "selecting") return nonEmptyString(draft.turnAccountId) && finiteNumber(draft.selectionDeadlineAt) && draft.picks.length < draft.requiredPickCount && draft.availableChallengeIds.length > 0 && draft.board === null;
+	return draft.turnAccountId === null && draft.selectionDeadlineAt === null && draft.picks.length === draft.requiredPickCount && draft.availableChallengeIds.length === 0 && draft.board !== null;
+}
 function matchmakingState(value) {
 	const state = record(value);
-	return Boolean(state && (state.format === "casual" || state.format === "ranked") && (state.phase === "ready-check" || state.phase === "draft" || state.phase === "cancelled") && Array.isArray(state.participants) && state.participants.length === 2 && state.participants.every(matchmakingParticipant) && (state.readyDeadlineAt === null || finiteNumber(state.readyDeadlineAt)) && nonEmptyString(state.startingAccountId) && finiteNumber(state.createdAt));
+	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt)) return false;
+	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && (state.draft === void 0 || draftState(state.draft));
+	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && draftState(state.draft) && state.draft.status === "complete";
+	return state.countdownEndsAt === null && state.startedAt === null && (state.draft === void 0 || state.draft === null);
 }
 function matchmakingEvent(value) {
 	const event = record(value);
-	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)));
+	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean"));
 }
 function isGatewayServerMessage(value) {
 	const message = record(value);
@@ -11995,7 +12071,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.38.0";
+var GATEWAY_CLIENT_VERSION = "0.40.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15327,6 +15403,14 @@ var SocketIoGatewayClient = class {
 			type: "READY_SET",
 			matchId,
 			ready
+		});
+	}
+	pickDraftChallenge(matchId, challengeId, clientRevision) {
+		this.emit({
+			type: "DRAFT_PICK",
+			matchId,
+			challengeId,
+			clientRevision
 		});
 	}
 	connect() {
@@ -36361,6 +36445,13 @@ var CompletionChatAdapter = class {
 .scd-auth-name { font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-auth-email { color:rgba(255,255,255,.58);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-auth-error { color:#ffb0b0;font-size:11px;white-space:pre-wrap; }
+.scd-draft-picks { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px; }
+.scd-draft-pick { min-width:0;padding:5px 7px;border-radius:6px;background:rgba(255,255,255,.06);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-draft-pick.self { border-left:3px solid var(--SCD_SELF); }
+.scd-draft-pick.opponent { border-left:3px solid var(--SCD_OPPONENT); }
+.scd-draft-options { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;max-height:260px;overflow:auto;padding-right:3px; }
+.scd-draft-option { min-width:0;text-align:left;font-size:11px;line-height:1.2; }
+.scd-draft-board { display:grid;gap:4px; }
 `;
 		(document.head ?? document.documentElement).appendChild(style);
 	}
@@ -36516,6 +36607,7 @@ var DuelProductFoundation = class {
 	gatewayState;
 	unsubscribers = [];
 	lastGatewayMatchId = null;
+	matchStartTimer = null;
 	matchmakingError = null;
 	destroyed = false;
 	constructor(options) {
@@ -36581,10 +36673,12 @@ var DuelProductFoundation = class {
 		this.mountGuard = window.setInterval(() => {
 			this.removeForeignRuntimeDom();
 			this.ensureMounted();
-			if (this.activeTab === "duel" && this.gatewayState.match?.state.phase === "ready-check") this.renderPanel();
+			const gatewayPhase = this.gatewayState.match?.state.phase;
+			if (this.activeTab === "duel" && (gatewayPhase === "ready-check" || gatewayPhase === "draft" || gatewayPhase === "countdown")) this.renderPanel();
+			if (this.matchState.phase === "countdown") this.renderBoard();
 		}, 700);
 		const api = {
-			version: "0.38.0",
+			version: "0.40.0",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 1,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -36602,7 +36696,8 @@ var DuelProductFoundation = class {
 				reconnect: () => this.gatewayClient.reconnect(),
 				joinMatchmaking: (format) => this.beginMatchmaking(format),
 				leaveMatchmaking: () => this.cancelMatchmaking(),
-				setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready)
+				setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
+				pickDraftChallenge: (matchId, challengeId, clientRevision) => this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision)
 			},
 			manifest: {
 				get: () => structuredClone(this.manifest),
@@ -36666,7 +36761,7 @@ var DuelProductFoundation = class {
 		this.boardGrid = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.38.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.40.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -36776,7 +36871,7 @@ var DuelProductFoundation = class {
 		header.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.12)";
 		const title = element("strong", "", "Skribbl Duels");
 		title.style.cssText = "font-size:16px;flex:1";
-		const version = element("span", "scd-muted", "Matchmaking 0.38.0");
+		const version = element("span", "scd-muted", "Match Start 0.40.0");
 		version.style.fontSize = "10px";
 		const close = element("button", "scd-button", "\u00D7");
 		close.type = "button";
@@ -36932,7 +37027,8 @@ var DuelProductFoundation = class {
 			this.boardGrid.appendChild(node);
 		}
 		const score = this.board.querySelector("[data-role=\"score\"]");
-		if (score) score.textContent = this.matchState.phase === "finished" ? `${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 frozen` : `${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 first to ${this.matchState.winTarget || "-"}`;
+		if (score) if (this.matchState.phase === "countdown") score.textContent = `starts in ${Math.max(0, Math.ceil(((this.matchState.countdownEndsAt ?? this.serverNow()) - this.serverNow()) / 1e3))}s`;
+		else score.textContent = this.matchState.phase === "finished" ? `${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 frozen` : `${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 first to ${this.matchState.winTarget || "-"}`;
 	}
 	renderPanel() {
 		if (!this.panel || !this.panelBody) return;
@@ -37039,7 +37135,7 @@ var DuelProductFoundation = class {
 			const self = state.participants.find((participant) => participant.accountId === selfAccountId);
 			const opponent = state.participants.find((participant) => participant.accountId !== selfAccountId);
 			if (state.phase === "ready-check") {
-				const remaining = Math.max(0, Math.ceil(((state.readyDeadlineAt ?? Date.now()) - Date.now()) / 1e3));
+				const remaining = Math.max(0, Math.ceil(((state.readyDeadlineAt ?? this.serverNow()) - this.serverNow()) / 1e3));
 				card.append(element("div", "", `${state.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} opponent: ${opponent?.displayName ?? "Waiting\u2026"}${opponent?.simulated ? " (simulated)" : ""}`), element("div", "scd-muted", `Ready check: ${remaining}s \u00B7 You ${self?.ready ? "\u2713" : "\u2026"} \u00B7 Opponent ${opponent?.ready ? "\u2713" : "\u2026"}`));
 				const row = element("div", "scd-row");
 				const ready = element("button", "scd-button primary", self?.ready ? "Not ready" : "Ready");
@@ -37051,11 +37147,24 @@ var DuelProductFoundation = class {
 				return card;
 			}
 			if (state.phase === "draft") {
-				const starter = state.participants.find((participant) => participant.accountId === state.startingAccountId);
-				card.append(element("div", "", `Ready check complete against ${opponent?.displayName ?? "opponent"}.`), element("div", "scd-muted", `${starter?.displayName ?? "A player"} was selected randomly to start the upcoming draft.`), element("div", "scd-muted", "The server-authoritative 15-second draft is the next implementation milestone."));
-				const leave = element("button", "scd-button danger", "Abort match");
-				leave.addEventListener("click", () => this.cancelMatchmaking());
-				card.appendChild(leave);
+				this.renderGatewayDraft(card, gatewayMatch, selfAccountId);
+				return card;
+			}
+			if (state.phase === "countdown") {
+				const remaining = Math.max(0, Math.ceil(((state.countdownEndsAt ?? this.serverNow()) - this.serverNow()) / 1e3));
+				card.append(element("div", "", `${state.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} against ${opponent?.displayName ?? "opponent"}`), element("div", "scd-muted", `Draft validated \u00B7 match starts in ${remaining}s`), element("div", "scd-muted", "The floating board is prepared. Challenge progress remains locked until the synchronized start."));
+				const cancel = element("button", "scd-button danger", "Abort match");
+				cancel.type = "button";
+				cancel.addEventListener("click", () => this.cancelMatchmaking());
+				card.appendChild(cancel);
+				return card;
+			}
+			if (state.phase === "running") {
+				card.append(element("div", "", `${state.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} match against ${opponent?.displayName ?? "opponent"}`), element("div", "scd-muted", `Started synchronously at ${formatTime(state.startedAt ?? this.serverNow())} \u00B7 challenge board active`));
+				const open = element("button", "scd-button primary", "Open match");
+				open.type = "button";
+				open.addEventListener("click", () => this.openPanel("match"));
+				card.appendChild(open);
 				return card;
 			}
 			card.appendChild(element("div", "scd-muted", `Previous match was cancelled: ${this.gatewayState.lastMatchEvent?.event.reason ?? "superseded"}.`));
@@ -37080,6 +37189,66 @@ var DuelProductFoundation = class {
 		card.appendChild(row);
 		card.appendChild(element("div", "scd-muted", connected ? "The current Gateway test can supply a simulated queued opponent; the browser never invents the opponent itself." : "Connect the authenticated Gateway before entering matchmaking."));
 		return card;
+	}
+	renderGatewayDraft(card, gatewayMatch, selfAccountId) {
+		const state = gatewayMatch.state;
+		const draft = state.draft;
+		const opponent = state.participants.find((participant) => participant.accountId !== selfAccountId);
+		if (!draft) {
+			card.appendChild(element("div", "scd-auth-error", "The Gateway draft snapshot is incomplete. Reconnect before making a selection."));
+			return;
+		}
+		card.append(element("div", "", `${state.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} draft against ${opponent?.displayName ?? "opponent"}`), element("div", "scd-muted", `${draft.picks.length}/${draft.requiredPickCount} challenges selected \u00B7 server revision ${gatewayMatch.revision}`));
+		if (draft.picks.length > 0) {
+			const picks = element("div", "scd-draft-picks");
+			for (const pick of draft.picks) {
+				const ownPick = pick.accountId === selfAccountId;
+				const participant = state.participants.find((item) => item.accountId === pick.accountId);
+				const node = element("div", `scd-draft-pick ${ownPick ? "self" : "opponent"}`, `${pick.pickNumber}. ${challengeName(this.manifest, pick.challengeId)}${pick.automatic ? " \u00B7 auto" : ""}`);
+				this.tooltips.register(node, `${participant?.displayName ?? "Player"} selected ${challengeName(this.manifest, pick.challengeId)}${pick.automatic ? " automatically" : ""}`);
+				picks.appendChild(node);
+			}
+			card.appendChild(picks);
+		}
+		if (draft.status === "complete") {
+			card.appendChild(element("div", "scd-muted", "Draft complete. The Gateway validated the final board and all challenge conflicts."));
+			if (draft.board) {
+				const board = element("div", "scd-draft-board");
+				board.style.gridTemplateColumns = `repeat(${draft.board.format === "casual" ? 3 : 5},minmax(0,1fr))`;
+				for (const field of draft.board.fields) {
+					const node = element("div", "scd-field");
+					node.append(element("span", "scd-field-index", String(field.fieldIndex + 1)), element("span", "scd-field-name", challengeName(this.manifest, field.challengeId)));
+					this.tooltips.register(node, challengeName(this.manifest, field.challengeId));
+					board.appendChild(node);
+				}
+				card.appendChild(board);
+			}
+			card.appendChild(element("div", "scd-muted", "Waiting for the Gateway to publish the synchronized 10-second countdown."));
+		} else {
+			const current = state.participants.find((participant) => participant.accountId === draft.turnAccountId);
+			const ownTurn = draft.turnAccountId === selfAccountId;
+			const remaining = Math.max(0, Math.ceil(((draft.selectionDeadlineAt ?? this.serverNow()) - this.serverNow()) / 1e3));
+			card.appendChild(element("div", ownTurn ? "" : "scd-muted", ownTurn ? `Your selection \u00B7 ${remaining}s remaining` : `${current?.displayName ?? "Opponent"} is selecting \u00B7 ${remaining}s remaining`));
+			if (ownTurn) {
+				const options = element("div", "scd-draft-options");
+				const entries = draft.availableChallengeIds.map((challengeId) => this.manifest.entries.find((entry) => entry.id === challengeId)).filter((entry) => entry !== void 0).sort((left, right) => left.name.localeCompare(right.name));
+				for (const entry of entries) {
+					const button = element("button", "scd-button scd-draft-option", entry.name);
+					button.type = "button";
+					button.addEventListener("click", () => {
+						button.disabled = true;
+						this.gatewayClient.pickDraftChallenge(gatewayMatch.matchId, entry.id, gatewayMatch.revision);
+					});
+					this.tooltips.register(button, `${entry.description}\n${entry.id}`);
+					options.appendChild(button);
+				}
+				card.appendChild(options);
+			} else if (current?.simulated) card.appendChild(element("div", "scd-muted", "The simulated client will make this selection automatically."));
+		}
+		const leave = element("button", "scd-button danger", "Abort match");
+		leave.type = "button";
+		leave.addEventListener("click", () => this.cancelMatchmaking());
+		card.appendChild(leave);
 	}
 	renderMatchTab() {
 		if (!this.panelBody) return;
@@ -37219,7 +37388,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Only Duel-server forwarding, board mutation and new claims are stopped after the win target is reached."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v1`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage queue membership, simulated opponents and the server-authoritative 30-second ready check are implemented.`));
+		gateway.append(element("strong", "", `Gateway Contract v1`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, the alternating 15-second draft and the synchronized 10-second match start are implemented.`));
 		stack.append(architecture, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -37321,14 +37490,93 @@ var DuelProductFoundation = class {
 	handleGatewayMatchState(state) {
 		const snapshot = state.match;
 		if (!snapshot) {
-			if (!state.queue) this.lastGatewayMatchId = null;
+			if (!state.queue) {
+				if (this.lastGatewayMatchId !== null && state.status !== "connected") this.abortLocalMatch("gateway-match-connection-lost");
+				this.lastGatewayMatchId = null;
+			}
 			return;
 		}
 		if (snapshot.matchId !== this.lastGatewayMatchId) {
 			this.abortLocalMatch("gateway-match-superseded-local-state");
 			this.lastGatewayMatchId = snapshot.matchId;
 		}
-		if (snapshot.state.phase === "cancelled") this.abortLocalMatch("gateway-match-cancelled");
+		if (snapshot.state.phase === "cancelled") {
+			this.abortLocalMatch("gateway-match-cancelled");
+			return;
+		}
+		const gatewayBoard = snapshot.state.draft?.board;
+		let validatedBoard = null;
+		if (gatewayBoard && this.currentBoard?.boardId !== gatewayBoard.boardId) {
+			const board = structuredClone(gatewayBoard);
+			const issues = validateDraftBoard(board, this.manifest, { available: ALL_CAPABILITIES });
+			if (issues.length > 0) {
+				this.matchmakingError = `Gateway board validation failed: ${issues.map((issue) => issue.message).join(" ")}`;
+				return;
+			}
+			this.currentBoard = board;
+			validatedBoard = board;
+		}
+		const board = validatedBoard ?? this.currentBoard;
+		if (snapshot.state.phase === "countdown" && board && snapshot.state.countdownEndsAt !== null) {
+			this.prepareGatewayCountdown(snapshot, board);
+			return;
+		}
+		if (snapshot.state.phase === "running" && board && snapshot.state.startedAt !== null) {
+			this.clearMatchStartTimer();
+			this.startGatewayMatchLocally(snapshot, board, snapshot.state.startedAt);
+		}
+	}
+	prepareGatewayCountdown(snapshot, board) {
+		const countdownEndsAt = snapshot.state.countdownEndsAt;
+		if (countdownEndsAt === null) return;
+		const participants = this.gatewayParticipants(snapshot);
+		if (countdownEndsAt <= this.serverNow()) {
+			this.startGatewayMatchLocally(snapshot, board, countdownEndsAt);
+			return;
+		}
+		if (!(this.matchState.matchId === snapshot.matchId && this.matchState.boardId === board.boardId && this.matchState.phase === "countdown" && this.matchState.countdownEndsAt === countdownEndsAt)) {
+			this.matchStore.prepareMatchCountdown(snapshot.matchId, board, participants, countdownEndsAt, this.serverNow());
+			this.settingsStore.updateBoard({ visible: true });
+		}
+		this.clearMatchStartTimer();
+		this.matchStartTimer = window.setTimeout(() => {
+			this.matchStartTimer = null;
+			const current = this.gatewayState.match;
+			if (!current || current.matchId !== snapshot.matchId || current.state.phase === "cancelled") return;
+			this.startGatewayMatchLocally(current, board, countdownEndsAt);
+		}, Math.max(0, countdownEndsAt - this.serverNow()));
+	}
+	startGatewayMatchLocally(snapshot, board, startedAt) {
+		if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === "running") return;
+		const participants = this.gatewayParticipants(snapshot);
+		if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === "countdown") this.matchStore.startPreparedMatch(snapshot.matchId, startedAt);
+		else this.matchStore.startMatch(snapshot.matchId, board, participants, startedAt);
+		this.activateBoardChallenges(snapshot.matchId, board, startedAt, "gateway-match-started");
+		this.settingsStore.updateBoard({ visible: true });
+		this.openPanel("match");
+	}
+	gatewayParticipants(snapshot) {
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		return snapshot.state.participants.map((participant) => ({
+			playerId: participant.accountId,
+			displayName: participant.displayName,
+			side: participant.accountId === selfAccountId ? "self" : "opponent"
+		}));
+	}
+	activateBoardChallenges(matchId, board, startedAt, reason) {
+		this.options.challengeEngine.reset(reason);
+		for (const field of board.fields) this.options.challengeEngine.activate({
+			instanceId: `duel-${matchId}-field-${field.fieldIndex}`,
+			challengeId: field.challengeId,
+			activatedAt: startedAt
+		});
+	}
+	serverNow() {
+		return Date.now() + (this.gatewayState.serverTimeOffsetMs ?? 0);
+	}
+	clearMatchStartTimer() {
+		if (this.matchStartTimer !== null) window.clearTimeout(this.matchStartTimer);
+		this.matchStartTimer = null;
 	}
 	persistMatch() {
 		try {
@@ -37347,6 +37595,7 @@ var DuelProductFoundation = class {
 		}
 	}
 	abortLocalMatch(reason) {
+		this.clearMatchStartTimer();
 		this.currentBoard = null;
 		this.duelChatMessages = [];
 		this.chatAdapter.reset();
@@ -37354,7 +37603,9 @@ var DuelProductFoundation = class {
 		try {
 			sessionStorage.removeItem(this.matchStorageKey);
 		} catch {}
-		return this.matchStore.reset(reason);
+		const state = this.matchStore.reset(reason);
+		this.options.challengeEngine.reset(reason);
+		return state;
 	}
 	resetMatch() {
 		if (this.gatewayState.status === "connected" && (this.gatewayState.queue || this.gatewayState.match)) try {
@@ -37398,7 +37649,10 @@ var DuelProductFoundation = class {
 			displayName: "Player 1",
 			side: "opponent"
 		}];
-		const state = this.matchStore.startMatch(`demo-${Date.now()}`, result.board, participants);
+		const matchId = `demo-${Date.now()}`;
+		const startedAt = Date.now();
+		const state = this.matchStore.startMatch(matchId, result.board, participants, startedAt);
+		this.activateBoardChallenges(matchId, result.board, startedAt, "demo-match-started");
 		this.settingsStore.updateBoard({ visible: true });
 		this.openPanel("match");
 		return state;
@@ -37466,7 +37720,7 @@ var DuelProductFoundation = class {
 		if (this.activeTab === "chat") this.renderPanel();
 	}
 };
-var BUILD_VERSION = "0.38.0";
+var BUILD_VERSION = "0.40.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

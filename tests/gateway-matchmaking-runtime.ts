@@ -5,6 +5,15 @@ import type {
 } from '@skribbl-duels/gateway-contracts';
 import { GatewayMatchmaker } from '../apps/gateway/src/matchmaking';
 
+const capabilities = [
+  'skribbl-telemetry',
+  'official-word-list',
+  'typo',
+  'typo-challenges',
+  'typo-drops',
+  'typo-image-lab'
+] as const;
+
 async function waitFor(
   predicate: () => boolean,
   timeoutMs = 1_000
@@ -23,6 +32,9 @@ const matchmaker = new GatewayMatchmaker({
   simulatedPlayersEnabled: true,
   simulatedMatchDelayMs: 5,
   simulatedReadyDelayMs: 5,
+  draftPickTimeoutMs: 1_000,
+  simulatedDraftPickDelayMs: 5,
+  matchCountdownMs: 10_000,
   createId: () => String(++id),
   random: () => 0
 });
@@ -32,6 +44,7 @@ const peer = {
     displayName: 'analphabetism',
     discordUserId: '459399117307904000'
   },
+  capabilities,
   send(message: GatewayServerMessage) {
     messages.push(structuredClone(message));
   }
@@ -107,12 +120,16 @@ const realMatchmaker = new GatewayMatchmaker({
   simulatedPlayersEnabled: false,
   simulatedMatchDelayMs: 5,
   simulatedReadyDelayMs: 5,
+  draftPickTimeoutMs: 1_000,
+  simulatedDraftPickDelayMs: 5,
+  matchCountdownMs: 10_000,
   createId: () => `real-${++id}`,
   random: () => 0.75
 });
 for (const [accountId, displayName] of [['account-a', 'Alpha'], ['account-b', 'Bravo']] as const) {
   realMatchmaker.join({
     identity: { accountId, displayName, discordUserId: accountId },
+    capabilities,
     send(message) { realMessages.get(accountId)!.push(structuredClone(message)); }
   }, {
     type: 'MATCHMAKING_JOIN',

@@ -10,6 +10,9 @@ export interface GatewayServerConfig {
   simulatedPlayersEnabled: boolean;
   simulatedMatchDelayMs: number;
   simulatedReadyDelayMs: number;
+  draftPickTimeoutMs: number;
+  simulatedDraftPickDelayMs: number;
+  matchCountdownMs: number;
 }
 
 function requiredValue(env: NodeJS.ProcessEnv, name: string): string {
@@ -53,6 +56,9 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
     matchmakingReadyTimeoutMs: 30_000,
     simulatedPlayersEnabled: env.MATCHMAKING_SIMULATED_PLAYERS?.trim().toLowerCase() === 'true',
     simulatedMatchDelayMs: 800,
-    simulatedReadyDelayMs: 900
+    simulatedReadyDelayMs: 900,
+    draftPickTimeoutMs: 15_000,
+    simulatedDraftPickDelayMs: 1_100,
+    matchCountdownMs: 10_000
   };
 }

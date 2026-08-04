@@ -8,7 +8,7 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.38.0',
+  clientVersion: '0.40.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
@@ -30,6 +30,18 @@ assert.equal(isGatewayClientMessage({
   format: 'ranked',
   page: 'game'
 }), false);
+assert.equal(isGatewayClientMessage({
+  type: 'DRAFT_PICK',
+  matchId: 'match-1',
+  challengeId: 'blind-guess',
+  clientRevision: 4
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'DRAFT_PICK',
+  matchId: 'match-1',
+  challengeId: 'blind-guess',
+  clientRevision: -1
+}), false);
 assert.equal(isGatewayServerMessage({
   type: 'MATCH_SNAPSHOT',
   matchId: 'match-1',
@@ -42,8 +54,38 @@ assert.equal(isGatewayServerMessage({
       { accountId: 'b', displayName: 'Bot', ready: true, simulated: true }
     ],
     readyDeadlineAt: 31_000,
+    countdownEndsAt: null,
+    startedAt: null,
     startingAccountId: 'a',
-    createdAt: 1_000
+    createdAt: 1_000,
+    draft: null
+  }
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'MATCH_SNAPSHOT',
+  matchId: 'match-1',
+  revision: 2,
+  state: {
+    format: 'casual',
+    phase: 'draft',
+    participants: [
+      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true }
+    ],
+    readyDeadlineAt: null,
+    countdownEndsAt: null,
+    startedAt: null,
+    startingAccountId: 'a',
+    createdAt: 1_000,
+    draft: {
+      status: 'selecting',
+      requiredPickCount: 9,
+      turnAccountId: 'a',
+      selectionDeadlineAt: 16_000,
+      picks: [],
+      availableChallengeIds: ['blind-guess', 'deaf-guess'],
+      board: null
+    }
   }
 }), true);
 assert.equal(isGatewayServerMessage({

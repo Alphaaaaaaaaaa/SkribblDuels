@@ -25,7 +25,10 @@ const config: GatewayServerConfig = {
   matchmakingReadyTimeoutMs: 30_000,
   simulatedPlayersEnabled: true,
   simulatedMatchDelayMs: 10,
-  simulatedReadyDelayMs: 10
+  simulatedReadyDelayMs: 10,
+  draftPickTimeoutMs: 15_000,
+  simulatedDraftPickDelayMs: 10,
+  matchCountdownMs: 10_000
 };
 
 const gateway = createGatewayServer({
@@ -104,8 +107,15 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.38.0-test',
-  capabilities: ['skribbl-telemetry']
+  clientVersion: '0.40.0-test',
+  capabilities: [
+    'skribbl-telemetry',
+    'official-word-list',
+    'typo',
+    'typo-challenges',
+    'typo-drops',
+    'typo-image-lab'
+  ]
 });
 const connectedPromise = waitForSnapshot(client, snapshot => snapshot.status === 'connected');
 client.setAccessToken('valid-test-token');
@@ -125,6 +135,8 @@ assert.equal(readyCheck.match?.state.participants.length, 2);
 client.setReady(readyCheck.match!.matchId, true);
 const draftReady = await waitForSnapshot(client, snapshot => snapshot.match?.state.phase === 'draft');
 assert.equal(draftReady.match?.state.readyDeadlineAt, null);
+assert.equal(draftReady.match?.state.draft?.requiredPickCount, 25);
+assert.equal(draftReady.match?.state.draft?.selectionDeadlineAt! - Date.now() > 14_000, true);
 
 const rawSocket = io(endpoint, {
   auth: { accessToken: 'valid-test-token' },
@@ -138,7 +150,7 @@ const welcomePromise = waitForMessage(rawSocket, message => message.type === 'WE
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.38.0-test',
+  clientVersion: '0.40.0-test',
   capabilities: ['skribbl-telemetry']
 });
 assert.equal((await welcomePromise).type, 'WELCOME');
@@ -172,6 +184,7 @@ console.log(JSON.stringify({
   authoritativeProfileWelcome: true,
   homepageMatchmaking: true,
   simulatedReadyCheck: true,
+  authoritativeDraftStarted: true,
   pingPong: true,
   missingTokenRejected: true
 }, null, 2));

@@ -5,6 +5,7 @@ import {
   GATEWAY_SOCKET_EVENT,
   isGatewayClientMessage,
   type GatewayClientMessage,
+  type GatewayClientCapability,
   type GatewayErrorMessage,
   type GatewayServerMessage
 } from '@skribbl-duels/gateway-contracts';
@@ -27,6 +28,7 @@ interface GatewaySocketData {
   account: AuthenticatedGatewayAccount;
   helloAccepted: boolean;
   clientVersion: string | null;
+  capabilities: readonly GatewayClientCapability[];
 }
 
 export interface CreateGatewayServerOptions {
@@ -89,7 +91,10 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     readyTimeoutMs: config.matchmakingReadyTimeoutMs,
     simulatedPlayersEnabled: config.simulatedPlayersEnabled,
     simulatedMatchDelayMs: config.simulatedMatchDelayMs,
-    simulatedReadyDelayMs: config.simulatedReadyDelayMs
+    simulatedReadyDelayMs: config.simulatedReadyDelayMs,
+    draftPickTimeoutMs: config.draftPickTimeoutMs,
+    simulatedDraftPickDelayMs: config.simulatedDraftPickDelayMs,
+    matchCountdownMs: config.matchCountdownMs
   });
 
   io.use(async (socket, next) => {
@@ -102,6 +107,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       socket.data.account = decision.account;
       socket.data.helloAccepted = false;
       socket.data.clientVersion = null;
+      socket.data.capabilities = [];
       next();
     } catch {
       next(connectionError(contractError(
@@ -153,6 +159,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         clearTimeout(helloTimer);
         socket.data.helloAccepted = true;
         socket.data.clientVersion = message.clientVersion;
+        socket.data.capabilities = [...message.capabilities];
         const accountId = socket.data.account.identity.accountId;
         const previousSocketId = activeConnections.get(accountId);
         if (previousSocketId && previousSocketId !== socket.id) {
@@ -181,6 +188,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       if (message.type === 'MATCHMAKING_JOIN') {
         matchmaker.join({
           identity: socket.data.account.identity,
+          capabilities: socket.data.capabilities,
           send: outgoing => emitMessage(socket, outgoing)
         }, message);
         return;
@@ -191,6 +199,13 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       }
       if (message.type === 'READY_SET') {
         const decision = matchmaker.setReady(socket.data.account.identity.accountId, message);
+        if (!decision.ok) {
+          emitMessage(socket, contractError(decision.code, decision.message, true));
+        }
+        return;
+      }
+      if (message.type === 'DRAFT_PICK') {
+        const decision = matchmaker.pickDraftChallenge(socket.data.account.identity.accountId, message);
         if (!decision.ok) {
           emitMessage(socket, contractError(decision.code, decision.message, true));
         }

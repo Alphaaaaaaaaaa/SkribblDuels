@@ -22,7 +22,7 @@
 - Casual uses a 3x3 board and a five-field win target.
 - Ranked uses a 5x5 board and a thirteen-field win target.
 - Blind Guess and Drunk Vision must never appear on the same board. Express this through general conflict metadata, not UI-specific conditionals. Deaf Guess remains compatible with either challenge.
-- Preserve the documented 30-second ready check, 15-second draft selection timer, random starting player, and ten-second pre-match countdown for future implementation.
+- Preserve the implemented 30-second ready check, 15-second draft selection timer, random starting player, and ten-second pre-match countdown.
 
 ## Security and configuration
 

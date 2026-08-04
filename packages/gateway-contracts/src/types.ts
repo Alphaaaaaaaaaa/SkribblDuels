@@ -124,13 +124,52 @@ export interface GatewayMatchmakingParticipant {
   simulated: boolean;
 }
 
+export interface GatewayDraftPick {
+  pickNumber: number;
+  accountId: string;
+  challengeId: string;
+  definitionVersion: number;
+  automatic: boolean;
+  pickedAt: number;
+}
+
+export interface GatewayDraftBoardField {
+  fieldIndex: number;
+  challengeId: string;
+  definitionVersion: number;
+}
+
+export interface GatewayDraftBoardSnapshot {
+  boardId: string;
+  format: 'casual' | 'ranked';
+  size: 9 | 25;
+  winTarget: 5 | 13;
+  seed: number;
+  createdAt: number;
+  fields: readonly GatewayDraftBoardField[];
+  manifestVersion: 1;
+}
+
+export interface GatewayDraftState {
+  status: 'selecting' | 'complete';
+  requiredPickCount: 9 | 25;
+  turnAccountId: string | null;
+  selectionDeadlineAt: number | null;
+  picks: readonly GatewayDraftPick[];
+  availableChallengeIds: readonly string[];
+  board: GatewayDraftBoardSnapshot | null;
+}
+
 export interface GatewayMatchmakingState {
   format: 'casual' | 'ranked';
-  phase: 'ready-check' | 'draft' | 'cancelled';
+  phase: 'ready-check' | 'draft' | 'countdown' | 'running' | 'cancelled';
   participants: readonly GatewayMatchmakingParticipant[];
   readyDeadlineAt: number | null;
+  countdownEndsAt: number | null;
+  startedAt: number | null;
   startingAccountId: string;
   createdAt: number;
+  draft?: GatewayDraftState | null;
 }
 
 export interface GatewayMatchmakingEvent {
@@ -138,9 +177,18 @@ export interface GatewayMatchmakingEvent {
     | 'MATCH_ABORTED'
     | 'READY_CHANGED'
     | 'READY_CHECK_COMPLETED'
-    | 'READY_CHECK_EXPIRED';
+    | 'READY_CHECK_EXPIRED'
+    | 'DRAFT_STARTED'
+    | 'DRAFT_PICKED'
+    | 'DRAFT_PICK_TIMED_OUT'
+    | 'DRAFT_COMPLETED'
+    | 'MATCH_COUNTDOWN_STARTED'
+    | 'MATCH_STARTED';
   accountId: string | null;
   reason: string | null;
+  challengeId?: string;
+  pickNumber?: number;
+  automatic?: boolean;
 }
 
 export interface GatewayMatchSnapshotMessage {

@@ -98,10 +98,18 @@ void (async () => {
   const gateway = new MatchTelemetryGateway(match);
   let forwarded = 0;
   gateway.setTransport(() => { forwarded += 1; });
-  match.startMatch('actual-foundation-test', casual, [
+  match.prepareMatchCountdown('actual-foundation-test', casual, [
     { playerId: 'self', displayName: 'Alpha', side: 'self' },
     { playerId: 'opponent', displayName: 'Player 1', side: 'opponent' }
-  ], 10_000);
+  ], 10_000, 5_000);
+  assert.equal(match.getState().phase, 'countdown');
+  assert.equal(match.getState().countdownEndsAt, 10_000);
+  await gateway.observe({ eventId: 'live-during-countdown' } as never);
+  assert.equal(forwarded, 0);
+  match.startPreparedMatch('actual-foundation-test', 10_000);
+  assert.equal(match.getState().phase, 'running');
+  assert.equal(match.getState().countdownEndsAt, null);
+  assert.equal(match.getState().startedAt, 10_000);
   await gateway.observe({ eventId: 'live-before-end' } as never);
   for (const field of casual.fields.slice(0, casual.winTarget)) {
     match.confirmClaim(field.challengeId, `claim-${field.fieldIndex}`, 'self', 11_000 + field.fieldIndex);

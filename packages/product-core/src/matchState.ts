@@ -27,6 +27,7 @@ function initialMatchState(): MatchState {
     participants: [],
     scores: { self: 0, opponent: 0 },
     winner: null,
+    countdownEndsAt: null,
     startedAt: null,
     finishedAt: null,
     freeze: { frozen: false, reason: null, frozenAt: null },
@@ -85,6 +86,9 @@ export function normalizeMatchState(value: unknown): MatchState {
     participants,
     scores: { self: selfScore, opponent: opponentScore },
     winner: input.winner === 'self' || input.winner === 'opponent' ? input.winner : null,
+    countdownEndsAt: phase === 'countdown' && Number.isFinite(input.countdownEndsAt)
+      ? Number(input.countdownEndsAt)
+      : null,
     startedAt: Number.isFinite(input.startedAt) ? Number(input.startedAt) : null,
     finishedAt: Number.isFinite(input.finishedAt) ? Number(input.finishedAt) : null,
     freeze: {
@@ -149,12 +153,71 @@ export class MatchStateStore {
       participants: participants.map(participant => ({ ...participant })),
       scores: { self: 0, opponent: 0 },
       winner: null,
+      countdownEndsAt: null,
       startedAt,
       finishedAt: null,
       freeze: { frozen: false, reason: null, frozenAt: null },
       revision: this.state.revision + 1
     };
     return this.emit('MATCH_STARTED', null, null, null, startedAt);
+  }
+
+  public prepareMatchCountdown(
+    matchId: string,
+    board: DraftBoard,
+    participants: readonly DuelParticipant[],
+    countdownEndsAt: number,
+    occurredAt = Date.now()
+  ): MatchState {
+    if (!Number.isFinite(countdownEndsAt) || countdownEndsAt <= occurredAt) {
+      throw new RangeError('Match countdown must end after it starts.');
+    }
+    this.state = {
+      contractVersion: MATCH_STATE_CONTRACT_VERSION,
+      matchId,
+      phase: 'countdown',
+      format: board.format,
+      boardId: board.boardId,
+      winTarget: board.winTarget,
+      fields: board.fields.map(field => ({
+        ...field,
+        status: 'available',
+        owner: null,
+        pendingCandidateId: null,
+        claimId: null,
+        updatedAt: occurredAt
+      })),
+      participants: participants.map(participant => ({ ...participant })),
+      scores: { self: 0, opponent: 0 },
+      winner: null,
+      countdownEndsAt,
+      startedAt: null,
+      finishedAt: null,
+      freeze: { frozen: false, reason: null, frozenAt: null },
+      revision: this.state.revision + 1
+    };
+    return this.emit(
+      'MATCH_COUNTDOWN_STARTED',
+      null,
+      null,
+      'server-authoritative-countdown',
+      occurredAt
+    );
+  }
+
+  public startPreparedMatch(matchId: string, startedAt = Date.now()): MatchState {
+    if (this.state.matchId === matchId && this.state.phase === 'running') return this.getState();
+    if (this.state.matchId !== matchId || this.state.phase !== 'countdown') {
+      throw new Error('Only the prepared countdown match can be started.');
+    }
+    this.state = {
+      ...this.state,
+      phase: 'running',
+      countdownEndsAt: null,
+      startedAt,
+      revision: this.state.revision + 1
+    };
+    return this.emit('MATCH_STARTED', null, null, 'server-authoritative-start', startedAt);
   }
 
   public markPending(

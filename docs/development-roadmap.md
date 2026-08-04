@@ -12,26 +12,17 @@
 | Release delivery | Complete | ASCII-safe installable userscript tracked at a stable GitHub path |
 | Match lifecycle | Complete | New starts abort old local/server matches and dispose superseded userscript runtimes |
 | Matchmaking and ready check | Complete | Homepage-only Gateway queues, simulated opponents and 30-second ready state |
+| Server-authoritative draft | Complete | Alternating 15-second picks, timeout autopicks, capability/conflict enforcement and validated boards |
+| Synchronized match start | Complete | Fixed 10-second server countdown, shared start timestamp and activation of only the drafted board |
 
 ## Active development sequence
 
-### 1. Server-authoritative draft
+### 1. Match continuity and synchronization
 
-- Casual board: 3×3, five fields required to win.
-- Ranked board: 5×5, thirteen fields required to win.
-- Randomly choose the starting player.
-- Allow 15 seconds for each draft selection.
-- Enforce challenge conflicts on the Gateway. Blind Guess and Drunk Vision can
-  never share a board; Deaf Guess may appear with either one.
-
-### 2. Match start and synchronization
-
-- Start the match timer after the fixed 10-second countdown.
-- Broadcast versioned match snapshots and revisions.
 - Restore a live match after a short reconnect without trusting browser state.
 - Reset series challenges when a player changes skribbl lobby.
 
-### 3. Telemetry and claim authority
+### 2. Telemetry and claim authority
 
 - Batch normalized telemetry from each browser over Contract v1.
 - Validate challenge claim candidates on the Gateway.
@@ -39,7 +30,7 @@
 - Keep skribbl.io and local telemetry running after a Duel finishes while
   suppressing further Duel claims and board changes.
 
-### 4. Persistence and competition
+### 3. Persistence and competition
 
 - Persist matches, participants, boards, claims and final results in Supabase.
 - Add Ranked rating updates and match history only after result validation is
@@ -47,11 +38,12 @@
 - Implement two-complete-game series behavior such as Back to back without
   weakening lobby-change resets.
 
-### 5. Product completion
+### 4. Product completion
 
 - Private Duel chat with server-side delivery and moderation boundaries.
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-The immediate next milestone is phase 1: the server-authoritative 15-second
-draft using the already selected random starting player.
+The immediate next milestone is phase 1 hardening: short reconnect recovery and
+authoritative lobby-change handling. Telemetry batches and server-side claim
+resolution follow after that lifecycle boundary is stable.

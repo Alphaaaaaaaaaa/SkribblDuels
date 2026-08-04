@@ -24,7 +24,8 @@ import {
 } from '@skribbl-duels/product-core';
 import {
   GATEWAY_CONTRACT_VERSION,
-  type GatewayClientCapability
+  type GatewayClientCapability,
+  type GatewayDraftState
 } from '@skribbl-duels/gateway-contracts';
 import {
   GATEWAY_CLIENT_VERSION,
@@ -174,6 +175,21 @@ function challengeName(manifest: ChallengeManifestSnapshot, id: string): string 
   return manifest.entries.find(entry => entry.id === id)?.name ?? id;
 }
 
+function wrapTooltipText(value: string, width = 50): string {
+  return value.split('\n').flatMap(line => {
+    const rows: string[] = [];
+    let remaining = line;
+    while (remaining.length > width) {
+      const wordBoundary = remaining.lastIndexOf(' ', width);
+      const cutAt = wordBoundary > 0 ? wordBoundary : width;
+      rows.push(remaining.slice(0, cutAt));
+      remaining = remaining.slice(cutAt).trimStart();
+    }
+    rows.push(remaining);
+    return rows;
+  }).join('\n');
+}
+
 class CompletionChatAdapter {
   private insertedClaimIds = new Set<string>();
   private pending: CompletionMessage[] = [];
@@ -247,12 +263,16 @@ class CompletionChatAdapter {
 .scd-button:hover { background: rgba(255,255,255,.14); }
 .scd-button.primary { background: var(--SCD_ACCENT); border-color: transparent; color: #fff; font-weight: 700; }
 .scd-button.danger { background: rgba(255,95,95,.17); }
-.scd-field { position: relative; min-width: 0; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.055); color: white; border-radius: 5px; padding: 4px; overflow: hidden; }
+.scd-field { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;aspect-ratio:1/1;border:0;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));color:white;border-radius:4px;padding:4px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.045); }
+.scd-field.empty { background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));opacity:.42; }
+.scd-field.drafted { animation:scd-field-reveal .24s ease-out both; }
+.scd-field.final-slot { box-shadow:inset 0 0 0 2px rgba(255,255,255,.36),0 0 14px rgba(255,255,255,.18); }
 .scd-field.pending { box-shadow: inset 0 0 0 2px #ffd95f; }
-.scd-field.self { background: rgba(86,206,39,.27); border-color: rgba(142,224,135,.8); }
-.scd-field.opponent { background: rgba(206,79,10,.29); border-color: rgba(255,159,114,.8); }
-.scd-field-index { opacity: .55; font-size: 9px; }
-.scd-field-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 1.15; }
+.scd-field.self { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#56ce27); }
+.scd-field.opponent { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#ce4f0a); }
+.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1;border-radius:50%;background:rgba(255,255,255,.09);font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:2px 2px 0 rgba(0,0,0,.28); }
+.scd-field-name { display:block;width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:10px;line-height:1.15;font-weight:700; }
+.scd-final-slot-name { animation:scd-slot-flicker .18s linear infinite; }
 .scd-tab.active { background: var(--SCD_ACCENT); }
 .scd-muted { color: rgba(255,255,255,.6); }
 .scd-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -270,9 +290,11 @@ class CompletionChatAdapter {
 .scd-draft-pick { min-width:0;padding:5px 7px;border-radius:6px;background:rgba(255,255,255,.06);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-draft-pick.self { border-left:3px solid var(--SCD_SELF); }
 .scd-draft-pick.opponent { border-left:3px solid var(--SCD_OPPONENT); }
-.scd-draft-options { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;max-height:260px;overflow:auto;padding-right:3px; }
-.scd-draft-option { min-width:0;text-align:left;font-size:11px;line-height:1.2; }
+.scd-draft-options { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+.scd-draft-option { min-width:0;min-height:58px;text-align:center;font-size:12px;line-height:1.2; }
 .scd-draft-board { display:grid;gap:4px; }
+@keyframes scd-field-reveal { from { opacity:0;transform:scale(.72) rotate(-4deg); } to { opacity:1;transform:scale(1) rotate(0); } }
+@keyframes scd-slot-flicker { 0% { opacity:.45;transform:translateY(-2px); } 50% { opacity:1;transform:translateY(2px); } 100% { opacity:.45;transform:translateY(-2px); } }
 `;
     (document.head ?? document.documentElement).appendChild(style);
   }
@@ -321,7 +343,7 @@ class ProductTooltipManager {
   }
 
   public register(target: HTMLElement, title: string, lock?: 'X' | 'Y'): void {
-    target.dataset.scdTooltip = title;
+    target.dataset.scdTooltip = wrapTooltipText(title);
     if (lock) target.dataset.scdTooltipLock = lock;
     else delete target.dataset.scdTooltipLock;
   }
@@ -423,6 +445,7 @@ export class DuelProductFoundation {
   private board: HTMLDivElement | null = null;
   private boardGrid: HTMLDivElement | null = null;
   private mountGuard: number | null = null;
+  private draftSlotTimer: number | null = null;
   private settings: ProductUiSettings;
   private matchState: MatchState;
   private chatAdapter: CompletionChatAdapter;
@@ -437,6 +460,7 @@ export class DuelProductFoundation {
   private lastGatewayMatchId: string | null = null;
   private matchStartTimer: number | null = null;
   private matchmakingError: string | null = null;
+  private readySubmissionMatchId: string | null = null;
   private destroyed = false;
 
   public constructor(private readonly options: ProductFoundationOptions) {
@@ -473,6 +497,8 @@ export class DuelProductFoundation {
     this.unsubscribers.push(this.gatewayClient.subscribe(state => {
       this.gatewayState = state;
       this.handleGatewayMatchState(state);
+      this.renderVisibility();
+      this.renderBoard();
       if (this.activeTab === 'duel' || this.activeTab === 'match' || this.activeTab === 'about') {
         this.renderPanel();
       }
@@ -507,6 +533,7 @@ export class DuelProductFoundation {
     }));
 
     this.ensureMounted();
+    this.draftSlotTimer = window.setInterval(() => this.tickDraftSlotAnimation(), 90);
     this.mountGuard = window.setInterval(() => {
       this.removeForeignRuntimeDom();
       this.ensureMounted();
@@ -520,7 +547,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.40.0',
+      version: '0.41.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -597,7 +624,9 @@ export class DuelProductFoundation {
     this.abortLocalMatch(reason);
     for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
     if (this.mountGuard !== null) window.clearInterval(this.mountGuard);
+    if (this.draftSlotTimer !== null) window.clearInterval(this.draftSlotTimer);
     this.mountGuard = null;
+    this.draftSlotTimer = null;
     this.chatAdapter.stop();
     this.tooltips.stop();
     this.gatewayClient.stop();
@@ -612,7 +641,7 @@ export class DuelProductFoundation {
     this.boardGrid = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.40.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.41.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -712,7 +741,7 @@ export class DuelProductFoundation {
     header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.12)';
     const title = element('strong', '', 'Skribbl Duels');
     title.style.cssText = 'font-size:16px;flex:1';
-    const version = element('span', 'scd-muted', 'Match Start 0.40.0');
+    const version = element('span', 'scd-muted', 'Pair Draft 0.41.0');
     version.style.fontSize = '10px';
     const close = element('button', 'scd-button', '×') as HTMLButtonElement;
     close.type = 'button';
@@ -753,8 +782,8 @@ export class DuelProductFoundation {
       'position:fixed',
       'z-index:2147483643',
       'width:330px',
-      'background:var(--SCD_PANEL_BG)',
-      'border:1px solid var(--SCD_PANEL_BORDER)',
+      'background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG))',
+      'border:0',
       'border-radius:10px',
       'box-shadow:0 10px 34px rgba(0,0,0,.4)',
       'color:white',
@@ -764,7 +793,7 @@ export class DuelProductFoundation {
     ].join(';');
 
     const header = element('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.1)';
+    header.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 8px';
     const title = element('strong', '', 'Challenge Board');
     title.style.cssText = 'font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     const score = element('span', 'scd-muted');
@@ -783,7 +812,12 @@ export class DuelProductFoundation {
     if (this.panel) this.panel.style.display = this.settings.panelOpen ? 'block' : 'none';
     if (this.board) {
       const hasMatchBoard = this.matchState.phase !== 'idle' && this.matchState.fields.length > 0;
-      this.board.style.display = this.settings.board.visible && hasMatchBoard ? 'block' : 'none';
+      const gatewayDraft = this.gatewayState.match?.state.phase === 'draft'
+        ? this.gatewayState.match.state.draft
+        : null;
+      this.board.style.display = this.settings.board.visible && (hasMatchBoard || Boolean(gatewayDraft))
+        ? 'block'
+        : 'none';
     }
   }
 
@@ -859,6 +893,21 @@ export class DuelProductFoundation {
 
   private renderBoard(): void {
     if (!this.boardGrid || !this.board) return;
+    const gatewayMatch = this.gatewayState.match;
+    const gatewayDraft = gatewayMatch?.state.phase === 'draft' ? gatewayMatch.state.draft : null;
+    if (gatewayDraft) {
+      const columns = gatewayMatch?.state.format === 'casual' ? 3 : 5;
+      this.boardGrid.style.gridTemplateColumns = `repeat(${columns},minmax(0,1fr))`;
+      this.boardGrid.replaceChildren(...this.createDraftProgressFields(gatewayDraft, this.settings.board.showNames));
+      const score = this.board.querySelector<HTMLElement>('[data-role="score"]');
+      if (score && gatewayMatch) {
+        const selfAccountId = this.gatewayState.identity?.accountId;
+        const self = gatewayMatch.state.participants.find(participant => participant.accountId === selfAccountId);
+        const opponent = gatewayMatch.state.participants.find(participant => participant.accountId !== selfAccountId);
+        score.textContent = `${self?.displayName ?? this.options.getSelfName()} · 0:0 · ${opponent?.displayName ?? 'Opponent'}`;
+      }
+      return;
+    }
     const fields = this.matchState.fields;
     const columns = this.matchState.format === 'casual' ? 3 : 5;
     this.boardGrid.style.gridTemplateColumns = `repeat(${columns},minmax(0,1fr))`;
@@ -874,8 +923,7 @@ export class DuelProductFoundation {
         this.tooltips.register(node, `${challengeName(this.manifest, field.challengeId)}\n${field.challengeId}`);
         if (field.status === 'pending') node.classList.add('pending');
         if (field.status === 'claimed' && field.owner) node.classList.add(field.owner);
-        const index = element('span', 'scd-field-index', String(field.fieldIndex + 1));
-        node.appendChild(index);
+        node.appendChild(element('span', 'scd-field-icon', challengeName(this.manifest, field.challengeId).slice(0, 1).toUpperCase()));
         if (this.settings.board.showNames) {
           node.appendChild(element('span', 'scd-field-name', challengeName(this.manifest, field.challengeId)));
         }
@@ -890,13 +938,75 @@ export class DuelProductFoundation {
           0,
           Math.ceil(((this.matchState.countdownEndsAt ?? this.serverNow()) - this.serverNow()) / 1000)
         );
-        score.textContent = `starts in ${remaining}s`;
+        const self = this.matchState.participants.find(participant => participant.side === 'self');
+        const opponent = this.matchState.participants.find(participant => participant.side === 'opponent');
+        score.textContent = `${self?.displayName ?? this.options.getSelfName()} · 0:0 · ${opponent?.displayName ?? 'Opponent'} · ${remaining}s`;
       } else {
+        const self = this.matchState.participants.find(participant => participant.side === 'self');
+        const opponent = this.matchState.participants.find(participant => participant.side === 'opponent');
         score.textContent = this.matchState.phase === 'finished'
-          ? `${this.matchState.scores.self}:${this.matchState.scores.opponent} · frozen`
-          : `${this.matchState.scores.self}:${this.matchState.scores.opponent} · first to ${this.matchState.winTarget || '-'}`;
+          ? `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'} · frozen`
+          : `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`;
       }
     }
+  }
+
+  private createDraftProgressFields(draft: GatewayDraftState, showNames: boolean): HTMLDivElement[] {
+    const nodes: HTMLDivElement[] = [];
+    for (let fieldIndex = 0; fieldIndex < draft.requiredPickCount; fieldIndex += 1) {
+      const pick = draft.picks[fieldIndex];
+      if (pick) {
+        const node = element('div', 'scd-field drafted');
+        const selfAccountId = this.gatewayState.identity?.accountId;
+        if (pick.accountId === selfAccountId) node.classList.add('self');
+        else if (pick.accountId !== null) node.classList.add('opponent');
+        const name = challengeName(this.manifest, pick.challengeId);
+        const icon = element('span', 'scd-field-icon', name.slice(0, 1).toUpperCase());
+        icon.dataset.challengeId = pick.challengeId;
+        node.appendChild(icon);
+        if (showNames) node.appendChild(element('span', 'scd-field-name', name));
+        const source = pick.source === 'server-random' ? 'Selected randomly by the server' : 'Drafted';
+        this.tooltips.register(node, `${source}: ${name}\n${pick.challengeId}`);
+        nodes.push(node);
+        continue;
+      }
+      if (draft.status === 'finalizing' && fieldIndex === draft.picks.length) {
+        const challengeId = this.currentDraftSlotChallengeId(draft);
+        const name = challengeId ? challengeName(this.manifest, challengeId) : 'Server draw';
+        const node = element('div', 'scd-field final-slot');
+        const icon = element('span', 'scd-field-icon scd-final-slot-icon', name.slice(0, 1).toUpperCase());
+        const label = element('span', 'scd-field-name scd-final-slot-name', name);
+        node.append(icon, label);
+        this.tooltips.register(node, 'The server is randomly selecting the final parity field.');
+        nodes.push(node);
+        continue;
+      }
+      nodes.push(element('div', 'scd-field empty'));
+    }
+    return nodes;
+  }
+
+  private currentDraftSlotChallengeId(draft: GatewayDraftState): string | null {
+    if (draft.status !== 'finalizing' || draft.finalCandidateChallengeIds.length === 0) return null;
+    const index = Math.floor(this.serverNow() / 90) % draft.finalCandidateChallengeIds.length;
+    return draft.finalCandidateChallengeIds[index] ?? null;
+  }
+
+  private tickDraftSlotAnimation(): void {
+    const draft = this.gatewayState.match?.state.phase === 'draft'
+      ? this.gatewayState.match.state.draft
+      : null;
+    if (!draft || draft.status !== 'finalizing') return;
+    const challengeId = this.currentDraftSlotChallengeId(draft);
+    if (!challengeId) return;
+    const name = challengeName(this.manifest, challengeId);
+    document.querySelectorAll<HTMLElement>('.scd-final-slot-name').forEach(node => {
+      node.textContent = name;
+    });
+    document.querySelectorAll<HTMLElement>('.scd-final-slot-icon').forEach(node => {
+      node.textContent = name.slice(0, 1).toUpperCase();
+      node.dataset.challengeId = challengeId;
+    });
   }
 
   private renderPanel(): void {
@@ -917,12 +1027,6 @@ export class DuelProductFoundation {
   private renderDuelTab(): void {
     if (!this.panelBody) return;
     const stack = element('div', 'scd-stack');
-    const intro = element('div', 'scd-card');
-    intro.append(
-      element('strong', '', 'Product Foundation'),
-      element('p', 'scd-muted', 'The challenge pool is frozen at 46 for this phase. Boards are generated from a versioned manifest and validated before match start.')
-    );
-
     const account = element('div', 'scd-card scd-stack');
     account.appendChild(element('strong', '', 'Skribbl Duels account'));
     if (this.authState.status === 'signed-in' && this.authState.profile) {
@@ -941,7 +1045,7 @@ export class DuelProductFoundation {
       const copy = element('div', 'scd-auth-copy');
       copy.append(
         element('div', 'scd-auth-name', this.authState.profile.displayName),
-        element('div', 'scd-auth-email', this.authState.profile.email ?? `Discord: ${this.authState.profile.username}`)
+        element('div', 'scd-auth-email', `Discord: ${this.authState.profile.username}`)
       );
       const signOut = element('button', 'scd-button', 'Sign out') as HTMLButtonElement;
       signOut.type = 'button';
@@ -999,13 +1103,7 @@ export class DuelProductFoundation {
 
     const matchmaking = this.createMatchmakingCard();
 
-    const compatibility = element('div', 'scd-card');
-    compatibility.append(
-      element('strong', '', 'Draft compatibility'),
-      element('p', 'scd-muted', 'Blind Guess and Drunk Vision share the conflict key “primary-visual-obstruction” and can never appear together. Deaf Guess may appear with either one.')
-    );
-
-    stack.append(account, gatewayConnection, matchmaking, intro, compatibility);
+    stack.append(account, gatewayConnection, matchmaking);
     this.panelBody.appendChild(stack);
   }
 
@@ -1034,8 +1132,27 @@ export class DuelProductFoundation {
           element('div', 'scd-muted', `Ready check: ${remaining}s · You ${self?.ready ? '✓' : '…'} · Opponent ${opponent?.ready ? '✓' : '…'}`)
         );
         const row = element('div', 'scd-row');
-        const ready = element('button', 'scd-button primary', self?.ready ? 'Not ready' : 'Ready') as HTMLButtonElement;
-        ready.addEventListener('click', () => this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready));
+        const accepting = this.readySubmissionMatchId === gatewayMatch.matchId && !self?.ready;
+        const ready = element(
+          'button',
+          'scd-button primary',
+          self?.ready ? 'Accepted ✓' : accepting ? 'Accepting…' : 'Accept'
+        ) as HTMLButtonElement;
+        ready.type = 'button';
+        ready.disabled = Boolean(self?.ready) || accepting;
+        ready.addEventListener('click', () => {
+          if (ready.disabled) return;
+          this.readySubmissionMatchId = gatewayMatch.matchId;
+          ready.disabled = true;
+          ready.textContent = 'Accepting…';
+          try {
+            this.gatewayClient.setReady(gatewayMatch.matchId, true);
+          } catch (error) {
+            this.readySubmissionMatchId = null;
+            this.matchmakingError = error instanceof Error ? error.message : String(error);
+            this.renderPanel();
+          }
+        });
         const cancel = element('button', 'scd-button danger', 'Cancel') as HTMLButtonElement;
         cancel.addEventListener('click', () => this.cancelMatchmaking());
         row.append(ready, cancel);
@@ -1116,8 +1233,13 @@ export class DuelProductFoundation {
 
     card.append(
       element('div', '', `${state.format === 'casual' ? 'Casual 3×3' : 'Ranked 5×5'} draft against ${opponent?.displayName ?? 'opponent'}`),
-      element('div', 'scd-muted', `${draft.picks.length}/${draft.requiredPickCount} challenges selected · server revision ${gatewayMatch.revision}`)
+      element('div', 'scd-muted', `${draft.picks.length}/${draft.requiredPickCount} board fields filled · server revision ${gatewayMatch.revision}`)
     );
+
+    const board = element('div', 'scd-draft-board');
+    board.style.gridTemplateColumns = `repeat(${state.format === 'casual' ? 3 : 5},minmax(0,1fr))`;
+    board.append(...this.createDraftProgressFields(draft, true));
+    card.appendChild(board);
 
     if (draft.picks.length > 0) {
       const picks = element('div', 'scd-draft-picks');
@@ -1131,7 +1253,7 @@ export class DuelProductFoundation {
         );
         this.tooltips.register(
           node,
-          `${participant?.displayName ?? 'Player'} selected ${challengeName(this.manifest, pick.challengeId)}${pick.automatic ? ' automatically' : ''}`
+          `${pick.accountId === null ? 'Server' : participant?.displayName ?? 'Player'} selected ${challengeName(this.manifest, pick.challengeId)}${pick.automatic ? ' automatically' : ''}`
         );
         picks.appendChild(node);
       }
@@ -1140,21 +1262,13 @@ export class DuelProductFoundation {
 
     if (draft.status === 'complete') {
       card.appendChild(element('div', 'scd-muted', 'Draft complete. The Gateway validated the final board and all challenge conflicts.'));
-      if (draft.board) {
-        const board = element('div', 'scd-draft-board');
-        board.style.gridTemplateColumns = `repeat(${draft.board.format === 'casual' ? 3 : 5},minmax(0,1fr))`;
-        for (const field of draft.board.fields) {
-          const node = element('div', 'scd-field');
-          node.append(
-            element('span', 'scd-field-index', String(field.fieldIndex + 1)),
-            element('span', 'scd-field-name', challengeName(this.manifest, field.challengeId))
-          );
-          this.tooltips.register(node, challengeName(this.manifest, field.challengeId));
-          board.appendChild(node);
-        }
-        card.appendChild(board);
-      }
       card.appendChild(element('div', 'scd-muted', 'Waiting for the Gateway to publish the synchronized 10-second countdown.'));
+    } else if (draft.status === 'finalizing') {
+      const remaining = Math.max(0, ((draft.finalRevealAt ?? this.serverNow()) - this.serverNow()) / 1000);
+      card.append(
+        element('div', '', `Server parity draw · ${remaining.toFixed(1)}s`),
+        element('div', 'scd-muted', 'Both players made the same number of choices. The Gateway is now revealing the final field from the remaining compatible challenges.')
+      );
     } else {
       const current = state.participants.find(participant => participant.accountId === draft.turnAccountId);
       const ownTurn = draft.turnAccountId === selfAccountId;
@@ -1169,10 +1283,9 @@ export class DuelProductFoundation {
 
       if (ownTurn) {
         const options = element('div', 'scd-draft-options');
-        const entries = draft.availableChallengeIds
+        const entries = draft.offeredChallengeIds
           .map(challengeId => this.manifest.entries.find(entry => entry.id === challengeId))
-          .filter(entry => entry !== undefined)
-          .sort((left, right) => left.name.localeCompare(right.name));
+          .filter(entry => entry !== undefined);
         for (const entry of entries) {
           const button = element('button', 'scd-button scd-draft-option', entry.name) as HTMLButtonElement;
           button.type = 'button';
@@ -1367,7 +1480,7 @@ export class DuelProductFoundation {
     const architecture = element('div', 'scd-card');
     architecture.append(
       element('strong', '', 'Current phase'),
-      element('p', 'scd-muted', 'Challenge Manifest v1 → Draft Constraint Engine → Match State Contract → Gateway Contract v1 → UI Settings and overlays.'),
+      element('p', 'scd-muted', 'Challenge Manifest v1 → Pair Draft Authority → Match State Contract → Gateway Contract v2 → UI Settings and overlays.'),
       element('p', 'scd-muted', `${this.manifest.entries.length} versioned challenges are available. Later additions remain compatible because boards store challenge ID and definition version snapshots.`)
     );
     const authentication = element('div', 'scd-card');
@@ -1385,7 +1498,7 @@ export class DuelProductFoundation {
     const gateway = element('div', 'scd-card');
     gateway.append(
       element('strong', '', `Gateway Contract v${GATEWAY_CONTRACT_VERSION}`),
-      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, the alternating 15-second draft and the synchronized 10-second match start are implemented.`)
+      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, two-option 15-second turns, the server-random parity field and the synchronized 10-second match start are implemented.`)
     );
     stack.append(architecture, authentication, freeze, gateway);
     this.panelBody.appendChild(stack);
@@ -1510,7 +1623,9 @@ export class DuelProductFoundation {
 
   private handleGatewayMatchState(state: GatewayConnectionSnapshot): void {
     const snapshot = state.match;
+    if (state.error) this.readySubmissionMatchId = null;
     if (!snapshot) {
+      this.readySubmissionMatchId = null;
       if (!state.queue) {
         if (this.lastGatewayMatchId !== null && state.status !== 'connected') {
           this.abortLocalMatch('gateway-match-connection-lost');
@@ -1522,6 +1637,13 @@ export class DuelProductFoundation {
     if (snapshot.matchId !== this.lastGatewayMatchId) {
       this.abortLocalMatch('gateway-match-superseded-local-state');
       this.lastGatewayMatchId = snapshot.matchId;
+    }
+    if (snapshot.state.phase !== 'ready-check') {
+      this.readySubmissionMatchId = null;
+    } else {
+      const selfAccountId = state.identity?.accountId;
+      const self = snapshot.state.participants.find(participant => participant.accountId === selfAccountId);
+      if (self?.ready) this.readySubmissionMatchId = null;
     }
     if (snapshot.state.phase === 'cancelled') {
       this.abortLocalMatch('gateway-match-cancelled');

@@ -28,6 +28,7 @@ const config: GatewayServerConfig = {
   simulatedReadyDelayMs: 10,
   draftPickTimeoutMs: 15_000,
   simulatedDraftPickDelayMs: 10,
+  draftFinalRevealMs: 8,
   matchCountdownMs: 10_000
 };
 
@@ -107,7 +108,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.40.0-test',
+  clientVersion: '0.41.0-test',
   capabilities: [
     'skribbl-telemetry',
     'official-word-list',
@@ -150,7 +151,7 @@ const welcomePromise = waitForMessage(rawSocket, message => message.type === 'WE
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.40.0-test',
+  clientVersion: '0.41.0-test',
   capabilities: ['skribbl-telemetry']
 });
 assert.equal((await welcomePromise).type, 'WELCOME');

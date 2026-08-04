@@ -1,4 +1,4 @@
-export const GATEWAY_CONTRACT_VERSION = 1 as const;
+export const GATEWAY_CONTRACT_VERSION = 2 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -126,10 +126,11 @@ export interface GatewayMatchmakingParticipant {
 
 export interface GatewayDraftPick {
   pickNumber: number;
-  accountId: string;
+  accountId: string | null;
   challengeId: string;
   definitionVersion: number;
   automatic: boolean;
+  source: 'player' | 'selection-timeout' | 'simulated-selection' | 'server-random';
   pickedAt: number;
 }
 
@@ -151,12 +152,15 @@ export interface GatewayDraftBoardSnapshot {
 }
 
 export interface GatewayDraftState {
-  status: 'selecting' | 'complete';
+  status: 'selecting' | 'finalizing' | 'complete';
   requiredPickCount: 9 | 25;
+  playerPickCount: 8 | 24;
   turnAccountId: string | null;
   selectionDeadlineAt: number | null;
   picks: readonly GatewayDraftPick[];
-  availableChallengeIds: readonly string[];
+  offeredChallengeIds: readonly string[];
+  finalCandidateChallengeIds: readonly string[];
+  finalRevealAt: number | null;
   board: GatewayDraftBoardSnapshot | null;
 }
 
@@ -181,6 +185,8 @@ export interface GatewayMatchmakingEvent {
     | 'DRAFT_STARTED'
     | 'DRAFT_PICKED'
     | 'DRAFT_PICK_TIMED_OUT'
+    | 'DRAFT_FINAL_RANDOM_STARTED'
+    | 'DRAFT_FINAL_RANDOM_SELECTED'
     | 'DRAFT_COMPLETED'
     | 'MATCH_COUNTDOWN_STARTED'
     | 'MATCH_STARTED';

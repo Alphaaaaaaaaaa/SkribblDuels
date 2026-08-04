@@ -94,6 +94,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     simulatedReadyDelayMs: config.simulatedReadyDelayMs,
     draftPickTimeoutMs: config.draftPickTimeoutMs,
     simulatedDraftPickDelayMs: config.simulatedDraftPickDelayMs,
+    draftFinalRevealMs: config.draftFinalRevealMs,
     matchCountdownMs: config.matchCountdownMs
   });
 
@@ -145,7 +146,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
               'CONTRACT_VERSION_UNSUPPORTED',
               `Gateway Contract v${GATEWAY_CONTRACT_VERSION} is required.`
             )
-          : contractError('INVALID_MESSAGE', 'Gateway message failed Contract v1 validation.'));
+          : contractError('INVALID_MESSAGE', `Gateway message failed Contract v${GATEWAY_CONTRACT_VERSION} validation.`));
         socket.disconnect(true);
         return;
       }

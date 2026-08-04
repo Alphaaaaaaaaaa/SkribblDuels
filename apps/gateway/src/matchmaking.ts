@@ -32,6 +32,7 @@ export interface GatewayMatchmakerOptions {
   simulatedReadyDelayMs: number;
   draftPickTimeoutMs: number;
   simulatedDraftPickDelayMs: number;
+  draftFinalRevealMs: number;
   matchCountdownMs: number;
   now?: () => number;
   createId?: () => string;
@@ -53,10 +54,14 @@ interface MatchParticipant extends MatchmakingPeer {
 interface ActiveDraft {
   status: GatewayDraftState['status'];
   requiredPickCount: 9 | 25;
+  playerPickCount: 8 | 24;
   turnAccountId: string | null;
   selectionDeadlineAt: number | null;
   picks: GatewayDraftPick[];
-  availableChallengeIds: string[];
+  offeredChallengeIds: string[];
+  finalCandidateChallengeIds: string[];
+  finalRevealAt: number | null;
+  pendingFinalChallengeId: string | null;
   board: GatewayDraftBoardSnapshot | null;
   seed: number;
   capabilities: GatewayClientCapability[];
@@ -206,11 +211,11 @@ export class GatewayMatchmaker {
     if (!participant) {
       return { ok: false, code: 'DRAFT_PARTICIPANT_INVALID', message: 'This account cannot make the requested draft pick.' };
     }
-    if (!draft.availableChallengeIds.includes(message.challengeId)) {
+    if (!draft.offeredChallengeIds.includes(message.challengeId)) {
       return {
         ok: false,
         code: 'DRAFT_CHALLENGE_UNAVAILABLE',
-        message: 'That challenge is unavailable, already selected or conflicts with the current board.'
+        message: 'That challenge is not one of the two current server offers.'
       };
     }
     this.acceptDraftPick(match, accountId, message.challengeId, false, 'player-selection');
@@ -320,7 +325,15 @@ export class GatewayMatchmaker {
       seed
     );
     const requiredPickCount = this.draftAuthority.requiredPickCount(match.format);
-    if (availableChallengeIds.length < requiredPickCount) {
+    const playerPickCount = (requiredPickCount - 1) as 8 | 24;
+    const offeredChallengeIds = this.draftAuthority.createChallengeOffer(
+      match.format,
+      [],
+      capabilities,
+      seed,
+      this.random
+    );
+    if (availableChallengeIds.length < requiredPickCount || offeredChallengeIds.length !== 2) {
       this.abortMatch(match.matchId, null, 'insufficient-shared-draft-capabilities');
       return;
     }
@@ -331,10 +344,14 @@ export class GatewayMatchmaker {
     match.draft = {
       status: 'selecting',
       requiredPickCount,
+      playerPickCount,
       turnAccountId: match.startingAccountId,
       selectionDeadlineAt: this.now() + this.options.draftPickTimeoutMs,
       picks: [],
-      availableChallengeIds,
+      offeredChallengeIds,
+      finalCandidateChallengeIds: [],
+      finalRevealAt: null,
+      pendingFinalChallengeId: null,
       board: null,
       seed,
       capabilities
@@ -364,7 +381,7 @@ export class GatewayMatchmaker {
   ): void {
     const draft = match.draft;
     if (match.phase !== 'draft' || !draft || draft.status !== 'selecting') return;
-    if (draft.turnAccountId !== accountId || !draft.availableChallengeIds.includes(challengeId)) return;
+    if (draft.turnAccountId !== accountId || !draft.offeredChallengeIds.includes(challengeId)) return;
     const definitionVersion = this.draftAuthority.definitionVersion(challengeId);
     if (definitionVersion === null) {
       this.abortMatch(match.matchId, null, 'unknown-authoritative-draft-challenge');
@@ -378,6 +395,11 @@ export class GatewayMatchmaker {
       challengeId,
       definitionVersion,
       automatic,
+      source: reason === 'selection-timeout'
+        ? 'selection-timeout'
+        : reason === 'simulated-selection'
+          ? 'simulated-selection'
+          : 'player',
       pickedAt: this.now()
     };
     draft.picks.push(pick);
@@ -391,29 +413,8 @@ export class GatewayMatchmaker {
       automatic
     });
 
-    if (draft.picks.length === draft.requiredPickCount) {
-      try {
-        draft.board = this.draftAuthority.createCompletedBoard(
-          match.format,
-          draft.picks.map(item => item.challengeId),
-          draft.capabilities,
-          draft.seed,
-          this.now()
-        );
-      } catch {
-        this.abortMatch(match.matchId, null, 'authoritative-draft-validation-failed');
-        return;
-      }
-      draft.status = 'complete';
-      draft.turnAccountId = null;
-      draft.selectionDeadlineAt = null;
-      draft.availableChallengeIds = [];
-      this.emitEvent(match, {
-        type: 'DRAFT_COMPLETED',
-        accountId: null,
-        reason: 'required-board-size-reached'
-      });
-      this.beginCountdown(match);
+    if (draft.picks.length === draft.playerPickCount) {
+      this.beginFinalRandomSelection(match);
       return;
     }
 
@@ -427,14 +428,15 @@ export class GatewayMatchmaker {
     }
     draft.turnAccountId = next.identity.accountId;
     draft.selectionDeadlineAt = this.now() + this.options.draftPickTimeoutMs;
-    draft.availableChallengeIds = this.draftAuthority.availableChallengeIds(
+    draft.offeredChallengeIds = this.draftAuthority.createChallengeOffer(
       match.format,
       draft.picks.map(item => item.challengeId),
       draft.capabilities,
-      draft.seed
+      draft.seed,
+      this.random
     );
-    if (draft.availableChallengeIds.length === 0) {
-      this.abortMatch(match.matchId, null, 'no-compatible-draft-challenge-remaining');
+    if (draft.offeredChallengeIds.length !== 2) {
+      this.abortMatch(match.matchId, null, 'no-compatible-two-challenge-offer-remaining');
       return;
     }
     this.emitSnapshot(match);
@@ -466,17 +468,107 @@ export class GatewayMatchmaker {
     const match = this.matches.get(matchId);
     const draft = match?.draft;
     if (!match || match.phase !== 'draft' || !draft || draft.status !== 'selecting') return;
-    if (draft.turnAccountId !== expectedAccountId || draft.availableChallengeIds.length === 0) return;
+    if (draft.turnAccountId !== expectedAccountId || draft.offeredChallengeIds.length !== 2) return;
     const index = Math.min(
-      draft.availableChallengeIds.length - 1,
-      Math.floor(this.random() * draft.availableChallengeIds.length)
+      draft.offeredChallengeIds.length - 1,
+      Math.floor(this.random() * draft.offeredChallengeIds.length)
     );
-    const challengeId = draft.availableChallengeIds[index];
+    const challengeId = draft.offeredChallengeIds[index];
     if (!challengeId) {
       this.abortMatch(matchId, null, 'automatic-draft-selection-failed');
       return;
     }
     this.acceptDraftPick(match, expectedAccountId, challengeId, true, reason);
+  }
+
+  private beginFinalRandomSelection(match: ActiveMatch): void {
+    const draft = match.draft;
+    if (match.phase !== 'draft' || !draft || draft.status !== 'selecting') return;
+    if (draft.picks.length !== draft.playerPickCount) return;
+    this.clearDraftTimers(match);
+    const selection = this.draftAuthority.chooseFinalChallengeId(
+      match.format,
+      draft.picks.map(item => item.challengeId),
+      draft.capabilities,
+      draft.seed,
+      this.random
+    );
+    if (!selection) {
+      this.abortMatch(match.matchId, null, 'server-random-final-challenge-unavailable');
+      return;
+    }
+    const finalRevealAt = this.now() + this.options.draftFinalRevealMs;
+    draft.status = 'finalizing';
+    draft.turnAccountId = null;
+    draft.selectionDeadlineAt = null;
+    draft.offeredChallengeIds = [];
+    draft.finalCandidateChallengeIds = selection.candidateChallengeIds;
+    draft.finalRevealAt = finalRevealAt;
+    draft.pendingFinalChallengeId = selection.challengeId;
+    this.emitEvent(match, {
+      type: 'DRAFT_FINAL_RANDOM_STARTED',
+      accountId: null,
+      reason: 'parity-final-field-server-random'
+    });
+    this.emitSnapshot(match);
+    match.draftTimer = setTimeout(() => {
+      match.draftTimer = null;
+      this.revealFinalRandomSelection(match.matchId, finalRevealAt);
+    }, Math.max(0, finalRevealAt - this.now()));
+    match.draftTimer.unref?.();
+  }
+
+  private revealFinalRandomSelection(matchId: string, expectedRevealAt: number): void {
+    const match = this.matches.get(matchId);
+    const draft = match?.draft;
+    if (!match || match.phase !== 'draft' || !draft || draft.status !== 'finalizing') return;
+    if (draft.finalRevealAt !== expectedRevealAt || !draft.pendingFinalChallengeId) return;
+    const challengeId = draft.pendingFinalChallengeId;
+    const definitionVersion = this.draftAuthority.definitionVersion(challengeId);
+    if (definitionVersion === null) {
+      this.abortMatch(matchId, null, 'unknown-server-random-final-challenge');
+      return;
+    }
+    draft.picks.push({
+      pickNumber: draft.picks.length + 1,
+      accountId: null,
+      challengeId,
+      definitionVersion,
+      automatic: true,
+      source: 'server-random',
+      pickedAt: this.now()
+    });
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'DRAFT_FINAL_RANDOM_SELECTED',
+      accountId: null,
+      reason: 'parity-final-field-server-random',
+      challengeId,
+      pickNumber: draft.picks.length,
+      automatic: true
+    });
+    try {
+      draft.board = this.draftAuthority.createCompletedBoard(
+        match.format,
+        draft.picks.map(item => item.challengeId),
+        draft.capabilities,
+        draft.seed,
+        this.now()
+      );
+    } catch {
+      this.abortMatch(match.matchId, null, 'authoritative-draft-validation-failed');
+      return;
+    }
+    draft.status = 'complete';
+    draft.finalCandidateChallengeIds = [];
+    draft.finalRevealAt = null;
+    draft.pendingFinalChallengeId = null;
+    this.emitEvent(match, {
+      type: 'DRAFT_COMPLETED',
+      accountId: null,
+      reason: 'server-random-final-field-revealed'
+    });
+    this.beginCountdown(match);
   }
 
   private beginCountdown(match: ActiveMatch): void {
@@ -639,10 +731,13 @@ export class GatewayMatchmaker {
       draft: match.draft ? {
         status: match.draft.status,
         requiredPickCount: match.draft.requiredPickCount,
+        playerPickCount: match.draft.playerPickCount,
         turnAccountId: match.draft.turnAccountId,
         selectionDeadlineAt: match.draft.selectionDeadlineAt,
         picks: match.draft.picks.map(pick => ({ ...pick })),
-        availableChallengeIds: [...match.draft.availableChallengeIds],
+        offeredChallengeIds: [...match.draft.offeredChallengeIds],
+        finalCandidateChallengeIds: [...match.draft.finalCandidateChallengeIds],
+        finalRevealAt: match.draft.finalRevealAt,
         board: match.draft.board ? structuredClone(match.draft.board) : null
       } : null
     };

@@ -57,10 +57,14 @@ function draftPick(value: unknown): boolean {
   const pick = record(value);
   return Boolean(pick
     && nonNegativeInteger(pick.pickNumber)
-    && nonEmptyString(pick.accountId)
+    && (pick.accountId === null || nonEmptyString(pick.accountId))
     && nonEmptyString(pick.challengeId)
     && nonNegativeInteger(pick.definitionVersion)
     && typeof pick.automatic === 'boolean'
+    && (pick.source === 'player'
+      || pick.source === 'selection-timeout'
+      || pick.source === 'simulated-selection'
+      || pick.source === 'server-random')
     && finiteNumber(pick.pickedAt));
 }
 
@@ -90,26 +94,44 @@ function draftBoard(value: unknown): boolean {
 function draftState(value: unknown): value is GatewayDraftState {
   const draft = record(value);
   if (!draft
-      || (draft.status !== 'selecting' && draft.status !== 'complete')
+      || (draft.status !== 'selecting' && draft.status !== 'finalizing' && draft.status !== 'complete')
       || (draft.requiredPickCount !== 9 && draft.requiredPickCount !== 25)
+      || (draft.playerPickCount !== 8 && draft.playerPickCount !== 24)
+      || draft.playerPickCount !== draft.requiredPickCount - 1
       || (draft.turnAccountId !== null && !nonEmptyString(draft.turnAccountId))
       || (draft.selectionDeadlineAt !== null && !finiteNumber(draft.selectionDeadlineAt))
       || !Array.isArray(draft.picks)
       || draft.picks.length > draft.requiredPickCount
       || !draft.picks.every(draftPick)
-      || !stringArray(draft.availableChallengeIds, 64)
+      || !stringArray(draft.offeredChallengeIds, 2)
+      || !stringArray(draft.finalCandidateChallengeIds, 64)
+      || (draft.finalRevealAt !== null && !finiteNumber(draft.finalRevealAt))
       || (draft.board !== null && !draftBoard(draft.board))) return false;
   if (draft.status === 'selecting') {
     return nonEmptyString(draft.turnAccountId)
       && finiteNumber(draft.selectionDeadlineAt)
-      && draft.picks.length < draft.requiredPickCount
-      && draft.availableChallengeIds.length > 0
+      && draft.picks.length < draft.playerPickCount
+      && draft.offeredChallengeIds.length === 2
+      && new Set(draft.offeredChallengeIds).size === 2
+      && draft.finalCandidateChallengeIds.length === 0
+      && draft.finalRevealAt === null
+      && draft.board === null;
+  }
+  if (draft.status === 'finalizing') {
+    return draft.turnAccountId === null
+      && draft.selectionDeadlineAt === null
+      && draft.picks.length === draft.playerPickCount
+      && draft.offeredChallengeIds.length === 0
+      && draft.finalCandidateChallengeIds.length > 0
+      && finiteNumber(draft.finalRevealAt)
       && draft.board === null;
   }
   return draft.turnAccountId === null
     && draft.selectionDeadlineAt === null
     && draft.picks.length === draft.requiredPickCount
-    && draft.availableChallengeIds.length === 0
+    && draft.offeredChallengeIds.length === 0
+    && draft.finalCandidateChallengeIds.length === 0
+    && draft.finalRevealAt === null
     && draft.board !== null;
 }
 
@@ -167,6 +189,8 @@ function matchmakingEvent(value: unknown): boolean {
       || event.type === 'DRAFT_STARTED'
       || event.type === 'DRAFT_PICKED'
       || event.type === 'DRAFT_PICK_TIMED_OUT'
+      || event.type === 'DRAFT_FINAL_RANDOM_STARTED'
+      || event.type === 'DRAFT_FINAL_RANDOM_SELECTED'
       || event.type === 'DRAFT_COMPLETED'
       || event.type === 'MATCH_COUNTDOWN_STARTED'
       || event.type === 'MATCH_STARTED')

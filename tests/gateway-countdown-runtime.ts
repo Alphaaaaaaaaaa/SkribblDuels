@@ -36,6 +36,7 @@ const matchmaker = new GatewayMatchmaker({
   simulatedReadyDelayMs: 5,
   draftPickTimeoutMs: 15_000,
   simulatedDraftPickDelayMs: 5,
+  draftFinalRevealMs: 8,
   matchCountdownMs: countdownMs,
   createId: () => `countdown-${++id}`,
   random: () => 0
@@ -68,8 +69,13 @@ while (true) {
   if (latest.state.phase === 'countdown') break;
   assert.equal(latest.state.phase, 'draft');
   const draft = latest.state.draft;
-  assert.ok(draft?.turnAccountId);
-  const challengeId = draft.availableChallengeIds[0];
+  assert.ok(draft);
+  if (draft.status === 'finalizing') {
+    await new Promise(resolve => setTimeout(resolve, 2));
+    continue;
+  }
+  assert.ok(draft.turnAccountId);
+  const challengeId = draft.offeredChallengeIds[0];
   assert.ok(challengeId);
   const decision = matchmaker.pickDraftChallenge(draft.turnAccountId, {
     type: 'DRAFT_PICK',

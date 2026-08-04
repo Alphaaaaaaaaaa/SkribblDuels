@@ -65,6 +65,91 @@ export class GatewayDraftAuthority {
       .map(entry => entry.id);
   }
 
+  public createChallengeOffer(
+    format: DuelFormat,
+    selectedChallengeIds: readonly string[],
+    capabilities: readonly GatewayClientCapability[],
+    seed: number,
+    random: () => number
+  ): string[] {
+    const availableIds = this.availableChallengeIds(
+      format,
+      selectedChallengeIds,
+      capabilities,
+      seed
+    );
+    const availableEntries = availableIds
+      .map(challengeId => this.manifest.entries.find(entry => entry.id === challengeId))
+      .filter(entry => entry !== undefined);
+    if (availableEntries.length < 2) return [];
+
+    const selectedEntries = selectedChallengeIds
+      .map(challengeId => this.manifest.entries.find(entry => entry.id === challengeId))
+      .filter(entry => entry !== undefined);
+    const categoryCounts = new Map<string, number>();
+    for (const entry of selectedEntries) {
+      categoryCounts.set(entry.category, (categoryCounts.get(entry.category) ?? 0) + 1);
+    }
+
+    const byCategory = new Map<string, typeof availableEntries>();
+    for (const entry of availableEntries) {
+      const entries = byCategory.get(entry.category) ?? [];
+      entries.push(entry);
+      byCategory.set(entry.category, entries);
+    }
+    const leastRepresentedCategory = (excluded?: string): string | null => {
+      const categories = [...byCategory.keys()].filter(category => category !== excluded);
+      if (categories.length === 0) return null;
+      const minimum = Math.min(...categories.map(category => categoryCounts.get(category) ?? 0));
+      const tied = categories.filter(category => (categoryCounts.get(category) ?? 0) === minimum);
+      return tied[this.randomIndex(tied.length, random)] ?? null;
+    };
+    const pickFromCategory = (category: string, excludedId?: string): string | null => {
+      const entries = (byCategory.get(category) ?? []).filter(entry => entry.id !== excludedId);
+      return entries[this.randomIndex(entries.length, random)]?.id ?? null;
+    };
+
+    const firstCategory = leastRepresentedCategory();
+    if (!firstCategory) return [];
+    const firstId = pickFromCategory(firstCategory);
+    if (!firstId) return [];
+    const secondCategory = leastRepresentedCategory(firstCategory);
+    const secondId = secondCategory
+      ? pickFromCategory(secondCategory)
+      : pickFromCategory(firstCategory, firstId);
+    if (!secondId || secondId === firstId) return [];
+    return random() < 0.5 ? [firstId, secondId] : [secondId, firstId];
+  }
+
+  public chooseFinalChallengeId(
+    format: DuelFormat,
+    selectedChallengeIds: readonly string[],
+    capabilities: readonly GatewayClientCapability[],
+    seed: number,
+    random: () => number
+  ): { challengeId: string; candidateChallengeIds: string[] } | null {
+    const candidateChallengeIds = this.availableChallengeIds(
+      format,
+      selectedChallengeIds,
+      capabilities,
+      seed
+    );
+    if (candidateChallengeIds.length === 0) return null;
+
+    const categoryCounts = new Map<string, number>();
+    for (const challengeId of selectedChallengeIds) {
+      const entry = this.manifest.entries.find(item => item.id === challengeId);
+      if (entry) categoryCounts.set(entry.category, (categoryCounts.get(entry.category) ?? 0) + 1);
+    }
+    const candidates = candidateChallengeIds
+      .map(challengeId => this.manifest.entries.find(entry => entry.id === challengeId))
+      .filter(entry => entry !== undefined);
+    const minimum = Math.min(...candidates.map(entry => categoryCounts.get(entry.category) ?? 0));
+    const balanced = candidates.filter(entry => (categoryCounts.get(entry.category) ?? 0) === minimum);
+    const selected = balanced[this.randomIndex(balanced.length, random)];
+    return selected ? { challengeId: selected.id, candidateChallengeIds } : null;
+  }
+
   public createCompletedBoard(
     format: DuelFormat,
     selectedChallengeIds: readonly string[],
@@ -86,5 +171,10 @@ export class GatewayDraftAuthority {
       throw new Error('The completed draft board does not preserve the authoritative pick order.');
     }
     return result.board;
+  }
+
+  private randomIndex(length: number, random: () => number): number {
+    if (length <= 1) return 0;
+    return Math.min(length - 1, Math.floor(random() * length));
   }
 }

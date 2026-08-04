@@ -193,7 +193,7 @@ export class SocketIoGatewayClient {
       this.update({
         ...this.state,
         status: 'error',
-        error: 'Gateway sent an invalid Contract v1 message.'
+        error: `Gateway sent an invalid Contract v${GATEWAY_CONTRACT_VERSION} message.`
       });
       return;
     }

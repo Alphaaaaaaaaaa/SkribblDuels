@@ -11,5 +11,6 @@ assert(source.includes("if (!mounted) return;"), 'mount guard still rerenders ev
 assert(source.includes("const nextChildIndex = target.children.length + 1"), 'chat parity does not follow current child position');
 assert(source.includes("background-color: var(--COLOR_CHAT_BG_LEAVE_ALT) !important"), 'chat override lacks important specificity');
 assert(source.includes('class ProductTooltipManager'), 'product tooltip manager missing');
+assert(source.includes("remaining.lastIndexOf(' ', width)"), 'tooltips are not wrapped at the configured 50-character boundary');
 assert(source.includes("this.board.style.pointerEvents = 'none'"), 'board is not interaction-free');
-console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true }, null, 2));
+console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true, tooltipLineWrapping: true }, null, 2));

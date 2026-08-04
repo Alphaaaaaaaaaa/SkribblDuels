@@ -12,6 +12,7 @@ export interface GatewayServerConfig {
   simulatedReadyDelayMs: number;
   draftPickTimeoutMs: number;
   simulatedDraftPickDelayMs: number;
+  draftFinalRevealMs: number;
   matchCountdownMs: number;
 }
 
@@ -59,6 +60,7 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
     simulatedReadyDelayMs: 900,
     draftPickTimeoutMs: 15_000,
     simulatedDraftPickDelayMs: 1_100,
+    draftFinalRevealMs: 3_200,
     matchCountdownMs: 10_000
   };
 }

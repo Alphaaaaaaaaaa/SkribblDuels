@@ -17,8 +17,13 @@ assert(product.includes('this.options.challengeEngine.reset(reason)'), 'match re
 assert(product.includes('this.activateBoardChallenges(snapshot.matchId, board, startedAt'), 'Gateway board challenges are not activated at match start');
 assert(product.includes("'#scd-raw-recorder-panel'"), 'foreign telemetry panels are not isolated');
 assert(product.includes("window.location.pathname !== '/'"), 'homepage-only matchmaking guard is missing');
+assert(product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, true)"), 'ready acceptance is not a one-way one-click action');
+assert(!product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready)"), 'ready acceptance still toggles and can require a second click');
+assert(product.includes('createDraftProgressFields'), 'draft board is not rendered incrementally');
 assert(gateway.includes("this.cancelAccount(peer.identity.accountId, 'superseded-by-new-matchmaking')"), 'server does not abort a superseded account match');
 assert(gateway.includes("readyTimeoutMs"), 'server ready timeout is missing');
+assert(gateway.includes('createChallengeOffer('), 'server does not create pair-draft offers');
+assert(gateway.includes('beginFinalRandomSelection('), 'server parity final field is missing');
 assert(gateway.includes('matchCountdownMs'), 'server match countdown is missing');
 
 console.log(JSON.stringify({
@@ -27,6 +32,10 @@ console.log(JSON.stringify({
   localMatchResetBeforeStart: true,
   serverMatchSupersession: true,
   homepageOnlyQueue: true,
+  oneClickReadyAcceptance: true,
+  twoChallengeDraftOffers: true,
+  serverRandomParityField: true,
+  incrementalDraftBoard: true,
   synchronizedTimerCleanup: true,
   draftedChallengeActivation: true
 }, null, 2));

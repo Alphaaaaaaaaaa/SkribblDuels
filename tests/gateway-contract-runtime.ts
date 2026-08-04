@@ -8,11 +8,11 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.40.0',
+  clientVersion: '0.41.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 1);
+assert.equal(GATEWAY_CONTRACT_VERSION, 2);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -80,10 +80,13 @@ assert.equal(isGatewayServerMessage({
     draft: {
       status: 'selecting',
       requiredPickCount: 9,
+      playerPickCount: 8,
       turnAccountId: 'a',
       selectionDeadlineAt: 16_000,
       picks: [],
-      availableChallengeIds: ['blind-guess', 'deaf-guess'],
+      offeredChallengeIds: ['blind-guess', 'deaf-guess'],
+      finalCandidateChallengeIds: [],
+      finalRevealAt: null,
       board: null
     }
   }

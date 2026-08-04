@@ -21,6 +21,7 @@ const serverConfig = readGatewayServerConfig({
 assert.equal(serverConfig.matchmakingReadyTimeoutMs, 30_000);
 assert.equal(serverConfig.simulatedPlayersEnabled, true);
 assert.equal(serverConfig.draftPickTimeoutMs, 15_000);
+assert.equal(serverConfig.draftFinalRevealMs, 3_200);
 assert.equal(serverConfig.matchCountdownMs, 10_000);
 
 console.log(JSON.stringify({
@@ -30,5 +31,6 @@ console.log(JSON.stringify({
   simulatedQueueConfiguration: true,
   readyTimeoutSeconds: serverConfig.matchmakingReadyTimeoutMs / 1000,
   draftPickTimeoutSeconds: serverConfig.draftPickTimeoutMs / 1000,
+  draftFinalRevealSeconds: serverConfig.draftFinalRevealMs / 1000,
   matchCountdownSeconds: serverConfig.matchCountdownMs / 1000
 }, null, 2));

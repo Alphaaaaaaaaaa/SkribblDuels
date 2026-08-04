@@ -34,6 +34,7 @@ const matchmaker = new GatewayMatchmaker({
   simulatedReadyDelayMs: 5,
   draftPickTimeoutMs: 1_000,
   simulatedDraftPickDelayMs: 5,
+  draftFinalRevealMs: 8,
   matchCountdownMs: 10_000,
   createId: () => String(++id),
   random: () => 0
@@ -122,6 +123,7 @@ const realMatchmaker = new GatewayMatchmaker({
   simulatedReadyDelayMs: 5,
   draftPickTimeoutMs: 1_000,
   simulatedDraftPickDelayMs: 5,
+  draftFinalRevealMs: 8,
   matchCountdownMs: 10_000,
   createId: () => `real-${++id}`,
   random: () => 0.75

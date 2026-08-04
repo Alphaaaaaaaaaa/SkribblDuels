@@ -1,11 +1,11 @@
 import { defineConfig, loadEnv } from 'vite';
 import monkey from 'vite-plugin-monkey';
 
-const defaultPublicConfig = {
+export const defaultPublicConfig = {
   supabaseUrl: 'https://kryznzijjlqkixdxqkft.supabase.co',
   supabasePublishableKey: 'sb_publishable_6SOSKRreA8lHr-7aRZsq6w_361QcD9J',
   supabaseAuthRedirectUrl: 'https://skribbl.io/',
-  gatewayUrl: ''
+  gatewayUrl: 'https://skribblduels-production.up.railway.app'
 };
 
 export default defineConfig(({ mode }) => {
@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
         userscript: {
           name: 'Skribbl Duels - Telemetry Inspector',
           namespace: 'https://github.com/skribbl-duels',
-          version: '0.37.0',
+          version: '0.37.1',
           description: 'Authenticated Socket.IO Gateway handshake for Skribbl Duels.',
           author: 'Alpha',
           match: ['https://skribbl.io/*'],

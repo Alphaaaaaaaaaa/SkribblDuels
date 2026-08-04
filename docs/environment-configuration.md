@@ -10,16 +10,18 @@ To override those defaults for another Supabase project, copy `.env.example` to 
 VITE_SUPABASE_URL=https://PROJECT_REF.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 VITE_SUPABASE_AUTH_REDIRECT_URL=https://skribbl.io/
-VITE_GATEWAY_URL=https://YOUR_PUBLIC_GATEWAY_DOMAIN
+VITE_GATEWAY_URL=https://skribblduels-production.up.railway.app
 ```
 
 Every `VITE_` value is embedded into the built userscript and must be treated as public. Never put a Discord client secret, Supabase secret/service-role key, database password, access token, or refresh token in a `VITE_` variable.
+
+The production Gateway URL is already the browser-build default. `VITE_GATEWAY_URL` is optional and only needed to override it for another public HTTPS deployment.
 
 ## Gateway server
 
 The Gateway owns a separate runtime environment. Copy `apps/gateway/.env.example` to `apps/gateway/.env` for local development, or enter the same variables in the deployment dashboard. The local file is ignored by Git.
 
-Gateway v0.37.0 needs:
+Gateway v0.37.1 needs:
 
 ```text
 NODE_ENV=development

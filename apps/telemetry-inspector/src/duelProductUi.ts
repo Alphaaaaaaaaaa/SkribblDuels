@@ -460,7 +460,7 @@ export class DuelProductFoundation {
     this.mountGuard = window.setInterval(() => this.ensureMounted(), 700);
 
     const api: ProductPublicApi = {
-      version: '0.37.0',
+      version: '0.37.1',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -591,7 +591,7 @@ export class DuelProductFoundation {
     header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,.12)';
     const title = element('strong', '', 'Skribbl Duels');
     title.style.cssText = 'font-size:16px;flex:1';
-    const version = element('span', 'scd-muted', 'Gateway Foundation 0.37.0');
+    const version = element('span', 'scd-muted', 'Gateway Connected 0.37.1');
     version.style.fontSize = '10px';
     const close = element('button', 'scd-button', '×') as HTMLButtonElement;
     close.type = 'button';

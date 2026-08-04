@@ -81,7 +81,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.37.0';
+const BUILD_VERSION = '0.37.1';
 
 interface ProtocolPublicApi {
   getStats(): ReturnType<ProtocolDecoder['getStats']>;

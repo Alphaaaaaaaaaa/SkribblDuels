@@ -15,6 +15,10 @@ const asciiNames = await readFile(resolve(
   process.cwd(),
   'supabase/migrations/202608050002_enforce_ascii_duel_names.sql'
 ), 'utf8');
+const specialGrant = await readFile(resolve(
+  process.cwd(),
+  'supabase/admin/grant-analphabetism-special.sql'
+), 'utf8');
 
 assert.match(migration, /create table if not exists public\.profiles/i);
 assert.match(migration, /id uuid primary key references auth\.users\(id\) on delete cascade/i);
@@ -42,6 +46,11 @@ assert.match(asciiNames, /'User' \|\| left\(replace\(id::text, '-', ''\), 20\)/i
 assert.match(asciiNames, /duel_skribbl_avatar\[4\] >= 0/i);
 assert.match(asciiNames, /special avatar is not entitled/i);
 assert.doesNotMatch(asciiNames, /grant\s+(insert|update|delete|all).*profiles.*to authenticated/i);
+assert.match(specialGrant, /c27ea4b9-984e-4efb-bfba-e9f77b28f1f4/i);
+assert.match(specialGrant, /insert into public\.avatar_special_entitlements/i);
+assert.match(specialGrant, /set special_avatar_id = target_special_avatar_id/i);
+assert.match(specialGrant, /on conflict \(profile_id, special_avatar_id\) do nothing/i);
+assert.doesNotMatch(specialGrant, /service[_-]?role|secret|password|token/i);
 
 console.log(JSON.stringify({
   profileTable: true,
@@ -53,5 +62,6 @@ console.log(JSON.stringify({
   noEmailCopy: true
   , customDuelProfile: true
   , specialAvatarEntitlements: true
+  , analphabetismSpecialGrant: true
   , asciiAlphanumericDuelNames: true
 }, null, 2));

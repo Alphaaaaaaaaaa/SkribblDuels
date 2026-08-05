@@ -98,8 +98,21 @@ interface IntroOrbitDefinition {
   rotateY: number;
   rotateZ: number;
   speed: number;
-  iconCount: 4 | 5;
+  iconCount: 6 | 7;
 }
+
+const ISOLATED_POINTER_EVENTS = [
+  'pointerdown',
+  'pointerup',
+  'mousedown',
+  'mouseup',
+  'touchstart',
+  'touchend',
+  'click',
+  'dblclick',
+  'contextmenu',
+  'wheel'
+] as const;
 
 const PROFILE_COPY = {
   en: {
@@ -231,6 +244,12 @@ function element<K extends keyof HTMLElementTagNameMap>(
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
+  if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') {
+    node.style.pointerEvents = 'auto';
+    for (const eventName of ISOLATED_POINTER_EVENTS) {
+      node.addEventListener(eventName, event => event.stopPropagation());
+    }
+  }
   return node;
 }
 
@@ -413,8 +432,12 @@ class CompletionChatAdapter {
 .scd-tooltip.S { transform:translateX(-50%);flex-direction:column; }
 .scd-tooltip.S .scd-tooltip-arrow { border-bottom:10px solid var(--COLOR_TOOL_TIP_BG,#20232c);border-left:10px solid transparent;border-right:10px solid transparent; }
 @keyframes scd-tooltip-appear { from { opacity:0;scale:0; } to { opacity:1;scale:1; } }
-#skribbl-duels-home-button, #skribbl-duels-launcher, #skribbl-duels-panel, #skribbl-duels-stage, #skribbl-duels-intro, #skribbl-duels-board { box-sizing: border-box; font-family:Arial,sans-serif; }
+#skribbl-duels-home-button, #skribbl-duels-launcher, #skribbl-duels-panel, #skribbl-duels-stage, #skribbl-duels-intro, #skribbl-duels-board { box-sizing:border-box; }
 #skribbl-duels-home-button *, #skribbl-duels-launcher *, #skribbl-duels-panel *, #skribbl-duels-stage *, #skribbl-duels-intro *, #skribbl-duels-board * { box-sizing:border-box; }
+#skribbl-duels-home-button, #skribbl-duels-launcher,
+#skribbl-duels-panel button, #skribbl-duels-panel input, #skribbl-duels-panel select, #skribbl-duels-panel textarea,
+#skribbl-duels-stage button, #skribbl-duels-stage input, #skribbl-duels-stage select, #skribbl-duels-stage textarea,
+#skribbl-duels-intro button, #skribbl-duels-board button { pointer-events:auto; }
 .scd-icon { display:block;object-fit:contain;transition:transform .1s ease-in-out; }
 .scd-icon:hover, button:not(:disabled):hover .scd-icon { transform:scale(1.1); }
 .scd-icon-image { display:block;width:100%;height:100%;object-fit:contain; }
@@ -424,6 +447,7 @@ class CompletionChatAdapter {
 .button-skribbl-duels:hover:not(:disabled) { background:#c9362a; }
 .button-skribbl-duels:active:not(:disabled) { background:#ac2d24;padding-top:2px; }
 .button-skribbl-duels .scd-icon { width:32px;height:32px; }
+.button-skribbl-duels .scd-icon,.scd-ready-state .scd-icon,.scd-ready-action .scd-icon { filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-modal-overlay { position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.55);animation:scd-modal-opacity .21s ease-in-out; }
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
@@ -463,14 +487,12 @@ class CompletionChatAdapter {
 .scd-draft-info { display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:12px; }
 .scd-countdown-score { font-size:clamp(18px,3vw,30px);font-weight:900; }
 .scd-countdown-flight { position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:hidden; }
-.scd-countdown-phase { position:absolute;left:50%;top:50%;display:flex;align-items:center;justify-content:center;gap:clamp(2px,1vw,10px);filter:drop-shadow(0 9px 7px rgba(0,0,0,.32));animation:scd-countdown-drop .94s both; }
+.scd-countdown-phase { position:absolute;left:50%;top:50%;display:flex;align-items:center;justify-content:center;gap:clamp(2px,1vw,10px);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));animation:scd-countdown-drop .94s both; }
 .scd-countdown-phase .scd-icon { width:clamp(110px,24vw,240px);height:clamp(110px,24vw,240px);image-rendering:pixelated; }
 .scd-countdown-phase.go .scd-icon { width:clamp(80px,18vw,180px);height:clamp(80px,18vw,180px); }
 .scd-intro-card { position:relative;width:min(560px,92vw);height:min(560px,92vw);display:grid;place-items:center;pointer-events:auto;isolation:isolate;overflow:visible; }
-.scd-intro-logo { position:relative;z-index:50;width:min(360px,65vw);height:min(360px,65vw);filter:drop-shadow(0 0 14px rgba(255,255,255,.82)) drop-shadow(0 0 28px rgba(255,255,255,.35));animation:scd-intro-float 1.8s ease-in-out infinite alternate;image-rendering:pixelated; }
-.scd-intro-tracks { position:absolute;inset:0;z-index:1;width:100%;height:100%;overflow:visible;pointer-events:none;filter:drop-shadow(0 0 4px rgba(255,255,255,.3)); }
-.scd-intro-track { fill:none;stroke:rgba(255,255,255,.72);stroke-width:2;stroke-linecap:round;stroke-dasharray:7 5; }
-.scd-intro-orbit-icon { position:absolute;left:50%;top:50%;width:44px;height:44px;pointer-events:none;will-change:transform,opacity;filter:drop-shadow(2px 3px 0 rgba(0,0,0,.28));image-rendering:pixelated; }
+.scd-intro-logo { position:relative;z-index:50;width:min(360px,65vw);height:min(360px,65vw);filter:drop-shadow(0 0 7px rgba(255,255,255,.2)) drop-shadow(0 0 14px rgba(255,255,255,.1));animation:scd-intro-float 1.8s ease-in-out infinite alternate;image-rendering:pixelated; }
+.scd-intro-orbit-icon { position:absolute;left:50%;top:50%;width:44px;height:44px;pointer-events:none;will-change:transform,opacity;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
 @keyframes scd-modal-opacity { from { opacity:0; } to { opacity:1; } }
 @keyframes scd-modal-position { from { transform:translateY(-21%); } to { transform:translateY(0); } }
 @keyframes scd-intro-float { from { transform:translateY(-8px); } to { transform:translateY(8px); } }
@@ -493,7 +515,7 @@ class CompletionChatAdapter {
 .scd-field.pending { outline:2px solid #ffd95f;outline-offset:-2px; }
 .scd-field.self { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#56ce27); }
 .scd-field.opponent { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#ce4f0a); }
-.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.24));image-rendering:pixelated; }
+.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
 .scd-field-icon .scd-icon-image { image-rendering:pixelated; }
 .scd-field-name { display:block;width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:10px;line-height:1.15;font-weight:700; }
 .scd-final-slot-name { animation:scd-slot-flicker .18s linear infinite; }
@@ -520,6 +542,8 @@ class CompletionChatAdapter {
 .scd-auth-email { color:rgba(255,255,255,.58);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-auth-error { color:#ffb0b0;font-size:11px;white-space:pre-wrap; }
 .scd-profile-field { display:flex;flex-direction:column;gap:4px; }
+.scd-profile-field .scd-label { min-width:0; }
+.scd-profile-field input { width:auto;min-width:0;max-width:100%;flex:1 1 auto; }
 .scd-profile-error { color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800;white-space:pre-wrap; }
 .scd-skribbl-avatar { position:relative;width:100%;height:100%;image-rendering:pixelated; }
 .scd-skribbl-avatar .color,.scd-skribbl-avatar .eyes,.scd-skribbl-avatar .mouth { position:absolute;width:100%;height:100%;background-size:1000% 1000%; }
@@ -845,7 +869,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.45.0',
+      version: '0.46.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -954,7 +978,7 @@ export class DuelProductFoundation {
     this.boardGrid = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.45.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.46.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1172,41 +1196,24 @@ export class DuelProductFoundation {
     const randomAngle = (center: number, spread: number): number => center + (Math.random() - .5) * spread;
     const definitions: IntroOrbitDefinition[] = [
       {
-        radiusX: 220,
-        radiusY: 154,
+        radiusX: 238,
+        radiusY: 166,
         rotateX: randomAngle(67, 12),
         rotateY: randomAngle(-20, 12),
         rotateZ: randomAngle(-8, 10),
         speed: randomAngle(.00063, .00012),
-        iconCount: 5
+        iconCount: 7
       },
       {
-        radiusX: 204,
-        radiusY: 138,
+        radiusX: 222,
+        radiusY: 152,
         rotateX: randomAngle(31, 12),
         rotateY: randomAngle(52, 12),
         rotateZ: randomAngle(24, 10),
         speed: -randomAngle(.00056, .00012),
-        iconCount: 4
+        iconCount: 6
       }
     ];
-
-    const tracks = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    tracks.classList.add('scd-intro-tracks');
-    tracks.setAttribute('viewBox', '-260 -260 520 520');
-    tracks.setAttribute('aria-hidden', 'true');
-    for (const definition of definitions) {
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.classList.add('scd-intro-track');
-      const points: string[] = [];
-      for (let step = 0; step <= 96; step += 1) {
-        const point = projectIntroPoint(introOrbitPoint(step / 96 * Math.PI * 2, definition));
-        points.push(`${step === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`);
-      }
-      path.setAttribute('d', `${points.join(' ')} Z`);
-      tracks.appendChild(path);
-    }
-    card.appendChild(tracks);
 
     const challengeIds = this.manifest.entries.map(entry => entry.id);
     for (let index = challengeIds.length - 1; index > 0; index -= 1) {
@@ -1248,7 +1255,8 @@ export class DuelProductFoundation {
       for (const icon of orbitIcons) {
         const angle = icon.phase + (now - startedAt) * icon.definition.speed;
         const point = projectIntroPoint(introOrbitPoint(angle, icon.definition));
-        const normalizedDepth = Math.max(0, Math.min(1, (point.z + 230) / 460));
+        const depthExtent = Math.max(icon.definition.radiusX, icon.definition.radiusY);
+        const normalizedDepth = Math.max(0, Math.min(1, (point.z + depthExtent) / (depthExtent * 2)));
         const perspectiveScale = (.58 + normalizedDepth * .82) * icon.baseScale;
         const rotation = (now - startedAt) * icon.spinSpeed + icon.phase * 180 / Math.PI;
         icon.node.style.zIndex = String(point.z < 0

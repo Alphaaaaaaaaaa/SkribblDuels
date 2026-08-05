@@ -43,6 +43,15 @@ assert(source.includes('this.createChallengeIcon(pick.challengeId)'), 'draft fie
 assert(!source.includes("if (pick.accountId === selfAccountId) node.classList.add('self')"), 'draft fields still expose chooser colors');
 assert(source.includes('window.requestAnimationFrame(animate)') && source.includes('projectIntroPoint'), '3D intro orbit projection is missing');
 assert(source.includes('point.z < 0') && source.includes('51 + Math.round(normalizedDepth * 40)'), 'intro depth does not cross the logo z-layer');
+assert(source.includes('radiusX: 238') && source.includes('radiusX: 222'), 'intro orbit radii were not expanded');
+assert(source.includes('iconCount: 7') && source.includes('iconCount: 6'), 'intro does not contain thirteen orbit icons');
+assert(!source.includes('scd-intro-track'), 'the depth-breaking dashed intro tracks still exist');
+assert(source.includes('drop-shadow(0 0 7px rgba(255,255,255,.2)) drop-shadow(0 0 14px rgba(255,255,255,.1))'), 'intro logo glow is not reduced to the approved values');
+assert(!source.includes('font-family:Arial'), 'the product UI still overrides Skribbl with Arial');
+assert(source.includes("tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea'"), 'interactive product controls are not pointer-enabled centrally');
+assert(source.includes("node.addEventListener(eventName, event => event.stopPropagation())"), 'interactive product controls do not isolate pointer events from Skribbl');
+assert(source.includes('.scd-profile-field input { width:auto;min-width:0;max-width:100%;flex:1 1 auto; }'), 'Duel display-name input can still overflow its container');
+assert(source.includes('filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25))'), 'animated icons do not use the 135-degree Skribbl drop shadow');
 assert(source.includes("'challenge-icons/countdown_ExclamationMark.gif'"), 'GO countdown asset sequence is missing');
 assert(source.includes('@keyframes scd-countdown-drop'), 'countdown drop animation is missing');
 assert(source.includes("backgroundPosition = `${-(index % 10) * 100}% ${-Math.floor(index / 10) * 100}%`"), 'Skribbl sprite-sheet positions are missing');
@@ -52,4 +61,4 @@ assert(source.includes('color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-w
 assert(source.includes('won the Skribbl Duel after ${formatDurationHms(message.elapsedMs)}!'), 'Duel win chat message is missing');
 assert(source.includes("'width:60px'") && source.includes("drop-shadow(3px 3px 0 rgba(0, 0, 0, .25))"), 'fixed 60px launcher logo styling is missing');
 assert(!source.includes("this.tooltips.register(button, 'Open Skribbl Duels'"), 'homepage Skribbl Duels tooltip still exists');
-console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true, tooltipLineWrapping: true, stableDraftClock: true, standaloneMatchStage: true, versusReadyCheck: true, isolatedDraft: true, countdownScoreReplacement: true, animatedGifCountdown: true, dynamicMainTab: true, initialHubClosed: true, arrowSelection: true, realChallengeIcons: true, nonCoplanarIntroOrbits: true, skribblAvatarRenderer: true, inlineAsciiNameValidation: true, retainedDuelChatFocus: true, winChatMessage: true, boardHoverDefinitions: true, integratedChat: true }, null, 2));
+console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true, tooltipLineWrapping: true, stableDraftClock: true, standaloneMatchStage: true, versusReadyCheck: true, isolatedDraft: true, countdownScoreReplacement: true, animatedGifCountdown: true, dynamicMainTab: true, initialHubClosed: true, arrowSelection: true, realChallengeIcons: true, nonCoplanarIntroOrbits: true, expandedTracklessIntro: true, reducedIntroGlow: true, skribblDropShadows: true, inheritedSkribblFont: true, isolatedPointerControls: true, containedProfileInput: true, skribblAvatarRenderer: true, inlineAsciiNameValidation: true, retainedDuelChatFocus: true, winChatMessage: true, boardHoverDefinitions: true, integratedChat: true }, null, 2));

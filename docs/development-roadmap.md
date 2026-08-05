@@ -19,23 +19,27 @@
 | Lobby-series reset | Complete | Back to back and OMG Hacker reset from canonical lobby-session changes |
 | GIF asset template | Complete | Validated paths for all 46 challenge icons plus logo, settings, about and countdown frames |
 | Vanilla Hub and match-start stage | Complete | Homepage entry, intro, modal Hub, dynamic Duels/Match navigation and standalone Versus/Draft/Countdown views |
+| Persistent Versus identity | Complete | Duel name, language, Discord/Skribbl avatar selection and server-controlled Special entitlement |
+| Embedded visual assets | Complete | Real Challenge icons in intro, Draft and board plus animated GIF countdown |
+| 3D introduction | Complete | Two non-coplanar, trackless icon orbits with perspective depth and logo crossing |
+| UI interaction hardening | Complete | Inherited Skribbl font, contained profile fields and isolated pointer-capable controls |
 
 ## Active development sequence
 
-### 1. Account, localization and persistent Versus identity
+### 1. Gateway-backed Duel communication
 
-- Migrate profiles to Discord username plus custom Duel display name.
-- Store preferred German/English language and localized challenge copy.
-- Save Discord or normalized Skribbl avatar selection.
-- Gate special avatar assets through server-controlled entitlements.
-- Replace the current Discord/fallback Versus portraits with both saved identities and rotate localized queue facts.
+- Send private Duel-chat messages through the existing versioned Contract
+  messages instead of retaining the current local development transport.
+- Authorize sender membership, sanitize length and broadcast only to both match
+  participants.
+- Persist an in-memory reconnect window with message-id de-duplication.
+- Add independent message/SFX toggles and retain Enter/Escape focus behavior.
 
-### 2. Friendly matches and integrated communication
+### 2. Friendly matches
 
 - Add expiring Gateway-owned Friendly invite creation and join tokens.
-- Connect the existing Match-integrated Duel chat surface to authoritative Gateway messages.
-- Add completion SFX and independent settings toggles.
-- Populate the challenge-ID icon asset registry.
+- Reuse the authoritative Ready, Draft, Countdown and reconnect lifecycle.
+- Prevent an invite token from revealing account data before it is accepted.
 
 ### 3. Telemetry authority
 
@@ -55,10 +59,14 @@
 
 ### 5. Product completion
 
+- Finish full German/English translation for Hub, queue facts, Draft, board,
+  validation, errors and Challenge descriptions.
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-The immediate next milestone is the profile migration because its language,
-custom display-name, avatar-source and entitlement fields are required by
-localized queue facts and persistent Versus identities. The complete approved UI direction is recorded in
+The immediate next milestone is Gateway-backed Duel chat because the Contract
+types already exist while the current UI still keeps messages locally. It is a
+bounded end-to-end step that exercises participant authorization, reconnect
+delivery and abuse limits before authoritative telemetry batches are enabled.
+The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.

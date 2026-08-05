@@ -13,4 +13,12 @@ assert(source.includes("background-color: var(--COLOR_CHAT_BG_LEAVE_ALT) !import
 assert(source.includes('class ProductTooltipManager'), 'product tooltip manager missing');
 assert(source.includes("remaining.lastIndexOf(' ', width)"), 'tooltips are not wrapped at the configured 50-character boundary');
 assert(source.includes("this.board.style.pointerEvents = 'none'"), 'board is not interaction-free');
-console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true, tooltipLineWrapping: true }, null, 2));
+assert(source.includes('.scd-field:not(.empty):hover { transform:scale(.9); }'), 'board field hover scale is missing');
+assert(source.includes('box-shadow:none;transition:transform .15s'), 'board fields still use a box shadow or lack the requested transition');
+assert(source.includes("document.addEventListener('keydown', this.draftKeydown, true)"), 'draft arrow-key selection is missing');
+assert(source.includes("event.key === 'ArrowLeft' ? 0 : 1"), 'left/right draft mapping is missing');
+assert(source.includes('this.tickGatewayClock();'), 'stable in-place deadline updates are missing');
+assert(!source.includes("if (this.activeTab === 'duel' && (gatewayPhase"), 'the 700ms full panel rerender is still present');
+assert(source.includes("this.tooltips.register(node, challengeTooltip(this.manifest, field.challengeId))"), 'active board fields do not expose challenge definitions');
+assert(source.includes("this.panel.classList.toggle('scd-drafting-active', draftActive)"), 'draft is not centered as a dedicated surface');
+console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true, tooltipLineWrapping: true, stableDraftClock: true, centeredDraft: true, arrowSelection: true, boardHoverDefinitions: true }, null, 2));

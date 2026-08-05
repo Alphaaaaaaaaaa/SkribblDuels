@@ -1,4 +1,4 @@
-export const GATEWAY_CONTRACT_VERSION = 2 as const;
+export const GATEWAY_CONTRACT_VERSION = 3 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -101,6 +101,8 @@ export interface GatewayWelcomeMessage {
   identity: GatewayClientIdentity;
   serverTime: number;
   heartbeatIntervalMs: number;
+  resumeStatus: 'not-requested' | 'resumed' | 'not-found' | 'mismatch';
+  resumedMatchId: string | null;
 }
 
 export interface GatewayAuthRequiredMessage {

@@ -1,17 +1,20 @@
-# Skribbl Duels Pair Draft v0.41.0
+# Skribbl Duels Resumable Draft v0.42.0
 
-This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v2, Discord OAuth through Supabase Auth, persistent account profiles, authenticated Socket.IO transport, homepage matchmaking, ready checks and the server-authoritative draft state machine.
+This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v3, Discord OAuth through Supabase Auth, persistent account profiles, authenticated Socket.IO transport, homepage matchmaking, ready checks and the server-authoritative draft state machine.
 
-## v0.41.0
+## v0.42.0
 
-- Offers exactly two compatible, category-aware challenges per 15-second turn.
-- Gives both players equal influence: 4+4 choices in Casual and 12+12 in Ranked.
-- Chooses the ninth or twenty-fifth field randomly on the Gateway.
-- Publishes a 3.2-second finalizing phase for the slot-style client reveal.
-- Shows an initially empty board and fills one square field after every accepted pick.
-- Changes ready acceptance to a one-click, one-way action with immediate pending state.
-- Uses square borderless panel-colored fields, removes field numbers and wraps tooltips at 50 characters.
-- Preserves the authoritative 10-second countdown and synchronized match start from v0.40.0.
+- Preserves the full two-option pair draft and server-random parity field from v0.41.0.
+- Replaces the 700-ms full panel rebuild with stable in-place deadline updates.
+- Centers the active draft and keeps both choices above board history.
+- Adds guarded Left/Right Arrow selection during the local player's turn.
+- Removes field box shadows and adds the requested 150-ms hover scale.
+- Shows the localized challenge name and definition in live board tooltips.
+- Resumes an active match after a short Socket.IO interruption or page/runtime reload.
+- Keeps authoritative match state for a 30-second reconnect grace period.
+- Clears stale local state when the Gateway cannot confirm a requested resume.
+- Resets Back to back and OMG Hacker streaks on a real Skribbl lobby-session change.
+- Adds a validated GIF registry template for all 46 challenges and countdown assets.
 
 ## Install the userscript
 
@@ -25,7 +28,7 @@ release; the userscript metadata contains the exact version.
 - Adds an independently deployable Node/Socket.IO Gateway under `apps/gateway`.
 - Verifies the Supabase access token during the Socket.IO connection handshake.
 - Loads authoritative player identity from the RLS-protected `public.profiles` table.
-- Implements Contract v2 authentication, queue, ready-check, pair draft, parity reveal, countdown, running-match snapshot and heartbeat messages.
+- Implements Contract v3 authentication, queue, ready-check, pair draft, reconnect resume, parity reveal, countdown, running-match snapshot and heartbeat messages.
 - Provides `/healthz` for deployment health checks.
 - Uses `https://skribblduels-production.up.railway.app` as the production userscript default.
 - Keeps `VITE_GATEWAY_URL` available as a public build-time override.
@@ -66,7 +69,7 @@ The verification must report RLS enabled, authenticated read access, no anonymou
 
 Never include the Discord client secret, Supabase database password, Supabase secret/service-role key, or refresh credentials in the userscript. Rotate any secret that has been shared or committed.
 
-See `docs/pair-draft-and-parity-final-v0.41.0.md`, `docs/ui-product-direction-v0.41.0.md`, `docs/synchronized-match-start-v0.40.0.md`, `docs/server-authoritative-draft-v0.39.0.md`, `docs/matchmaking-ready-check-v0.38.0.md`, and `docs/environment-configuration.md`.
+See `docs/reconnect-draft-ui-icons-v0.42.0.md`, `docs/pair-draft-and-parity-final-v0.41.0.md`, `docs/ui-product-direction-v0.41.0.md`, `docs/synchronized-match-start-v0.40.0.md`, and `docs/environment-configuration.md`.
 
 The current implementation sequence is documented in
 [`docs/development-roadmap.md`](docs/development-roadmap.md). Release packaging

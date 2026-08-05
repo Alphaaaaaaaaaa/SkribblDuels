@@ -8,15 +8,17 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.41.0',
+  clientVersion: '0.42.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 2);
+assert.equal(GATEWAY_CONTRACT_VERSION, 3);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
 assert.equal(isGatewayClientMessage({ ...hello, capabilities: ['unknown'] }), false);
+assert.equal(isGatewayClientMessage({ ...hello, resumeMatchId: 'match-1', lastServerRevision: 12 }), true);
+assert.equal(isGatewayClientMessage({ ...hello, resumeMatchId: 'match-1', lastServerRevision: -1 }), false);
 assert.equal(isGatewayClientMessage({ type: 'WELCOME' }), false);
 assert.equal(isGatewayClientMessage({
   type: 'MATCHMAKING_JOIN',
@@ -41,6 +43,26 @@ assert.equal(isGatewayClientMessage({
   matchId: 'match-1',
   challengeId: 'blind-guess',
   clientRevision: -1
+}), false);
+assert.equal(isGatewayServerMessage({
+  type: 'WELCOME',
+  contractVersion: GATEWAY_CONTRACT_VERSION,
+  connectionId: 'connection-1',
+  identity: { accountId: 'a', displayName: 'Alpha', discordUserId: null },
+  serverTime: 1_000,
+  heartbeatIntervalMs: 25_000,
+  resumeStatus: 'resumed',
+  resumedMatchId: 'match-1'
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'WELCOME',
+  contractVersion: GATEWAY_CONTRACT_VERSION,
+  connectionId: 'connection-1',
+  identity: { accountId: 'a', displayName: 'Alpha', discordUserId: null },
+  serverTime: 1_000,
+  heartbeatIntervalMs: 25_000,
+  resumeStatus: 'resumed',
+  resumedMatchId: null
 }), false);
 assert.equal(isGatewayServerMessage({
   type: 'MATCH_SNAPSHOT',

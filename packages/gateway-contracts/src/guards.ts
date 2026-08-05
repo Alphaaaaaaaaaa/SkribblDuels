@@ -270,7 +270,13 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
           && nonEmptyString(identity.displayName, 128)
           && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)))
         && finiteNumber(message.serverTime)
-        && nonNegativeInteger(message.heartbeatIntervalMs);
+        && nonNegativeInteger(message.heartbeatIntervalMs)
+        && (message.resumeStatus === 'not-requested'
+          || message.resumeStatus === 'resumed'
+          || message.resumeStatus === 'not-found'
+          || message.resumeStatus === 'mismatch')
+        && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId))
+        && (message.resumeStatus === 'resumed') === (message.resumedMatchId !== null);
     }
     case 'AUTH_REQUIRED':
       return message.reason === 'missing-token'

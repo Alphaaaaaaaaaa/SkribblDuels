@@ -29,7 +29,8 @@ const config: GatewayServerConfig = {
   draftPickTimeoutMs: 15_000,
   simulatedDraftPickDelayMs: 10,
   draftFinalRevealMs: 8,
-  matchCountdownMs: 10_000
+  matchCountdownMs: 10_000,
+  reconnectGraceMs: 30_000
 };
 
 const gateway = createGatewayServer({
@@ -108,7 +109,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.41.0-test',
+  clientVersion: '0.42.0-test',
   capabilities: [
     'skribbl-telemetry',
     'official-word-list',
@@ -148,18 +149,40 @@ await new Promise<void>((resolve, reject) => {
   rawSocket.once('connect_error', reject);
 });
 const welcomePromise = waitForMessage(rawSocket, message => message.type === 'WELCOME');
+const resumedSnapshotPromise = waitForMessage(rawSocket, message =>
+  message.type === 'MATCH_SNAPSHOT' && message.matchId === draftReady.match?.matchId
+);
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.41.0-test',
+  clientVersion: '0.42.0-test',
   capabilities: ['skribbl-telemetry']
 });
-assert.equal((await welcomePromise).type, 'WELCOME');
+const rawWelcome = await welcomePromise;
+assert.equal(rawWelcome.type, 'WELCOME');
+if (rawWelcome.type === 'WELCOME') {
+  assert.equal(rawWelcome.resumeStatus, 'resumed');
+  assert.equal(rawWelcome.resumedMatchId, draftReady.match?.matchId);
+}
+const rawResumedSnapshot = await resumedSnapshotPromise;
+assert.equal(rawResumedSnapshot.type, 'MATCH_SNAPSHOT');
+if (rawResumedSnapshot.type === 'MATCH_SNAPSHOT') {
+  assert.equal(rawResumedSnapshot.revision, draftReady.match?.revision);
+}
 const pongPromise = waitForMessage(rawSocket, message => message.type === 'PONG');
 rawSocket.emit(GATEWAY_SOCKET_EVENT, { type: 'PING', sentAt: 1234 });
 const pong = await pongPromise;
 assert.equal(pong.type, 'PONG');
 if (pong.type === 'PONG') assert.equal(pong.clientSentAt, 1234);
+
+const restoredClientPromise = waitForSnapshot(client, snapshot =>
+  snapshot.status === 'connected'
+  && snapshot.connectionId !== connected.connectionId
+  && snapshot.match?.matchId === draftReady.match?.matchId
+);
+client.reconnect();
+const restoredClient = await restoredClientPromise;
+assert.equal(restoredClient.match?.revision, draftReady.match?.revision);
 
 const rejectedSocket = io(endpoint, { auth: {}, reconnection: false });
 const connectError = await new Promise<Error & { data?: unknown }>((resolve, reject) => {
@@ -186,6 +209,7 @@ console.log(JSON.stringify({
   homepageMatchmaking: true,
   simulatedReadyCheck: true,
   authoritativeDraftStarted: true,
+  reconnectResume: true,
   pingPong: true,
   missingTokenRejected: true
 }, null, 2));

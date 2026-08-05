@@ -14,6 +14,10 @@
 | Matchmaking and ready check | Complete | Homepage-only Gateway queues, simulated opponents and 30-second ready state |
 | Server-authoritative pair draft | Complete | Two category-aware offers, equal player pick counts, timeout autopicks, server-random parity field and incremental boards |
 | Synchronized match start | Complete | Fixed 10-second server countdown, shared start timestamp and activation of only the drafted board |
+| Match reconnect continuity | Complete | Contract v3 resume cursor, 30-second server grace, authoritative snapshot restoration and stale-state rejection |
+| Draft interaction hardening | Complete | Stable clock updates, centered two-choice surface, Left/Right Arrow input and definition tooltips |
+| Lobby-series reset | Complete | Back to back and OMG Hacker reset from canonical lobby-session changes |
+| GIF asset template | Complete | Validated paths for all 46 challenge icons plus logo, settings, about and countdown frames |
 
 ## Active development sequence
 
@@ -41,11 +45,9 @@
 - Add completion SFX and independent settings toggles.
 - Populate the challenge-ID icon asset registry.
 
-### 4. Match continuity and telemetry authority
+### 4. Telemetry authority
 
-- Restore a live match after a short reconnect without trusting browser state.
-- Reset series challenges when a player changes skribbl lobby.
-- Batch normalized telemetry from each browser over Contract v2.
+- Batch normalized telemetry from each browser over Contract v3.
 - Validate challenge claim candidates on the Gateway.
 - Broadcast accepted and rejected claim resolutions with monotonic revisions.
 - Keep skribbl.io and local telemetry running after a Duel finishes while
@@ -64,7 +66,7 @@
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-The immediate next milestone is the homepage button, introduction animation and
+The immediate next milestone remains the homepage button, introduction animation and
 Vanilla-style Hub shell. Profile persistence follows immediately because its
 language, display-name and avatar fields are required by queue facts and the
 Versus screen. The complete approved UI direction is recorded in

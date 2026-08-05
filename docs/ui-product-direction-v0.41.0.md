@@ -73,33 +73,39 @@ snapshot is shown to the opponent on the Versus screen after matchmaking.
 
 ## Board and challenge icon assets
 
-- Board and fields use `var(--COLOR_PANEL_BG)`, no visible borders, 1:1 fields
-  and four-pixel corner radius.
+- Board and fields use `var(--COLOR_PANEL_BG)`, no visible borders or field box
+  shadows, 1:1 fields and four-pixel corner radius.
+- Active fields use `transition: transform .15s` and scale to `0.9` on hover.
 - Challenge names appear under icons and remain toggleable.
 - Result text uses `Self · score:score · Opponent`; the win target is explained
   in About/Help rather than repeated in the score line.
 - Tooltips wrap at no more than 50 characters per line.
 
-Challenge icons should use an immutable registry keyed by challenge ID, for
-example `challenge-icons/<challenge-id>.png` plus a generated manifest containing
-content hashes and dimensions. The release build should embed small PNG/WebP
+Challenge icons use an immutable registry keyed by challenge ID, for example
+`challenge-icons/<challenge-id>.gif` plus a generated manifest containing
+content hashes and dimensions. The release build should embed small GIF
 assets as data URLs in the userscript or publish hash-addressed files from a
 versioned repository release. Imgur links are suitable as design references,
 not as runtime dependencies for competitive UI.
+
+The initial complete path template is stored at
+`challenge-icons/registry.template.json`. It also reserves logo, Settings,
+About and `5, 4, 3, 2, 1, G, O, !` countdown GIF paths.
 
 ## Safe implementation order
 
 1. v0.41.0: pair draft, incremental board, one-click ready, server-random final
    slot and tooltip wrapping.
-2. v0.42.0: homepage button, intro animation, vanilla modal Hub, dynamic
+2. v0.42.0: reconnect continuity, stable centered draft, arrow selection,
+   lobby-series reset and complete GIF asset template.
+3. v0.43.0: homepage button, intro animation, vanilla modal Hub, dynamic
    navigation, queue controls and settings/about icons.
-3. v0.43.0: profile migration, custom display name, language, avatar source,
+4. v0.44.0: profile migration, custom display name, language, avatar source,
    special entitlements, Versus screen and localized queue facts.
-4. v0.44.0: Friendly invite lifecycle and Match-integrated private chat.
-5. v0.45.0: challenge icon asset registry, completion SFX and final responsive
+5. v0.45.0: Friendly invite lifecycle and Match-integrated private chat.
+6. v0.46.0: supplied challenge GIF integration, completion SFX and final responsive
    visual polish.
 
 Layout, color values, animation timing and supplied icon artwork remain safe to
 iterate later. Profile fields, authorization rules, invite states and match-tab
 lifecycle should follow this document before persistence and Versus UI expand.
-

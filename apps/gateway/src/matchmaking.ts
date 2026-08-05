@@ -34,6 +34,7 @@ export interface GatewayMatchmakerOptions {
   simulatedDraftPickDelayMs: number;
   draftFinalRevealMs: number;
   matchCountdownMs: number;
+  reconnectGraceMs?: number;
   now?: () => number;
   createId?: () => string;
   random?: () => number;
@@ -49,6 +50,8 @@ interface QueueEntry extends MatchmakingPeer {
 interface MatchParticipant extends MatchmakingPeer {
   ready: boolean;
   simulated: boolean;
+  connected: boolean;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface ActiveDraft {
@@ -91,6 +94,11 @@ export type ReadyDecision =
   | { ok: false; code: string; message: string };
 
 export type DraftDecision = ReadyDecision;
+
+export type MatchResumeDecision = {
+  status: 'not-requested' | 'resumed' | 'not-found' | 'mismatch';
+  matchId: string | null;
+};
 
 const SIMULATED_NAMES = ['QueueBot Atlas', 'QueueBot Nova', 'QueueBot Pixel', 'QueueBot Echo'];
 
@@ -148,8 +156,56 @@ export class GatewayMatchmaker {
   public disconnect(accountId: string): void {
     const removed = this.removeQueuedAccount(accountId);
     const matchId = this.accountMatches.get(accountId);
-    if (matchId) this.abortMatch(matchId, accountId, 'player-disconnected');
+    const match = matchId ? this.matches.get(matchId) : null;
+    const participant = match?.participants.find(item =>
+      item.identity.accountId === accountId && !item.simulated
+    );
+    if (match && participant && participant.connected) {
+      participant.connected = false;
+      participant.send = () => {};
+      if (participant.reconnectTimer) clearTimeout(participant.reconnectTimer);
+      participant.reconnectTimer = setTimeout(() => {
+        participant.reconnectTimer = null;
+        const current = this.matches.get(match.matchId);
+        const currentParticipant = current?.participants.find(item =>
+          item.identity.accountId === accountId && !item.simulated
+        );
+        if (!current || !currentParticipant || currentParticipant.connected) return;
+        this.abortMatch(current.matchId, accountId, 'player-reconnect-timeout');
+      }, this.options.reconnectGraceMs ?? 30_000);
+      participant.reconnectTimer.unref?.();
+    }
     if (removed) this.publishQueuePositions(removed.format);
+  }
+
+  public resume(peer: MatchmakingPeer, requestedMatchId?: string): MatchResumeDecision {
+    const activeMatchId = this.accountMatches.get(peer.identity.accountId);
+    if (!activeMatchId) {
+      return { status: requestedMatchId ? 'not-found' : 'not-requested', matchId: null };
+    }
+    if (requestedMatchId && requestedMatchId !== activeMatchId) {
+      return { status: 'mismatch', matchId: null };
+    }
+    const match = this.matches.get(activeMatchId);
+    const participant = match?.participants.find(item =>
+      item.identity.accountId === peer.identity.accountId && !item.simulated
+    );
+    if (!match || !participant) {
+      return { status: requestedMatchId ? 'not-found' : 'not-requested', matchId: null };
+    }
+    if (participant.reconnectTimer) clearTimeout(participant.reconnectTimer);
+    participant.reconnectTimer = null;
+    participant.identity = peer.identity;
+    participant.capabilities = [...peer.capabilities];
+    participant.send = peer.send;
+    participant.connected = true;
+    return { status: 'resumed', matchId: activeMatchId };
+  }
+
+  public publishResumeSnapshot(accountId: string): void {
+    const matchId = this.accountMatches.get(accountId);
+    const match = matchId ? this.matches.get(matchId) : null;
+    if (match) this.emitSnapshotToAccount(match, accountId);
   }
 
   public setReady(accountId: string, message: GatewayReadyMessage): ReadyDecision {
@@ -662,6 +718,10 @@ export class GatewayMatchmaker {
     this.clearDraftTimers(match);
     if (match.countdownTimer) clearTimeout(match.countdownTimer);
     match.countdownTimer = null;
+    for (const participant of match.participants) {
+      if (participant.reconnectTimer) clearTimeout(participant.reconnectTimer);
+      participant.reconnectTimer = null;
+    }
   }
 
   private clearReadyTimers(match: ActiveMatch): void {
@@ -686,13 +746,13 @@ export class GatewayMatchmaker {
       state: this.publicState(match)
     };
     for (const participant of match.participants) {
-      if (!participant.simulated) participant.send(message);
+      if (!participant.simulated && participant.connected) participant.send(message);
     }
   }
 
   private emitSnapshotToAccount(match: ActiveMatch, accountId: string): void {
     const participant = match.participants.find(item => item.identity.accountId === accountId);
-    if (!participant || participant.simulated) return;
+    if (!participant || participant.simulated || !participant.connected) return;
     participant.send({
       type: 'MATCH_SNAPSHOT',
       matchId: match.matchId,
@@ -709,7 +769,7 @@ export class GatewayMatchmaker {
       event
     };
     for (const participant of match.participants) {
-      if (!participant.simulated) participant.send(message);
+      if (!participant.simulated && participant.connected) participant.send(message);
     }
   }
 
@@ -744,7 +804,7 @@ export class GatewayMatchmaker {
   }
 
   private asParticipant(peer: MatchmakingPeer, simulated: boolean): MatchParticipant {
-    return { ...peer, ready: false, simulated };
+    return { ...peer, ready: false, simulated, connected: true, reconnectTimer: null };
   }
 
   private createSimulatedPeer(): MatchParticipant {
@@ -767,6 +827,8 @@ export class GatewayMatchmaker {
       ],
       ready: false,
       simulated: true,
+      connected: true,
+      reconnectTimer: null,
       send() {}
     };
   }

@@ -6,7 +6,7 @@ import type {
   GatewayQueueStatusMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.41.0' as const;
+export const GATEWAY_CLIENT_VERSION = '0.42.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'

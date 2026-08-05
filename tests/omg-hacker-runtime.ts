@@ -68,4 +68,24 @@ assertEqual(engine.getInstance('field')?.progress.current, 0, 'other first guess
 for (let turn = 4; turn <= 8; turn += 1) first(turn, true);
 assertEqual(engine.getInstance('field')?.status, 'completion-pending', 'five consecutive self first guesses complete');
 assertEqual(engine.getInstance('field')?.progress.current, 5, 'final progress');
-console.log('OMG Hacker runtime test passed.');
+
+const lobbyResetEngine = new ChallengeEngine({ autoPersist: false, now: () => sequence });
+lobbyResetEngine.register(omgHackerDefinition);
+lobbyResetEngine.activate({ instanceId: 'field', challengeId: 'omg-hacker' });
+lobbyResetEngine.process(event('ROUND_STARTED', 'reset-start-1', 'reset-turn-1', null));
+lobbyResetEngine.process(event('FIRST_GUESS', 'reset-first-1', 'reset-turn-1', true));
+lobbyResetEngine.process(event('ROUND_STARTED', 'reset-start-2', 'reset-turn-2', null));
+lobbyResetEngine.process(event('FIRST_GUESS', 'reset-first-2', 'reset-turn-2', true));
+assertEqual(lobbyResetEngine.getInstance('field')?.progress.current, 2, 'precondition: partial streak before lobby change');
+const changedLobbyStart = event('ROUND_STARTED', 'changed-lobby-start', 'other-turn-1', null);
+changedLobbyStart.context = {
+  ...changedLobbyStart.context,
+  lobbySessionId: 'other-lobby-session',
+  lobbyGeneration: 2,
+  lobbyId: 'OTHER'
+};
+lobbyResetEngine.process(changedLobbyStart);
+assertEqual(lobbyResetEngine.getInstance('field')?.progress.current, 0, 'lobby change resets OMG Hacker streak');
+assertEqual(lobbyResetEngine.getInstance('field')?.lastReason, 'omg-hacker-eligible-turn-started', 'new lobby starts a fresh eligible turn after reset');
+
+console.log('OMG Hacker runtime and lobby-change streak reset tests passed.');

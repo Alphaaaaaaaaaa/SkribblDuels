@@ -24,6 +24,11 @@ interface ClientToServerEvents {
 
 type GatewaySocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+interface GatewayResumeCursor {
+  matchId: string;
+  revision: number;
+}
+
 function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
   return {
     status: endpoint ? 'signed-out' : 'not-configured',
@@ -53,9 +58,11 @@ export class SocketIoGatewayClient {
   private listeners = new Set<(state: GatewayConnectionSnapshot) => void>();
   private socket: GatewaySocket | null = null;
   private accessToken: string | null = null;
+  private resumeCursor: GatewayResumeCursor | null;
 
   public constructor(private readonly options: SocketIoGatewayClientOptions) {
     this.state = initialSnapshot(options.endpoint);
+    this.resumeCursor = this.loadResumeCursor();
   }
 
   public getState(): GatewayConnectionSnapshot {
@@ -82,6 +89,7 @@ export class SocketIoGatewayClient {
     }
     if (!this.accessToken) {
       this.disconnectSocket();
+      this.clearResumeCursor();
       this.update(initialSnapshot(this.options.endpoint));
       return;
     }
@@ -116,6 +124,7 @@ export class SocketIoGatewayClient {
       format,
       page: 'home'
     });
+    this.clearResumeCursor();
     this.update({ ...this.state, queue: null, match: null, lastMatchEvent: null, error: null });
     return requestId;
   }
@@ -123,6 +132,7 @@ export class SocketIoGatewayClient {
   public leaveMatchmaking(): string {
     const requestId = this.createRequestId('leave');
     this.emit({ type: 'MATCHMAKING_LEAVE', requestId });
+    this.clearResumeCursor();
     return requestId;
   }
 
@@ -155,8 +165,12 @@ export class SocketIoGatewayClient {
     });
     this.socket = socket;
     this.update({
-      ...initialSnapshot(endpoint),
-      status: 'connecting'
+      ...this.state,
+      endpoint,
+      connectionId: null,
+      connectedAt: null,
+      status: 'connecting',
+      error: null
     });
 
     socket.on('connect', () => {
@@ -164,7 +178,11 @@ export class SocketIoGatewayClient {
         type: 'HELLO',
         contractVersion: GATEWAY_CONTRACT_VERSION,
         clientVersion: this.options.clientVersion,
-        capabilities: this.options.capabilities
+        capabilities: this.options.capabilities,
+        ...(this.resumeCursor ? {
+          resumeMatchId: this.resumeCursor.matchId,
+          lastServerRevision: this.resumeCursor.revision
+        } : {})
       };
       socket.emit(GATEWAY_SOCKET_EVENT, hello);
     });
@@ -172,15 +190,19 @@ export class SocketIoGatewayClient {
     socket.on('connect_error', rawError => {
       const error = rawError as Error & { data?: unknown };
       this.update({
-        ...initialSnapshot(endpoint),
-        status: 'error',
+        ...this.state,
+        endpoint,
+        status: socket.active ? 'connecting' : 'error',
         error: errorMessage(error)
       });
     });
     socket.on('disconnect', reason => {
       if (!this.accessToken || this.socket !== socket) return;
       this.update({
-        ...initialSnapshot(endpoint),
+        ...this.state,
+        endpoint,
+        connectionId: null,
+        connectedAt: null,
         status: socket.active ? 'connecting' : 'error',
         error: socket.active ? null : `Gateway disconnected: ${reason}.`
       });
@@ -198,6 +220,9 @@ export class SocketIoGatewayClient {
       return;
     }
     if (value.type === 'WELCOME') {
+      const resumed = value.resumedMatchId !== null
+        && (this.state.match === null || this.state.match.matchId === value.resumedMatchId);
+      if (!resumed) this.clearResumeCursor();
       this.update({
         status: 'connected',
         endpoint: this.options.endpoint,
@@ -205,9 +230,9 @@ export class SocketIoGatewayClient {
         identity: value.identity,
         connectedAt: Date.now(),
         serverTimeOffsetMs: value.serverTime - Date.now(),
-        queue: null,
-        match: null,
-        lastMatchEvent: null,
+        queue: resumed ? this.state.queue : null,
+        match: resumed ? this.state.match : null,
+        lastMatchEvent: resumed ? this.state.lastMatchEvent : null,
         error: null
       });
       return;
@@ -240,6 +265,8 @@ export class SocketIoGatewayClient {
     }
     if (value.type === 'MATCH_SNAPSHOT') {
       if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
+      if (value.state.phase === 'cancelled') this.clearResumeCursor();
+      else this.setResumeCursor(value.matchId, value.revision);
       this.update({
         ...this.state,
         queue: null,
@@ -267,6 +294,49 @@ export class SocketIoGatewayClient {
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     return `${prefix}-${suffix}`;
+  }
+
+  private resumeStorageKey(): string | null {
+    return this.options.endpoint ? `skribblDuelsGatewayResumeV1:${this.options.endpoint}` : null;
+  }
+
+  private loadResumeCursor(): GatewayResumeCursor | null {
+    const key = this.resumeStorageKey();
+    if (!key) return null;
+    try {
+      const value = JSON.parse(sessionStorage.getItem(key) ?? 'null') as Partial<GatewayResumeCursor> | null;
+      return value
+        && typeof value.matchId === 'string'
+        && value.matchId.length > 0
+        && Number.isInteger(value.revision)
+        && Number(value.revision) >= 0
+        ? { matchId: value.matchId, revision: Number(value.revision) }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private setResumeCursor(matchId: string, revision: number): void {
+    this.resumeCursor = { matchId, revision };
+    const key = this.resumeStorageKey();
+    if (!key) return;
+    try {
+      sessionStorage.setItem(key, JSON.stringify(this.resumeCursor));
+    } catch {
+      // Reconnect still works for the current page when storage is unavailable.
+    }
+  }
+
+  private clearResumeCursor(): void {
+    this.resumeCursor = null;
+    const key = this.resumeStorageKey();
+    if (!key) return;
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // Storage cleanup is best-effort only.
+    }
   }
 
   private disconnectSocket(): void {

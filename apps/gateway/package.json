@@ -5,7 +5,7 @@
   "type": "module",
   "main": "../../dist/gateway/index.js",
   "dependencies": {
-    "@skribbl-duels/challenge-definitions": "2.6.1",
+    "@skribbl-duels/challenge-definitions": "2.7.0",
     "@skribbl-duels/gateway-contracts": "0.1.0",
     "@skribbl-duels/product-core": "0.3.0",
     "@supabase/supabase-js": "2.110.8",

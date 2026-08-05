@@ -41,7 +41,7 @@ function emptyState(): BackToBackState {
 
 export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBackParameters> = {
   id: 'back-to-back',
-  version: 2,
+  version: 3,
   metadata: {
     category: 'progress',
     localization: localization(
@@ -63,19 +63,10 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
     if (typeof value !== 'object' || value === null) return false;
     return isPositiveInteger((value as Partial<BackToBackParameters>).games);
   },
-  relevantEvents: ['LOBBY_CHANGED', 'GAME_ENDED'],
+  relevantEvents: ['GAME_ENDED'],
   allowedLobbyTypes: [0],
+  resetOn: ['lobby-change'],
   reduce({ event, runtime, parameters }) {
-    if (event.type === 'LOBBY_CHANGED') {
-      if (runtime.internalState.qualifyingEvents === 0 && runtime.internalState.streakLobbyId === null) return null;
-      return {
-        internalState: emptyState(),
-        progress: 0,
-        reason: 'back-to-back-streak-reset-by-lobby-change',
-        evidenceEventIds: [event.eventId]
-      };
-    }
-
     if (event.type !== 'GAME_ENDED') return null;
     const lobbyId = event.context.lobbyId;
     if (lobbyId === null) return null;

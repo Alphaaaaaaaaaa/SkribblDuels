@@ -23,6 +23,7 @@ assert.equal(serverConfig.simulatedPlayersEnabled, true);
 assert.equal(serverConfig.draftPickTimeoutMs, 15_000);
 assert.equal(serverConfig.draftFinalRevealMs, 3_200);
 assert.equal(serverConfig.matchCountdownMs, 10_000);
+assert.equal(serverConfig.reconnectGraceMs, 30_000);
 
 console.log(JSON.stringify({
   gatewayConfigured: true,
@@ -32,5 +33,6 @@ console.log(JSON.stringify({
   readyTimeoutSeconds: serverConfig.matchmakingReadyTimeoutMs / 1000,
   draftPickTimeoutSeconds: serverConfig.draftPickTimeoutMs / 1000,
   draftFinalRevealSeconds: serverConfig.draftFinalRevealMs / 1000,
-  matchCountdownSeconds: serverConfig.matchCountdownMs / 1000
+  matchCountdownSeconds: serverConfig.matchCountdownMs / 1000,
+  reconnectGraceSeconds: serverConfig.reconnectGraceMs / 1000
 }, null, 2));

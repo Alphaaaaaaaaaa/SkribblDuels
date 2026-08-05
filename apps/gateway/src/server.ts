@@ -95,7 +95,8 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     draftPickTimeoutMs: config.draftPickTimeoutMs,
     simulatedDraftPickDelayMs: config.simulatedDraftPickDelayMs,
     draftFinalRevealMs: config.draftFinalRevealMs,
-    matchCountdownMs: config.matchCountdownMs
+    matchCountdownMs: config.matchCountdownMs,
+    reconnectGraceMs: config.reconnectGraceMs
   });
 
   io.use(async (socket, next) => {
@@ -163,18 +164,26 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         socket.data.capabilities = [...message.capabilities];
         const accountId = socket.data.account.identity.accountId;
         const previousSocketId = activeConnections.get(accountId);
+        activeConnections.set(accountId, socket.id);
         if (previousSocketId && previousSocketId !== socket.id) {
           io.sockets.sockets.get(previousSocketId)?.disconnect(true);
         }
-        activeConnections.set(accountId, socket.id);
+        const resume = matchmaker.resume({
+          identity: socket.data.account.identity,
+          capabilities: socket.data.capabilities,
+          send: outgoing => emitMessage(socket, outgoing)
+        }, message.resumeMatchId);
         emitMessage(socket, {
           type: 'WELCOME',
           contractVersion: GATEWAY_CONTRACT_VERSION,
           connectionId: socket.id,
           identity: socket.data.account.identity,
           serverTime: Date.now(),
-          heartbeatIntervalMs: config.heartbeatIntervalMs
+          heartbeatIntervalMs: config.heartbeatIntervalMs,
+          resumeStatus: resume.status,
+          resumedMatchId: resume.matchId
         });
+        if (resume.status === 'resumed') matchmaker.publishResumeSnapshot(accountId);
         return;
       }
 

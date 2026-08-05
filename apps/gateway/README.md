@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v2 `WELCOME`. It also owns homepage matchmaking, match supersession, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field and the synchronized 10-second match start.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v3 `WELCOME`. It also owns homepage matchmaking, reconnect resume, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field and the synchronized 10-second match start.
 
 ## Local server
 
@@ -23,6 +23,13 @@ After the final pick, the Gateway publishes one absolute countdown deadline to
 both clients. The validated board stays unchanged while the match advances from
 `countdown` to `running`; `startedAt` is the exact previously announced
 deadline.
+
+An unexpected socket disconnect starts a 30-second in-memory grace period
+instead of aborting the match immediately. A newly authenticated connection for
+the same account may rebind to the exact active match. `WELCOME.resumeStatus`
+and `resumedMatchId` explicitly tell the client whether stale local state may be
+kept; the Gateway then republishes the latest authoritative snapshot. Draft and
+countdown timers continue while a player is temporarily disconnected.
 
 The local health endpoint does not prove a browser connection because `skribbl.io` needs a publicly trusted HTTPS Gateway. Deploy first, then build the userscript with `VITE_GATEWAY_URL` set to that public origin.
 

@@ -186,4 +186,4 @@ lossReset.process(event('GAME_ENDED', 'loss-reset-win', 400, finalPayload(1200, 
 lossReset.process(event('GAME_ENDED', 'loss-reset-loss', 410, finalPayload(900, 1000), 'loss-reset-game-2', null, 'PROGRESS1', 6, 'GAME_ENDED'));
 assert(lossReset.getInstance('b2b')?.progress.current === 0, 'A loss in the same lobby must reset Back to back to 0/2.');
 
-console.log('Deserved v2 and Back to back v2 runtime tests passed.');
+console.log('Deserved v2 and Back to back v3 runtime tests passed.');

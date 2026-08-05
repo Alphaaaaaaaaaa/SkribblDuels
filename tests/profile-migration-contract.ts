@@ -11,6 +11,10 @@ const expansion = await readFile(resolve(
   process.cwd(),
   'supabase/migrations/202608050001_expand_skribbl_duels_profiles.sql'
 ), 'utf8');
+const asciiNames = await readFile(resolve(
+  process.cwd(),
+  'supabase/migrations/202608050002_enforce_ascii_duel_names.sql'
+), 'utf8');
 
 assert.match(migration, /create table if not exists public\.profiles/i);
 assert.match(migration, /id uuid primary key references auth\.users\(id\) on delete cascade/i);
@@ -32,6 +36,12 @@ assert.match(expansion, /create table if not exists public\.avatar_special_entit
 assert.match(expansion, /special avatar is not entitled/i);
 assert.match(expansion, /create or replace function public\.update_skribbl_duels_profile/i);
 assert.doesNotMatch(expansion, /grant\s+(insert|update|delete|all).*profiles.*to authenticated/i);
+assert.match(asciiNames, /profiles_display_name_ascii_alphanumeric/i);
+assert.match(asciiNames, /\^\[A-Za-z0-9\]\{3,24\}\$/i);
+assert.match(asciiNames, /'User' \|\| left\(replace\(id::text, '-', ''\), 20\)/i);
+assert.match(asciiNames, /duel_skribbl_avatar\[4\] >= 0/i);
+assert.match(asciiNames, /special avatar is not entitled/i);
+assert.doesNotMatch(asciiNames, /grant\s+(insert|update|delete|all).*profiles.*to authenticated/i);
 
 console.log(JSON.stringify({
   profileTable: true,
@@ -43,4 +53,5 @@ console.log(JSON.stringify({
   noEmailCopy: true
   , customDuelProfile: true
   , specialAvatarEntitlements: true
+  , asciiAlphanumericDuelNames: true
 }, null, 2));

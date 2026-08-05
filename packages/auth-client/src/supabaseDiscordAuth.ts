@@ -30,6 +30,17 @@ const INITIAL_STATE: AuthSnapshot = {
   error: null
 };
 
+export type DuelDisplayNameValidationError =
+  | 'too-short'
+  | 'too-long'
+  | 'non-alphanumeric';
+
+export function validateDuelDisplayName(value: string): DuelDisplayNameValidationError | null {
+  if (value.length < 3) return 'too-short';
+  if (value.length > 24) return 'too-long';
+  return /^[A-Za-z0-9]+$/.test(value) ? null : 'non-alphanumeric';
+}
+
 function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
@@ -212,12 +223,12 @@ export class SupabaseDiscordAuthClient {
   }
 
   public async updateDuelProfile(update: DuelProfileUpdate): Promise<void> {
-    const displayName = update.displayName.trim();
-    if (displayName.length < 3 || displayName.length > 24) {
-      throw new Error('Duel display name must contain 3 to 24 characters.');
-    }
-    if (!/^[\p{L}\p{N}_ .-]+$/u.test(displayName)) {
-      throw new Error('Duel display name contains unsupported characters.');
+    const displayName = update.displayName;
+    const displayNameError = validateDuelDisplayName(displayName);
+    if (displayNameError === 'too-short') throw new Error('Duel display name must contain at least 3 characters.');
+    if (displayNameError === 'too-long') throw new Error('Duel display name must contain no more than 24 characters.');
+    if (displayNameError === 'non-alphanumeric') {
+      throw new Error('Duel display name may contain only A-Z, a-z and 0-9.');
     }
     if (update.avatarSource === 'skribbl' && !update.skribblAvatar) {
       throw new Error('Select or capture a Skribbl avatar first.');

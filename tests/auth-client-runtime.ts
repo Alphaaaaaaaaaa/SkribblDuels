@@ -1,10 +1,17 @@
 import * as assert from 'node:assert/strict';
 import {
   SupabaseDiscordAuthClient,
+  validateDuelDisplayName,
   type SupabaseAuthClientLike,
   type SupabaseBrowserLibrary,
   type SupabaseSessionLike
 } from '@skribbl-duels/auth-client';
+
+assert.equal(validateDuelDisplayName('Alpha2026'), null);
+assert.equal(validateDuelDisplayName('Al'), 'too-short');
+assert.equal(validateDuelDisplayName('A'.repeat(25)), 'too-long');
+assert.equal(validateDuelDisplayName('Alpha_2026'), 'non-alphanumeric');
+assert.equal(validateDuelDisplayName('Älpha'), 'non-alphanumeric');
 
 let authCallback: ((event: string, session: SupabaseSessionLike | null) => void) | null = null;
 let signInInput: Parameters<SupabaseAuthClientLike['signInWithOAuth']>[0] | null = null;
@@ -88,5 +95,6 @@ console.log(JSON.stringify({
   discordOAuth: true,
   sessionRestore: true,
   gatewayAccessToken: true,
+  asciiAlphanumericDuelNames: true,
   signOut: true
 }, null, 2));

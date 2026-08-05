@@ -32,8 +32,8 @@ export default defineConfig(({ mode }) => {
         userscript: {
           name: 'Skribbl Duels - Telemetry Inspector',
           namespace: 'https://github.com/skribbl-duels',
-          version: '0.44.0',
-          description: 'Authoritative Duel profiles, embedded icons and standalone Versus, Draft and Countdown stages.',
+          version: '0.45.0',
+          description: '3D icon orbits, animated GIF countdown, rendered Skribbl avatars and authoritative Duel profiles.',
           author: 'Alpha',
           match: ['https://skribbl.io/*'],
           grant: 'none',

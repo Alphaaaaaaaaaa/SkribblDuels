@@ -21,7 +21,7 @@ The production Gateway URL is already the browser-build default. `VITE_GATEWAY_U
 
 The Gateway owns a separate runtime environment. Copy `apps/gateway/.env.example` to `apps/gateway/.env` for local development, or enter the same variables in the deployment dashboard. The local file is ignored by Git.
 
-Gateway v0.42.0 needs:
+Gateway v0.43.0 needs:
 
 ```text
 NODE_ENV=development
@@ -38,7 +38,7 @@ testing. Real authenticated players are always paired before a simulated player.
 The 30-second ready deadline, 15-second pair-draft deadline, 3.2-second final
 parity reveal and 10-second pre-match countdown are authoritative server
 constants. The reconnect grace period is 30 seconds. No additional Railway
-variable is required for v0.42.0.
+variable is required for v0.43.0.
 
 `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are the same public values used by the browser build. No Supabase secret/service-role key or database URL is required: token verification uses Supabase Auth and the profile query runs with the authenticated user's bearer token under RLS.
 

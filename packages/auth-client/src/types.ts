@@ -66,6 +66,18 @@ export interface SupabaseAuthClientLike {
 
 export interface SupabaseClientLike {
   auth: SupabaseAuthClientLike;
+  rpc?(functionName: string, parameters: Record<string, unknown>): Promise<{
+    data: unknown;
+    error: SupabaseAuthErrorLike | null;
+  }>;
+}
+
+export interface DuelProfileUpdate {
+  displayName: string;
+  preferredLanguage: 'de' | 'en';
+  avatarSource: 'discord' | 'skribbl';
+  skribblAvatar: readonly [number, number, number, number] | null;
+  specialAvatarId: string | null;
 }
 
 export interface SupabaseBrowserLibrary {

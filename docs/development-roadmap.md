@@ -18,34 +18,26 @@
 | Draft interaction hardening | Complete | Stable clock updates, centered two-choice surface, Left/Right Arrow input and definition tooltips |
 | Lobby-series reset | Complete | Back to back and OMG Hacker reset from canonical lobby-session changes |
 | GIF asset template | Complete | Validated paths for all 46 challenge icons plus logo, settings, about and countdown frames |
+| Vanilla Hub and match-start stage | Complete | Homepage entry, intro, modal Hub, dynamic Duels/Match navigation and standalone Versus/Draft/Countdown views |
 
 ## Active development sequence
 
-### 1. Vanilla homepage and Hub UI
-
-- Inject the branded Skribbl Duels button below Play and Create.
-- Add the logo/orbit introduction with reduced-motion handling.
-- Replace the development panel with a Skribbl-style modal Hub.
-- Show only Duels before a match; use top-right Settings and About icons.
-- Preserve the new pair-draft and incremental board behavior in the Hub.
-
-### 2. Account, localization and Versus identity
+### 1. Account, localization and persistent Versus identity
 
 - Migrate profiles to Discord username plus custom Duel display name.
 - Store preferred German/English language and localized challenge copy.
 - Save Discord or normalized Skribbl avatar selection.
 - Gate special avatar assets through server-controlled entitlements.
-- Show both saved identities on a Versus screen and rotate localized queue facts.
+- Replace the current Discord/fallback Versus portraits with both saved identities and rotate localized queue facts.
 
-### 3. Friendly matches and integrated communication
+### 2. Friendly matches and integrated communication
 
 - Add expiring Gateway-owned Friendly invite creation and join tokens.
-- Put private Duel chat inside the active Match view.
-- Isolate Match chat focus from Skribbl Enter/hotkey handlers.
+- Connect the existing Match-integrated Duel chat surface to authoritative Gateway messages.
 - Add completion SFX and independent settings toggles.
 - Populate the challenge-ID icon asset registry.
 
-### 4. Telemetry authority
+### 3. Telemetry authority
 
 - Batch normalized telemetry from each browser over Contract v3.
 - Validate challenge claim candidates on the Gateway.
@@ -53,7 +45,7 @@
 - Keep skribbl.io and local telemetry running after a Duel finishes while
   suppressing further Duel claims and board changes.
 
-### 5. Persistence and competition
+### 4. Persistence and competition
 
 - Persist matches, participants, boards, claims and final results in Supabase.
 - Add Ranked rating updates and match history only after result validation is
@@ -61,13 +53,12 @@
 - Implement two-complete-game series behavior such as Back to back without
   weakening lobby-change resets.
 
-### 6. Product completion
+### 5. Product completion
 
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-The immediate next milestone remains the homepage button, introduction animation and
-Vanilla-style Hub shell. Profile persistence follows immediately because its
-language, display-name and avatar fields are required by queue facts and the
-Versus screen. The complete approved UI direction is recorded in
+The immediate next milestone is the profile migration because its language,
+custom display-name, avatar-source and entitlement fields are required by
+localized queue facts and persistent Versus identities. The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.

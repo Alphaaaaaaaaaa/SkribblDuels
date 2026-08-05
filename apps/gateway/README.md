@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v3 `WELCOME`. It also owns homepage matchmaking, reconnect resume, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field and the synchronized 10-second match start.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v4 `WELCOME`. It also owns homepage matchmaking, reconnect resume, participant profile/avatar disclosure, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field and the synchronized 10-second match start.
 
 ## Local server
 

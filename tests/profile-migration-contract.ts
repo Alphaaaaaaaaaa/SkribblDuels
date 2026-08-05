@@ -7,6 +7,10 @@ const migrationPath = resolve(
   'supabase/migrations/202608040001_create_skribbl_duels_profiles.sql'
 );
 const migration = await readFile(migrationPath, 'utf8');
+const expansion = await readFile(resolve(
+  process.cwd(),
+  'supabase/migrations/202608050001_expand_skribbl_duels_profiles.sql'
+), 'utf8');
 
 assert.match(migration, /create table if not exists public\.profiles/i);
 assert.match(migration, /id uuid primary key references auth\.users\(id\) on delete cascade/i);
@@ -20,6 +24,14 @@ assert.match(migration, /after insert or update of raw_user_meta_data, raw_app_m
 assert.match(migration, /from auth\.users as auth_user/i);
 assert.doesNotMatch(migration, /grant\s+(insert|update|delete|all).*to authenticated/i);
 assert.doesNotMatch(migration, /\bemail\b/i);
+assert.match(expansion, /preferred_language text not null default 'en'/i);
+assert.match(expansion, /avatar_source text not null default 'discord'/i);
+assert.match(expansion, /skribbl_avatar smallint\[\]/i);
+assert.match(expansion, /create unique index if not exists profiles_display_name_unique_ci/i);
+assert.match(expansion, /create table if not exists public\.avatar_special_entitlements/i);
+assert.match(expansion, /special avatar is not entitled/i);
+assert.match(expansion, /create or replace function public\.update_skribbl_duels_profile/i);
+assert.doesNotMatch(expansion, /grant\s+(insert|update|delete|all).*profiles.*to authenticated/i);
 
 console.log(JSON.stringify({
   profileTable: true,
@@ -29,4 +41,6 @@ console.log(JSON.stringify({
   trustedTriggerSync: true,
   existingUserBackfill: true,
   noEmailCopy: true
+  , customDuelProfile: true
+  , specialAvatarEntitlements: true
 }, null, 2));

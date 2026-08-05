@@ -17,9 +17,12 @@ assert(product.includes('this.options.challengeEngine.reset(reason)'), 'match re
 assert(product.includes('this.activateBoardChallenges(snapshot.matchId, board, startedAt'), 'Gateway board challenges are not activated at match start');
 assert(product.includes("'#scd-raw-recorder-panel'"), 'foreign telemetry panels are not isolated');
 assert(product.includes("window.location.pathname !== '/'"), 'homepage-only matchmaking guard is missing');
-assert(product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, true)"), 'ready acceptance is not a one-way one-click action');
+assert(product.includes("this.gatewayClient.setReady(match.matchId, true)"), 'ready acceptance is not a one-way one-click action');
 assert(!product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready)"), 'ready acceptance still toggles and can require a second click');
 assert(product.includes('createDraftProgressFields'), 'draft board is not rendered incrementally');
+assert(product.includes("snapshot.state.phase === 'ready-check'"), 'match-found phase does not close the Hub for the Versus stage');
+assert(product.includes("this.settingsStore.update({ panelOpen: false, panelTab: 'match' })"), 'running match still opens the Hub automatically');
+assert(product.includes("if (this.currentStagePhase()) return;"), 'Hub launcher can expose the Hub during a match-start stage');
 assert(gateway.includes("this.cancelAccount(peer.identity.accountId, 'superseded-by-new-matchmaking')"), 'server does not abort a superseded account match');
 assert(gateway.includes("readyTimeoutMs"), 'server ready timeout is missing');
 assert(gateway.includes('createChallengeOffer('), 'server does not create pair-draft offers');
@@ -36,6 +39,8 @@ console.log(JSON.stringify({
   twoChallengeDraftOffers: true,
   serverRandomParityField: true,
   incrementalDraftBoard: true,
+  standaloneVersusDraftCountdown: true,
+  hubClosedUntilInvoked: true,
   synchronizedTimerCleanup: true,
   draftedChallengeActivation: true
 }, null, 2));

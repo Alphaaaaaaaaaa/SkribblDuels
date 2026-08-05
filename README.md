@@ -1,20 +1,21 @@
-# Skribbl Duels Resumable Draft v0.42.0
+# Skribbl Duels Match-stage UI v0.43.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product Foundation UI, Gateway Contract v3, Discord OAuth through Supabase Auth, persistent account profiles, authenticated Socket.IO transport, homepage matchmaking, ready checks and the server-authoritative draft state machine.
 
-## v0.42.0
+## v0.43.0
 
-- Preserves the full two-option pair draft and server-random parity field from v0.41.0.
-- Replaces the 700-ms full panel rebuild with stable in-place deadline updates.
-- Centers the active draft and keeps both choices above board history.
-- Adds guarded Left/Right Arrow selection during the local player's turn.
-- Removes field box shadows and adds the requested 150-ms hover scale.
-- Shows the localized challenge name and definition in live board tooltips.
-- Resumes an active match after a short Socket.IO interruption or page/runtime reload.
-- Keeps authoritative match state for a 30-second reconnect grace period.
-- Clears stale local state when the Gateway cannot confirm a requested resume.
-- Resets Back to back and OMG Hacker streaks on a real Skribbl lobby-session change.
-- Adds a validated GIF registry template for all 46 challenges and countdown assets.
+- Adds the homepage Skribbl Duels button and one-time four-second logo/orbit introduction.
+- Replaces the development side panel with a centered Skribbl-style modal Hub.
+- Keeps the Hub closed initially and after match start until the user invokes the Duels icon.
+- Shows only Duels before a match and only Match after the synchronized start.
+- Moves Settings and About to icon actions in the Hub header.
+- Opens a standalone central Versus/Ready screen immediately after matchmaking.
+- Reserves `checkmark.gif` and `crossmark.gif` ready-state assets with text fallbacks.
+- Moves the incremental board and two Draft options into a Hub-free central stage.
+- Removes board-count, server-revision, pick-history and matchmaking copy from Draft.
+- Replaces the completed-board score line with the live ten-second countdown.
+- Integrates the Duel chat surface into the Match view and isolates Enter handling.
+- Preserves Contract v3 reconnect, pair draft, parity field and lobby-series resets.
 
 ## Install the userscript
 
@@ -69,7 +70,7 @@ The verification must report RLS enabled, authenticated read access, no anonymou
 
 Never include the Discord client secret, Supabase database password, Supabase secret/service-role key, or refresh credentials in the userscript. Rotate any secret that has been shared or committed.
 
-See `docs/reconnect-draft-ui-icons-v0.42.0.md`, `docs/pair-draft-and-parity-final-v0.41.0.md`, `docs/ui-product-direction-v0.41.0.md`, `docs/synchronized-match-start-v0.40.0.md`, and `docs/environment-configuration.md`.
+See `docs/vanilla-hub-match-stage-v0.43.0.md`, `docs/reconnect-draft-ui-icons-v0.42.0.md`, `docs/ui-product-direction-v0.41.0.md`, and `docs/environment-configuration.md`.
 
 The current implementation sequence is documented in
 [`docs/development-roadmap.md`](docs/development-roadmap.md). Release packaging

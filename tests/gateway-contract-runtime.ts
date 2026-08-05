@@ -8,11 +8,11 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.42.0',
+  clientVersion: '0.44.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 3);
+assert.equal(GATEWAY_CONTRACT_VERSION, 4);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -72,8 +72,8 @@ assert.equal(isGatewayServerMessage({
     format: 'ranked',
     phase: 'ready-check',
     participants: [
-      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false },
-      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true }
+      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null }
     ],
     readyDeadlineAt: 31_000,
     countdownEndsAt: null,
@@ -91,8 +91,8 @@ assert.equal(isGatewayServerMessage({
     format: 'casual',
     phase: 'draft',
     participants: [
-      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false },
-      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true }
+      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null }
     ],
     readyDeadlineAt: null,
     countdownEndsAt: null,

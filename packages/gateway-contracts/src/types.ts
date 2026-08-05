@@ -1,4 +1,4 @@
-export const GATEWAY_CONTRACT_VERSION = 3 as const;
+export const GATEWAY_CONTRACT_VERSION = 4 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -17,6 +17,12 @@ export interface GatewayClientIdentity {
   accountId: string;
   displayName: string;
   discordUserId: string | null;
+  discordUsername?: string;
+  avatarSource?: 'discord' | 'skribbl';
+  avatarUrl?: string | null;
+  skribblAvatar?: readonly [number, number, number, number] | null;
+  specialAvatarId?: string | null;
+  preferredLanguage?: 'de' | 'en';
 }
 
 export interface GatewayHelloMessage {
@@ -124,6 +130,10 @@ export interface GatewayMatchmakingParticipant {
   displayName: string;
   ready: boolean;
   simulated: boolean;
+  avatarSource: 'discord' | 'skribbl';
+  avatarUrl: string | null;
+  skribblAvatar: readonly [number, number, number, number] | null;
+  specialAvatarId: string | null;
 }
 
 export interface GatewayDraftPick {

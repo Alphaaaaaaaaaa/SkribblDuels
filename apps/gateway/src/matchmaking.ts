@@ -781,7 +781,11 @@ export class GatewayMatchmaker {
         accountId: participant.identity.accountId,
         displayName: participant.identity.displayName,
         ready: participant.ready,
-        simulated: participant.simulated
+        simulated: participant.simulated,
+        avatarSource: participant.identity.avatarSource ?? 'discord',
+        avatarUrl: participant.identity.avatarUrl ?? null,
+        skribblAvatar: participant.identity.skribblAvatar ?? null,
+        specialAvatarId: participant.identity.specialAvatarId ?? null
       })),
       readyDeadlineAt: match.readyDeadlineAt,
       countdownEndsAt: match.countdownEndsAt,
@@ -815,7 +819,13 @@ export class GatewayMatchmaker {
       identity: {
         accountId: `simulated-${suffix}`,
         displayName,
-        discordUserId: null
+        discordUserId: null,
+        discordUsername: displayName,
+        avatarSource: 'skribbl',
+        avatarUrl: null,
+        skribblAvatar: [this.simulatedNameIndex % 16, 0, 0, -1],
+        specialAvatarId: null,
+        preferredLanguage: 'en'
       },
       capabilities: [
         'skribbl-telemetry',

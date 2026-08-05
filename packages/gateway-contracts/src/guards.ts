@@ -44,13 +44,27 @@ function stringArray(value: unknown, maxItems = 256): value is string[] {
   return Array.isArray(value) && value.length <= maxItems && value.every(item => nonEmptyString(item));
 }
 
+function nullableString(value: unknown, maxLength = 2048): boolean {
+  return value === null || nonEmptyString(value, maxLength);
+}
+
+function skribblAvatar(value: unknown): boolean {
+  return value === null || (Array.isArray(value)
+    && value.length === 4
+    && value.every(item => Number.isInteger(item) && Number(item) >= -1 && Number(item) <= 255));
+}
+
 function matchmakingParticipant(value: unknown): boolean {
   const participant = record(value);
   return Boolean(participant
     && nonEmptyString(participant.accountId)
     && nonEmptyString(participant.displayName, 128)
     && typeof participant.ready === 'boolean'
-    && typeof participant.simulated === 'boolean');
+    && typeof participant.simulated === 'boolean'
+    && (participant.avatarSource === 'discord' || participant.avatarSource === 'skribbl')
+    && nullableString(participant.avatarUrl)
+    && skribblAvatar(participant.skribblAvatar)
+    && nullableString(participant.specialAvatarId, 64));
 }
 
 function draftPick(value: unknown): boolean {

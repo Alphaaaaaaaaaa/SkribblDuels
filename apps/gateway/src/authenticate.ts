@@ -85,7 +85,7 @@ export function createSupabaseGatewayAuthenticator(
     });
     const { data: profile, error: profileError } = await scopedClient
       .from('profiles')
-      .select('id, discord_id, display_name')
+      .select('id, discord_id, username, display_name, avatar_url, preferred_language, avatar_source, skribbl_avatar, special_avatar_id')
       .eq('id', accountId)
       .maybeSingle();
 
@@ -110,7 +110,15 @@ export function createSupabaseGatewayAuthenticator(
         identity: {
           accountId: String(profile.id),
           displayName: String(profile.display_name),
-          discordUserId: typeof profile.discord_id === 'string' ? profile.discord_id : null
+          discordUserId: typeof profile.discord_id === 'string' ? profile.discord_id : null,
+          discordUsername: String(profile.username),
+          avatarSource: profile.avatar_source === 'skribbl' ? 'skribbl' : 'discord',
+          avatarUrl: typeof profile.avatar_url === 'string' ? profile.avatar_url : null,
+          skribblAvatar: Array.isArray(profile.skribbl_avatar) && profile.skribbl_avatar.length === 4
+            ? profile.skribbl_avatar.map(Number) as [number, number, number, number]
+            : null,
+          specialAvatarId: typeof profile.special_avatar_id === 'string' ? profile.special_avatar_id : null,
+          preferredLanguage: profile.preferred_language === 'de' ? 'de' : 'en'
         },
         accessTokenExpiresAt
       }

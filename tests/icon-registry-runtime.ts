@@ -17,7 +17,9 @@ const registry = JSON.parse(
   await readFile(new URL('../challenge-icons/registry.template.json', import.meta.url), 'utf8')
 ) as IconRegistry;
 assert.equal(registry.registryVersion, 1);
-assert.deepEqual(Object.keys(registry.ui).sort(), ['about', 'logo', 'settings']);
+assert.deepEqual(Object.keys(registry.ui).sort(), ['about', 'logo', 'notReady', 'ready', 'settings']);
+assert.equal(registry.ui.ready, 'challenge-icons/checkmark.gif');
+assert.equal(registry.ui.notReady, 'challenge-icons/crossmark.gif');
 assert.deepEqual(Object.keys(registry.countdown), ['1', '2', '3', '4', '5', 'G', 'O', '!']);
 assert.equal(registry.challenges.length, 46);
 assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 46);
@@ -27,7 +29,7 @@ assert.deepEqual(
   [...STARTER_CHALLENGE_IDS].sort()
 );
 for (const entry of registry.challenges) {
-  assert.match(entry.assetPath, /^challenge-icons\/[a-z0-9-]+\.gif$/);
+  assert.match(entry.assetPath, /^challenge-icons\/[a-z0-9-]+\.(?:gif|png)$/);
 }
 
 console.log('All 46 challenge IDs and UI/countdown GIF paths are covered by the icon registry.');

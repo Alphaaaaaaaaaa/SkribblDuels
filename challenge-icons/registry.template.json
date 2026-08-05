@@ -10,7 +10,9 @@
   "ui": {
     "logo": "challenge-icons/skribbl-duels-logo.gif",
     "settings": "challenge-icons/settings.gif",
-    "about": "challenge-icons/about.gif"
+    "about": "challenge-icons/about.gif",
+    "ready": "challenge-icons/checkmark.gif",
+    "notReady": "challenge-icons/crossmark.gif"
   },
   "countdown": {
     "5": "challenge-icons/countdown_5.gif",
@@ -41,14 +43,14 @@
     { "challengeId": "sniper", "assetPath": "challenge-icons/sniper.gif", "currentMetadataIcon": "sniper-crosshair" },
     { "challengeId": "omg-hacker", "assetPath": "challenge-icons/omg-hacker.gif", "currentMetadataIcon": "hacker-first-guess" },
     { "challengeId": "fanboy", "assetPath": "challenge-icons/fanboy.gif", "currentMetadataIcon": "fanboy-like" },
-    { "challengeId": "instalike", "assetPath": "challenge-icons/instalike.gif", "currentMetadataIcon": "instant-like" },
+    { "challengeId": "instalike", "assetPath": "challenge-icons/instalike.png", "currentMetadataIcon": "instant-like" },
     { "challengeId": "in-and-out", "assetPath": "challenge-icons/in-and-out.gif", "currentMetadataIcon": "in-and-out-door" },
     { "challengeId": "picasso", "assetPath": "challenge-icons/picasso.gif", "currentMetadataIcon": "picasso-palette" },
     { "challengeId": "copy-and-paste", "assetPath": "challenge-icons/copy-and-paste.gif", "currentMetadataIcon": "copy-and-paste" },
     { "challengeId": "caught-in-4k", "assetPath": "challenge-icons/caught-in-4k.gif", "currentMetadataIcon": "caught-in-4k-camera" },
     { "challengeId": "owner-of-the-lobby", "assetPath": "challenge-icons/owner-of-the-lobby.gif", "currentMetadataIcon": "owner-of-the-lobby-crown" },
     { "challengeId": "my-favorite-color-is-red", "assetPath": "challenge-icons/my-favorite-color-is-red.gif", "currentMetadataIcon": "my-favorite-color-is-red-avatar" },
-    { "challengeId": "my-eyes-are-bleeding", "assetPath": "challenge-icons/my-eyes-are-bleeding.gif", "currentMetadataIcon": "my-eyes-are-bleeding-chat" },
+    { "challengeId": "my-eyes-are-bleeding", "assetPath": "challenge-icons/my-eyes-are-bleeding.png", "currentMetadataIcon": "my-eyes-are-bleeding-chat" },
     { "challengeId": "through-thick-and-thin", "assetPath": "challenge-icons/through-thick-and-thin.gif", "currentMetadataIcon": "through-thick-and-thin-brushes" },
     { "challengeId": "color-picker", "assetPath": "challenge-icons/color-picker.gif", "currentMetadataIcon": "color-picker-palette" },
     { "challengeId": "need-some-space", "assetPath": "challenge-icons/need-some-space.gif", "currentMetadataIcon": null },

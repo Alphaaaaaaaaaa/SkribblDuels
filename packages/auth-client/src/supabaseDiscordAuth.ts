@@ -8,6 +8,7 @@ import {
 import type {
   AuthSnapshot,
   AuthSubscription,
+  DuelProfileUpdate,
   DiscordAuthProfile,
   SupabaseAuthUserLike,
   SupabaseBrowserLibrary,
@@ -208,6 +209,29 @@ export class SupabaseDiscordAuthClient {
 
   public getAccessToken(): string | null {
     return this.state.accessToken;
+  }
+
+  public async updateDuelProfile(update: DuelProfileUpdate): Promise<void> {
+    const displayName = update.displayName.trim();
+    if (displayName.length < 3 || displayName.length > 24) {
+      throw new Error('Duel display name must contain 3 to 24 characters.');
+    }
+    if (!/^[\p{L}\p{N}_ .-]+$/u.test(displayName)) {
+      throw new Error('Duel display name contains unsupported characters.');
+    }
+    if (update.avatarSource === 'skribbl' && !update.skribblAvatar) {
+      throw new Error('Select or capture a Skribbl avatar first.');
+    }
+    const client = await this.ensureClient();
+    if (!client.rpc) throw new Error('Profile updates are unavailable in this client build.');
+    const { error } = await client.rpc('update_skribbl_duels_profile', {
+      duel_display_name: displayName,
+      duel_preferred_language: update.preferredLanguage,
+      duel_avatar_source: update.avatarSource,
+      duel_skribbl_avatar: update.avatarSource === 'skribbl' ? update.skribblAvatar : null,
+      duel_special_avatar_id: update.avatarSource === 'skribbl' ? update.specialAvatarId : null
+    });
+    if (error) throw new Error(error.message ?? 'Unable to update the Skribbl Duels profile.');
   }
 
   public stop(): void {

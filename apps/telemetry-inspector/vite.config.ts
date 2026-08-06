@@ -32,8 +32,8 @@ export default defineConfig(({ mode }) => {
         userscript: {
           name: 'Skribbl Duels - Telemetry Inspector',
           namespace: 'https://github.com/skribbl-duels',
-          version: '0.46.0',
-          description: 'Refined 3D icon orbits, isolated UI controls and server-controlled Special entitlement.',
+          version: '0.47.0',
+          description: 'Gateway-backed private Duel chat and server-authoritative telemetry claim validation.',
           author: 'Alpha',
           match: ['https://skribbl.io/*'],
           grant: 'none',

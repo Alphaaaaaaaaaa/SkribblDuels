@@ -5,9 +5,11 @@ import {
   isGatewayConnectErrorData,
   isGatewayServerMessage,
   type GatewayClientMessage,
+  type GatewayClaimCandidateMessage,
   type GatewayMatchmakingJoinMessage,
   type GatewayServerMessage,
-  type GatewaySocketAuth
+  type GatewaySocketAuth,
+  type GatewayTelemetryEnvelope
 } from '@skribbl-duels/gateway-contracts';
 import type {
   GatewayConnectionSnapshot,
@@ -40,6 +42,9 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     queue: null,
     match: null,
     lastMatchEvent: null,
+    duelChatMessages: [],
+    lastClaimResolution: null,
+    telemetryAck: null,
     error: null
   };
 }
@@ -59,6 +64,10 @@ export class SocketIoGatewayClient {
   private socket: GatewaySocket | null = null;
   private accessToken: string | null = null;
   private resumeCursor: GatewayResumeCursor | null;
+  private telemetryQueue: GatewayTelemetryEnvelope[] = [];
+  private telemetryInFlight: GatewayTelemetryEnvelope[] = [];
+  private telemetryFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingClaims: Array<Omit<GatewayClaimCandidateMessage, 'type'>> = [];
 
   public constructor(private readonly options: SocketIoGatewayClientOptions) {
     this.state = initialSnapshot(options.endpoint);
@@ -89,6 +98,7 @@ export class SocketIoGatewayClient {
     }
     if (!this.accessToken) {
       this.disconnectSocket();
+      this.clearTelemetryQueue();
       this.clearResumeCursor();
       this.update(initialSnapshot(this.options.endpoint));
       return;
@@ -112,6 +122,7 @@ export class SocketIoGatewayClient {
   public stop(): void {
     this.accessToken = null;
     this.disconnectSocket();
+    this.clearTelemetryQueue();
     this.update(initialSnapshot(this.options.endpoint));
     this.listeners.clear();
   }
@@ -125,7 +136,17 @@ export class SocketIoGatewayClient {
       page: 'home'
     });
     this.clearResumeCursor();
-    this.update({ ...this.state, queue: null, match: null, lastMatchEvent: null, error: null });
+    this.clearTelemetryQueue();
+    this.update({
+      ...this.state,
+      queue: null,
+      match: null,
+      lastMatchEvent: null,
+      duelChatMessages: [],
+      lastClaimResolution: null,
+      telemetryAck: null,
+      error: null
+    });
     return requestId;
   }
 
@@ -133,6 +154,7 @@ export class SocketIoGatewayClient {
     const requestId = this.createRequestId('leave');
     this.emit({ type: 'MATCHMAKING_LEAVE', requestId });
     this.clearResumeCursor();
+    this.clearTelemetryQueue();
     return requestId;
   }
 
@@ -147,6 +169,39 @@ export class SocketIoGatewayClient {
       challengeId,
       clientRevision
     });
+  }
+
+  public sendDuelChat(matchId: string, message: string): string {
+    const clientMessageId = this.createRequestId('chat');
+    this.emit({ type: 'DUEL_CHAT_SEND', matchId, clientMessageId, message });
+    return clientMessageId;
+  }
+
+  public queueTelemetryEnvelope(envelope: GatewayTelemetryEnvelope): void {
+    if (this.state.match?.matchId !== envelope.matchId) return;
+    if (this.telemetryQueue.some(item => item.sequence === envelope.sequence)) return;
+    this.telemetryQueue.push(structuredClone(envelope));
+    this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+    if (this.telemetryQueue.length >= 64) {
+      this.flushTelemetry();
+      return;
+    }
+    if (this.telemetryFlushTimer === null) {
+      this.telemetryFlushTimer = setTimeout(() => {
+        this.telemetryFlushTimer = null;
+        this.flushTelemetry();
+      }, 40);
+    }
+  }
+
+  public submitClaimCandidate(
+    message: Omit<GatewayClaimCandidateMessage, 'type'>
+  ): void {
+    if (!this.pendingClaims.some(candidate =>
+      candidate.matchId === message.matchId && candidate.candidateId === message.candidateId
+    )) this.pendingClaims.push(structuredClone(message));
+    this.flushTelemetry();
+    this.flushClaims();
   }
 
   private connect(): void {
@@ -198,6 +253,7 @@ export class SocketIoGatewayClient {
     });
     socket.on('disconnect', reason => {
       if (!this.accessToken || this.socket !== socket) return;
+      this.requeueTelemetryInFlight();
       this.update({
         ...this.state,
         endpoint,
@@ -233,6 +289,9 @@ export class SocketIoGatewayClient {
         queue: resumed ? this.state.queue : null,
         match: resumed ? this.state.match : null,
         lastMatchEvent: resumed ? this.state.lastMatchEvent : null,
+        duelChatMessages: resumed ? this.state.duelChatMessages : [],
+        lastClaimResolution: resumed ? this.state.lastClaimResolution : null,
+        telemetryAck: resumed ? this.state.telemetryAck : null,
         error: null
       });
       return;
@@ -265,12 +324,17 @@ export class SocketIoGatewayClient {
     }
     if (value.type === 'MATCH_SNAPSHOT') {
       if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
+      const sameMatch = this.state.match?.matchId === value.matchId;
+      const sameTelemetryMatch = sameMatch || this.state.telemetryAck?.matchId === value.matchId;
       if (value.state.phase === 'cancelled') this.clearResumeCursor();
       else this.setResumeCursor(value.matchId, value.revision);
       this.update({
         ...this.state,
         queue: null,
         match: structuredClone(value),
+        duelChatMessages: sameMatch ? this.state.duelChatMessages : [],
+        lastClaimResolution: sameMatch ? this.state.lastClaimResolution : null,
+        telemetryAck: sameTelemetryMatch ? this.state.telemetryAck : null,
         error: null
       });
       return;
@@ -279,6 +343,38 @@ export class SocketIoGatewayClient {
       if (this.state.lastMatchEvent?.matchId === value.matchId &&
           this.state.lastMatchEvent.revision > value.revision) return;
       this.update({ ...this.state, lastMatchEvent: structuredClone(value), error: null });
+      return;
+    }
+    if (value.type === 'DUEL_CHAT_MESSAGE') {
+      if (this.state.match?.matchId !== value.matchId) return;
+      const existing = this.state.duelChatMessages.some(message => message.messageId === value.messageId);
+      const duelChatMessages = existing
+        ? this.state.duelChatMessages
+        : [...this.state.duelChatMessages, structuredClone(value)].slice(-100);
+      this.update({ ...this.state, duelChatMessages, error: null });
+      return;
+    }
+    if (value.type === 'CLAIM_RESOLUTION') {
+      if (this.state.match?.matchId !== value.matchId) return;
+      this.update({ ...this.state, lastClaimResolution: structuredClone(value), error: null });
+      return;
+    }
+    if (value.type === 'TELEMETRY_ACK') {
+      if (this.state.match?.matchId !== value.matchId && this.resumeCursor?.matchId !== value.matchId) return;
+      this.telemetryQueue = this.telemetryQueue.filter(envelope =>
+        envelope.matchId === value.matchId && envelope.sequence > value.lastSequence
+      );
+      this.telemetryInFlight = this.telemetryInFlight.filter(envelope =>
+        envelope.matchId === value.matchId && envelope.sequence > value.lastSequence
+      );
+      if (this.telemetryInFlight.length > 0) {
+        this.telemetryQueue.push(...this.telemetryInFlight);
+        this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+        this.telemetryInFlight = [];
+      }
+      this.update({ ...this.state, telemetryAck: structuredClone(value), error: null });
+      if (this.telemetryQueue.length > 0) this.flushTelemetry();
+      this.flushClaims();
     }
   }
 
@@ -287,6 +383,69 @@ export class SocketIoGatewayClient {
       throw new Error('The authenticated Gateway must be connected before matchmaking.');
     }
     this.socket.emit(GATEWAY_SOCKET_EVENT, message);
+  }
+
+  private flushTelemetry(): void {
+    if (this.telemetryFlushTimer !== null) clearTimeout(this.telemetryFlushTimer);
+    this.telemetryFlushTimer = null;
+    if (this.telemetryInFlight.length > 0
+        || this.telemetryQueue.length === 0
+        || this.state.status !== 'connected'
+        || !this.socket?.connected) return;
+    const matchId = this.telemetryQueue[0]?.matchId;
+    if (!matchId) return;
+    const batch: GatewayTelemetryEnvelope[] = [];
+    for (const envelope of this.telemetryQueue) {
+      if (envelope.matchId !== matchId || batch.length >= 64) break;
+      const expected = batch.length === 0
+        ? envelope.sequence
+        : batch[batch.length - 1]!.sequence + 1;
+      if (envelope.sequence !== expected) break;
+      batch.push(envelope);
+    }
+    if (batch.length === 0) return;
+    this.telemetryQueue.splice(0, batch.length);
+    this.telemetryInFlight = batch;
+    this.emit({
+      type: 'TELEMETRY_BATCH',
+      matchId,
+      firstSequence: batch[0]!.sequence,
+      lastSequence: batch[batch.length - 1]!.sequence,
+      envelopes: batch
+    });
+  }
+
+  private clearTelemetryQueue(): void {
+    if (this.telemetryFlushTimer !== null) clearTimeout(this.telemetryFlushTimer);
+    this.telemetryFlushTimer = null;
+    this.telemetryQueue = [];
+    this.telemetryInFlight = [];
+    this.pendingClaims = [];
+  }
+
+  private flushClaims(): void {
+    if (this.state.status !== 'connected' || !this.socket?.connected) return;
+    const matchId = this.state.match?.matchId;
+    const telemetryAck = this.state.telemetryAck;
+    const lastSequence = telemetryAck && telemetryAck.matchId === matchId
+      ? telemetryAck.lastSequence
+      : 0;
+    const ready = this.pendingClaims.filter(candidate =>
+      candidate.matchId === matchId && candidate.throughSequence <= lastSequence
+    );
+    this.pendingClaims = this.pendingClaims.filter(candidate => !ready.includes(candidate));
+    for (const candidate of ready) this.emit({ type: 'CLAIM_CANDIDATE', ...candidate });
+  }
+
+  private requeueTelemetryInFlight(): void {
+    if (this.telemetryInFlight.length === 0) return;
+    const sequences = new Set(this.telemetryQueue.map(envelope => `${envelope.matchId}:${envelope.sequence}`));
+    for (const envelope of this.telemetryInFlight) {
+      const key = `${envelope.matchId}:${envelope.sequence}`;
+      if (!sequences.has(key)) this.telemetryQueue.push(envelope);
+    }
+    this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+    this.telemetryInFlight = [];
   }
 
   private createRequestId(prefix: string): string {
@@ -343,6 +502,7 @@ export class SocketIoGatewayClient {
     const socket = this.socket;
     this.socket = null;
     if (!socket) return;
+    this.requeueTelemetryInFlight();
     socket.removeAllListeners();
     socket.disconnect();
   }

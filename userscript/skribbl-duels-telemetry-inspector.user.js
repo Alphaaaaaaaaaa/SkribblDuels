@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Skribbl Duels - Telemetry Inspector
 // @namespace    https://github.com/skribbl-duels
-// @version      0.46.0
+// @version      0.47.0
 // @author       Alpha
-// @description  Refined 3D icon orbits, isolated UI controls and server-controlled Special entitlement.
+// @description  Gateway-backed private Duel chat and server-authoritative telemetry claim validation.
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -1446,7 +1446,15 @@ function isTelemetryEventType(value) {
 function isTelemetryEvent(value) {
 	if (typeof value !== "object" || value === null) return false;
 	const candidate = value;
-	return candidate.schemaVersion === 1 && typeof candidate.eventId === "string" && typeof candidate.telemetrySequence === "number" && isTelemetryEventType(candidate.type) && candidate.category === TELEMETRY_EVENT_CATEGORIES[candidate.type] && typeof candidate.occurredAt === "number" && typeof candidate.monotonicMs === "number" && typeof candidate.payload === "object" && candidate.payload !== null;
+	const actor = candidate.actor;
+	const context = candidate.context;
+	const source = candidate.source;
+	const nullableString = (item) => item === null || typeof item === "string";
+	const nullableNumber = (item) => item === null || typeof item === "number" && Number.isFinite(item);
+	const validActor = actor === null || Boolean(actor && nullableNumber(actor.playerId) && nullableString(actor.name) && typeof actor.isSelf === "boolean");
+	const validContext = Boolean(context && nullableString(context.lobbySessionId) && Number.isInteger(context.lobbyGeneration) && Number(context.lobbyGeneration) >= 0 && nullableString(context.lobbyId) && nullableNumber(context.lobbyType) && nullableNumber(context.languageId) && nullableString(context.languageName) && nullableString(context.gameSessionId) && nullableString(context.roundSessionId) && nullableNumber(context.roundIndex) && nullableNumber(context.roundNumber) && nullableNumber(context.maxRounds) && nullableNumber(context.gameStateId) && typeof context.gameStateName === "string" && nullableNumber(context.meId) && nullableNumber(context.drawerId));
+	const validSource = Boolean(source && (source.origin === "lobby-change" || source.origin === "decoded-packet" || source.origin === "dom-adapter" || source.origin === "system") && nullableString(source.rawRecordId) && nullableString(source.changeId) && (source.direction === null || source.direction === "server-to-client" || source.direction === "client-to-server") && nullableString(source.socketEvent) && nullableNumber(source.packetId));
+	return candidate.schemaVersion === 1 && typeof candidate.eventId === "string" && candidate.eventId.length > 0 && candidate.eventId.length <= 160 && Number.isInteger(candidate.telemetrySequence) && Number(candidate.telemetrySequence) >= 0 && isTelemetryEventType(candidate.type) && candidate.category === TELEMETRY_EVENT_CATEGORIES[candidate.type] && typeof candidate.occurredAt === "number" && Number.isFinite(candidate.occurredAt) && typeof candidate.monotonicMs === "number" && Number.isFinite(candidate.monotonicMs) && candidate.monotonicMs >= 0 && validActor && validContext && validSource && typeof candidate.payload === "object" && candidate.payload !== null && (candidate.confidence === "confirmed" || candidate.confidence === "derived" || candidate.confidence === "provisional") && typeof candidate.highVolume === "boolean";
 }
 function createId$1() {
 	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -11705,7 +11713,7 @@ var MatchStateStore = class {
 	}
 	confirmClaim(challengeId, claimId, side, occurredAt = Date.now()) {
 		if (!this.isMutable()) return this.getState();
-		const index = this.state.fields.findIndex((field) => field.challengeId === challengeId && (field.status === "available" || field.status === "pending" && field.owner === side));
+		const index = this.state.fields.findIndex((field) => field.challengeId === challengeId && (field.status === "available" || field.status === "pending"));
 		if (index < 0) return this.getState();
 		const fields = this.state.fields.map((field, fieldIndex) => fieldIndex === index ? {
 			...field,
@@ -11796,6 +11804,7 @@ var MatchTelemetryGateway = class {
 	matchStore;
 	transport = null;
 	sequence = 0;
+	sequenceMatchId = null;
 	stats = {
 		locallyObserved: 0,
 		forwarded: 0,
@@ -11812,6 +11821,7 @@ var MatchTelemetryGateway = class {
 	}
 	resetSession() {
 		this.sequence = 0;
+		this.sequenceMatchId = null;
 		this.stats = {
 			locallyObserved: 0,
 			forwarded: 0,
@@ -11831,6 +11841,10 @@ var MatchTelemetryGateway = class {
 			}
 			return null;
 		}
+		if (this.sequenceMatchId !== state.matchId) {
+			this.sequenceMatchId = state.matchId;
+			this.sequence = 0;
+		}
 		const envelope = {
 			contractVersion: 1,
 			matchId: state.matchId,
@@ -11849,6 +11863,19 @@ var MatchTelemetryGateway = class {
 	}
 	getStats() {
 		return { ...this.stats };
+	}
+	getLastSequence() {
+		return this.sequence;
+	}
+	synchronizeSequence(matchId, lastSequence) {
+		if (!Number.isInteger(lastSequence) || lastSequence < 0) return;
+		if (this.matchStore.getState().matchId !== matchId) return;
+		if (this.sequenceMatchId !== matchId) {
+			this.sequenceMatchId = matchId;
+			this.sequence = lastSequence;
+			return;
+		}
+		this.sequence = Math.max(this.sequence, lastSequence);
 	}
 };
 var DEFAULT_PRODUCT_UI_SETTINGS = {
@@ -12030,17 +12057,24 @@ function draftState(value) {
 	if (draft.status === "finalizing") return draft.turnAccountId === null && draft.selectionDeadlineAt === null && draft.picks.length === draft.playerPickCount && draft.offeredChallengeIds.length === 0 && draft.finalCandidateChallengeIds.length > 0 && finiteNumber(draft.finalRevealAt) && draft.board === null;
 	return draft.turnAccountId === null && draft.selectionDeadlineAt === null && draft.picks.length === draft.requiredPickCount && draft.offeredChallengeIds.length === 0 && draft.finalCandidateChallengeIds.length === 0 && draft.finalRevealAt === null && draft.board !== null;
 }
+function authoritativeClaim(value) {
+	const claim = record(value);
+	return Boolean(claim && nonEmptyString(claim.claimId) && nonEmptyString(claim.candidateId) && nonEmptyString(claim.challengeId) && nonNegativeInteger(claim.definitionVersion) && nonEmptyString(claim.ownerAccountId) && finiteNumber(claim.occurredAt) && nonNegativeInteger(claim.revision));
+}
 function matchmakingState(value) {
 	const state = record(value);
-	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt)) return false;
-	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && (state.draft === void 0 || draftState(state.draft));
-	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && draftState(state.draft) && state.draft.status === "complete";
-	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && draftState(state.draft) && state.draft.status === "complete";
-	return state.countdownEndsAt === null && state.startedAt === null && (state.draft === void 0 || state.draft === null);
+	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || state.winnerAccountId !== null && !nonEmptyString(state.winnerAccountId) || state.finishedAt !== null && !finiteNumber(state.finishedAt)) return false;
+	const participantIds = new Set(state.participants.map((participant) => participant.accountId));
+	if (state.claims.some((claim) => !participantIds.has(claim.ownerAccountId))) return false;
+	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && state.winnerAccountId === null && state.finishedAt === null && state.claims.length === 0 && (state.draft === void 0 || draftState(state.draft));
+	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && state.winnerAccountId === null && state.finishedAt === null && state.claims.length === 0 && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.winnerAccountId === null && state.finishedAt === null && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "finished") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && nonEmptyString(state.winnerAccountId) && participantIds.has(state.winnerAccountId) && finiteNumber(state.finishedAt) && state.finishedAt >= state.startedAt && draftState(state.draft) && state.draft.status === "complete";
+	return state.countdownEndsAt === null && state.startedAt === null && state.winnerAccountId === null && state.finishedAt === null && state.claims.length === 0 && (state.draft === void 0 || state.draft === null);
 }
 function matchmakingEvent(value) {
 	const event = record(value);
-	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_FINAL_RANDOM_STARTED" || event.type === "DRAFT_FINAL_RANDOM_SELECTED" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean"));
+	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_FINAL_RANDOM_STARTED" || event.type === "DRAFT_FINAL_RANDOM_SELECTED" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED" || event.type === "MATCH_FINISHED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean"));
 }
 function isGatewayServerMessage(value) {
 	const message = record(value);
@@ -12048,14 +12082,15 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 4 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId))) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 5 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId))) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
 		case "MATCH_SNAPSHOT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingState(message.state);
 		case "MATCH_EVENT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingEvent(message.event);
-		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision);
+		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && nonNegativeInteger(message.definitionVersion) && nonEmptyString(message.ownerAccountId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision) && finiteNumber(message.occurredAt);
 		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyString(message.message, 300) && finiteNumber(message.occurredAt);
+		case "TELEMETRY_ACK": return nonEmptyString(message.matchId) && nonNegativeInteger(message.lastSequence);
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
 		default: return false;
@@ -12070,7 +12105,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.46.0";
+var GATEWAY_CLIENT_VERSION = "0.47.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15313,6 +15348,9 @@ function initialSnapshot(endpoint) {
 		queue: null,
 		match: null,
 		lastMatchEvent: null,
+		duelChatMessages: [],
+		lastClaimResolution: null,
+		telemetryAck: null,
 		error: null
 	};
 }
@@ -15327,6 +15365,10 @@ var SocketIoGatewayClient = class {
 	socket = null;
 	accessToken = null;
 	resumeCursor;
+	telemetryQueue = [];
+	telemetryInFlight = [];
+	telemetryFlushTimer = null;
+	pendingClaims = [];
 	constructor(options) {
 		this.options = options;
 		this.state = initialSnapshot(options.endpoint);
@@ -15351,6 +15393,7 @@ var SocketIoGatewayClient = class {
 		}
 		if (!this.accessToken) {
 			this.disconnectSocket();
+			this.clearTelemetryQueue();
 			this.clearResumeCursor();
 			this.update(initialSnapshot(this.options.endpoint));
 			return;
@@ -15372,6 +15415,7 @@ var SocketIoGatewayClient = class {
 	stop() {
 		this.accessToken = null;
 		this.disconnectSocket();
+		this.clearTelemetryQueue();
 		this.update(initialSnapshot(this.options.endpoint));
 		this.listeners.clear();
 	}
@@ -15384,11 +15428,15 @@ var SocketIoGatewayClient = class {
 			page: "home"
 		});
 		this.clearResumeCursor();
+		this.clearTelemetryQueue();
 		this.update({
 			...this.state,
 			queue: null,
 			match: null,
 			lastMatchEvent: null,
+			duelChatMessages: [],
+			lastClaimResolution: null,
+			telemetryAck: null,
 			error: null
 		});
 		return requestId;
@@ -15400,6 +15448,7 @@ var SocketIoGatewayClient = class {
 			requestId
 		});
 		this.clearResumeCursor();
+		this.clearTelemetryQueue();
 		return requestId;
 	}
 	setReady(matchId, ready) {
@@ -15416,6 +15465,35 @@ var SocketIoGatewayClient = class {
 			challengeId,
 			clientRevision
 		});
+	}
+	sendDuelChat(matchId, message) {
+		const clientMessageId = this.createRequestId("chat");
+		this.emit({
+			type: "DUEL_CHAT_SEND",
+			matchId,
+			clientMessageId,
+			message
+		});
+		return clientMessageId;
+	}
+	queueTelemetryEnvelope(envelope) {
+		if (this.state.match?.matchId !== envelope.matchId) return;
+		if (this.telemetryQueue.some((item) => item.sequence === envelope.sequence)) return;
+		this.telemetryQueue.push(structuredClone(envelope));
+		this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+		if (this.telemetryQueue.length >= 64) {
+			this.flushTelemetry();
+			return;
+		}
+		if (this.telemetryFlushTimer === null) this.telemetryFlushTimer = setTimeout(() => {
+			this.telemetryFlushTimer = null;
+			this.flushTelemetry();
+		}, 40);
+	}
+	submitClaimCandidate(message) {
+		if (!this.pendingClaims.some((candidate) => candidate.matchId === message.matchId && candidate.candidateId === message.candidateId)) this.pendingClaims.push(structuredClone(message));
+		this.flushTelemetry();
+		this.flushClaims();
 	}
 	connect() {
 		const endpoint = this.options.endpoint;
@@ -15441,7 +15519,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 4,
+				contractVersion: 5,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -15463,6 +15541,7 @@ var SocketIoGatewayClient = class {
 		});
 		socket.on("disconnect", (reason) => {
 			if (!this.accessToken || this.socket !== socket) return;
+			this.requeueTelemetryInFlight();
 			this.update({
 				...this.state,
 				endpoint,
@@ -15479,7 +15558,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v4 message.`
+				error: `Gateway sent an invalid Contract v5 message.`
 			});
 			return;
 		}
@@ -15496,6 +15575,9 @@ var SocketIoGatewayClient = class {
 				queue: resumed ? this.state.queue : null,
 				match: resumed ? this.state.match : null,
 				lastMatchEvent: resumed ? this.state.lastMatchEvent : null,
+				duelChatMessages: resumed ? this.state.duelChatMessages : [],
+				lastClaimResolution: resumed ? this.state.lastClaimResolution : null,
+				telemetryAck: resumed ? this.state.telemetryAck : null,
 				error: null
 			});
 			return;
@@ -15528,12 +15610,17 @@ var SocketIoGatewayClient = class {
 		}
 		if (value.type === "MATCH_SNAPSHOT") {
 			if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
+			const sameMatch = this.state.match?.matchId === value.matchId;
+			const sameTelemetryMatch = sameMatch || this.state.telemetryAck?.matchId === value.matchId;
 			if (value.state.phase === "cancelled") this.clearResumeCursor();
 			else this.setResumeCursor(value.matchId, value.revision);
 			this.update({
 				...this.state,
 				queue: null,
 				match: structuredClone(value),
+				duelChatMessages: sameMatch ? this.state.duelChatMessages : [],
+				lastClaimResolution: sameMatch ? this.state.lastClaimResolution : null,
+				telemetryAck: sameTelemetryMatch ? this.state.telemetryAck : null,
 				error: null
 			});
 			return;
@@ -15545,11 +15632,101 @@ var SocketIoGatewayClient = class {
 				lastMatchEvent: structuredClone(value),
 				error: null
 			});
+			return;
+		}
+		if (value.type === "DUEL_CHAT_MESSAGE") {
+			if (this.state.match?.matchId !== value.matchId) return;
+			const duelChatMessages = this.state.duelChatMessages.some((message) => message.messageId === value.messageId) ? this.state.duelChatMessages : [...this.state.duelChatMessages, structuredClone(value)].slice(-100);
+			this.update({
+				...this.state,
+				duelChatMessages,
+				error: null
+			});
+			return;
+		}
+		if (value.type === "CLAIM_RESOLUTION") {
+			if (this.state.match?.matchId !== value.matchId) return;
+			this.update({
+				...this.state,
+				lastClaimResolution: structuredClone(value),
+				error: null
+			});
+			return;
+		}
+		if (value.type === "TELEMETRY_ACK") {
+			if (this.state.match?.matchId !== value.matchId && this.resumeCursor?.matchId !== value.matchId) return;
+			this.telemetryQueue = this.telemetryQueue.filter((envelope) => envelope.matchId === value.matchId && envelope.sequence > value.lastSequence);
+			this.telemetryInFlight = this.telemetryInFlight.filter((envelope) => envelope.matchId === value.matchId && envelope.sequence > value.lastSequence);
+			if (this.telemetryInFlight.length > 0) {
+				this.telemetryQueue.push(...this.telemetryInFlight);
+				this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+				this.telemetryInFlight = [];
+			}
+			this.update({
+				...this.state,
+				telemetryAck: structuredClone(value),
+				error: null
+			});
+			if (this.telemetryQueue.length > 0) this.flushTelemetry();
+			this.flushClaims();
 		}
 	}
 	emit(message) {
 		if (this.state.status !== "connected" || !this.socket?.connected) throw new Error("The authenticated Gateway must be connected before matchmaking.");
 		this.socket.emit(GATEWAY_SOCKET_EVENT, message);
+	}
+	flushTelemetry() {
+		if (this.telemetryFlushTimer !== null) clearTimeout(this.telemetryFlushTimer);
+		this.telemetryFlushTimer = null;
+		if (this.telemetryInFlight.length > 0 || this.telemetryQueue.length === 0 || this.state.status !== "connected" || !this.socket?.connected) return;
+		const matchId = this.telemetryQueue[0]?.matchId;
+		if (!matchId) return;
+		const batch = [];
+		for (const envelope of this.telemetryQueue) {
+			if (envelope.matchId !== matchId || batch.length >= 64) break;
+			const expected = batch.length === 0 ? envelope.sequence : batch[batch.length - 1].sequence + 1;
+			if (envelope.sequence !== expected) break;
+			batch.push(envelope);
+		}
+		if (batch.length === 0) return;
+		this.telemetryQueue.splice(0, batch.length);
+		this.telemetryInFlight = batch;
+		this.emit({
+			type: "TELEMETRY_BATCH",
+			matchId,
+			firstSequence: batch[0].sequence,
+			lastSequence: batch[batch.length - 1].sequence,
+			envelopes: batch
+		});
+	}
+	clearTelemetryQueue() {
+		if (this.telemetryFlushTimer !== null) clearTimeout(this.telemetryFlushTimer);
+		this.telemetryFlushTimer = null;
+		this.telemetryQueue = [];
+		this.telemetryInFlight = [];
+		this.pendingClaims = [];
+	}
+	flushClaims() {
+		if (this.state.status !== "connected" || !this.socket?.connected) return;
+		const matchId = this.state.match?.matchId;
+		const telemetryAck = this.state.telemetryAck;
+		const lastSequence = telemetryAck && telemetryAck.matchId === matchId ? telemetryAck.lastSequence : 0;
+		const ready = this.pendingClaims.filter((candidate) => candidate.matchId === matchId && candidate.throughSequence <= lastSequence);
+		this.pendingClaims = this.pendingClaims.filter((candidate) => !ready.includes(candidate));
+		for (const candidate of ready) this.emit({
+			type: "CLAIM_CANDIDATE",
+			...candidate
+		});
+	}
+	requeueTelemetryInFlight() {
+		if (this.telemetryInFlight.length === 0) return;
+		const sequences = new Set(this.telemetryQueue.map((envelope) => `${envelope.matchId}:${envelope.sequence}`));
+		for (const envelope of this.telemetryInFlight) {
+			const key = `${envelope.matchId}:${envelope.sequence}`;
+			if (!sequences.has(key)) this.telemetryQueue.push(envelope);
+		}
+		this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+		this.telemetryInFlight = [];
 	}
 	createRequestId(prefix) {
 		return `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
@@ -15593,6 +15770,7 @@ var SocketIoGatewayClient = class {
 		const socket = this.socket;
 		this.socket = null;
 		if (!socket) return;
+		this.requeueTelemetryInFlight();
 		socket.removeAllListeners();
 		socket.disconnect();
 	}
@@ -37077,6 +37255,9 @@ var DuelProductFoundation = class {
 	readySubmissionMatchId = null;
 	draftSubmissionKey = null;
 	lastWinMessageMatchId = null;
+	processedGatewayChatIds = /* @__PURE__ */ new Set();
+	processedClaimResolutionIds = /* @__PURE__ */ new Set();
+	restoreDuelChatFocus = false;
 	draftKeydown = (event) => this.handleDraftKeydown(event);
 	duelChatKeydown = (event) => this.handleDuelChatKeydown(event);
 	destroyed = false;
@@ -37102,6 +37283,9 @@ var DuelProductFoundation = class {
 			clientVersion: GATEWAY_CLIENT_VERSION,
 			capabilities: GATEWAY_CAPABILITIES
 		});
+		this.telemetryGateway.setTransport((envelope) => {
+			this.gatewayClient.queueTelemetryEnvelope(envelope);
+		});
 		this.gatewayState = this.gatewayClient.getState();
 	}
 	start() {
@@ -37114,6 +37298,7 @@ var DuelProductFoundation = class {
 		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
 			this.gatewayState = state;
 			this.handleGatewayMatchState(state);
+			this.handleGatewayRealtimeState(state);
 			this.renderVisibility();
 			this.renderStage();
 			this.renderBoard();
@@ -37168,9 +37353,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.46.0",
+			version: "0.47.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 4,
+			gatewayContractVersion: 5,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -37187,7 +37372,8 @@ var DuelProductFoundation = class {
 				joinMatchmaking: (format) => this.beginMatchmaking(format),
 				leaveMatchmaking: () => this.cancelMatchmaking(),
 				setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
-				pickDraftChallenge: (matchId, challengeId, clientRevision) => this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision)
+				pickDraftChallenge: (matchId, challengeId, clientRevision) => this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
+				sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message)
 			},
 			manifest: {
 				get: () => structuredClone(this.manifest),
@@ -37268,7 +37454,7 @@ var DuelProductFoundation = class {
 		this.boardGrid = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.46.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.47.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38236,7 +38422,7 @@ var DuelProductFoundation = class {
 		const log = element("div", "scd-card scd-stack");
 		log.style.maxHeight = "330px";
 		log.style.overflow = "auto";
-		if (this.duelChatMessages.length === 0) log.appendChild(element("div", "scd-muted", "Development placeholder for the private Duel channel. It does not use the Skribbl game chat."));
+		if (this.duelChatMessages.length === 0) log.appendChild(element("div", "scd-muted", "Private Duel channel. Messages are visible only to both matched players."));
 		else for (const message of this.duelChatMessages) {
 			const line = element("div");
 			const author = element("strong", "", `${message.author} `);
@@ -38247,33 +38433,39 @@ var DuelProductFoundation = class {
 		const form = element("form", "scd-row");
 		const input = element("input");
 		input.dataset.scdDuelChatInput = "true";
-		input.placeholder = "Local development message\u2026";
+		const gatewayChatActive = this.gatewayState.status === "connected" && this.gatewayState.match?.matchId === this.matchState.matchId && this.gatewayState.match.state.phase !== "cancelled";
+		input.placeholder = gatewayChatActive ? "Private Duel message\u2026" : "Duel chat requires an active Gateway match";
+		input.disabled = !gatewayChatActive;
 		input.maxLength = 300;
 		input.style.cssText = "flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(0,0,0,.25);color:white;padding:8px";
 		const send = element("button", "scd-button primary", "Send");
 		send.type = "submit";
+		send.disabled = !gatewayChatActive;
 		this.tooltips.register(send, "Send a private Duel message once the gateway is connected");
 		form.append(input, send);
 		form.addEventListener("submit", (event) => {
 			event.preventDefault();
 			const message = input.value.trim();
-			if (!message) return;
-			const restoreFocus = document.activeElement === input;
-			this.duelChatMessages.push({
-				id: `local-chat-${Date.now()}`,
-				side: "self",
-				author: this.duelDisplayName("self"),
-				message,
-				occurredAt: Date.now()
-			});
-			input.value = "";
-			this.renderPanel();
-			if (restoreFocus) queueMicrotask(() => {
-				this.panel?.querySelector("[data-scd-duel-chat-input=\"true\"]")?.focus();
-			});
+			const matchId = this.gatewayState.match?.matchId;
+			if (!message || !gatewayChatActive || !matchId) return;
+			this.restoreDuelChatFocus = document.activeElement === input;
+			try {
+				this.gatewayClient.sendDuelChat(matchId, message);
+				input.value = "";
+			} catch (error) {
+				this.restoreDuelChatFocus = false;
+				this.matchmakingError = error instanceof Error ? error.message : String(error);
+				this.renderPanel();
+			}
 		});
 		stack.append(log, form);
 		this.panelBody.appendChild(stack);
+		if (this.restoreDuelChatFocus) {
+			this.restoreDuelChatFocus = false;
+			queueMicrotask(() => {
+				this.panel?.querySelector("[data-scd-duel-chat-input=\"true\"]")?.focus();
+			});
+		}
 	}
 	handleDuelChatKeydown(event) {
 		const target = event.target;
@@ -38455,7 +38647,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Only Duel-server forwarding, board mutation and new claims are stopped after the win target is reached."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v4`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, two-option 15-second turns, the server-random parity field and the synchronized 10-second match start are implemented.`));
+		gateway.append(element("strong", "", `Gateway Contract v5`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, two-option 15-second turns, the server-random parity field and the synchronized 10-second match start are implemented.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -38596,9 +38788,84 @@ var DuelProductFoundation = class {
 			this.prepareGatewayCountdown(snapshot, board);
 			return;
 		}
-		if (snapshot.state.phase === "running" && board && snapshot.state.startedAt !== null) {
+		if ((snapshot.state.phase === "running" || snapshot.state.phase === "finished") && board && snapshot.state.startedAt !== null) {
 			this.clearMatchStartTimer();
 			this.startGatewayMatchLocally(snapshot, board, snapshot.state.startedAt);
+			this.synchronizeGatewayClaims(snapshot);
+		}
+	}
+	handleGatewayRealtimeState(state) {
+		const ack = state.telemetryAck;
+		if (ack) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+		for (const message of state.duelChatMessages) {
+			if (this.processedGatewayChatIds.has(message.messageId)) continue;
+			if (message.matchId !== this.matchState.matchId) continue;
+			this.processedGatewayChatIds.add(message.messageId);
+			this.duelChatMessages.push({
+				id: message.messageId,
+				side: message.authorAccountId === state.identity?.accountId ? "self" : "opponent",
+				author: message.authorDisplayName,
+				message: message.message,
+				occurredAt: message.occurredAt
+			});
+		}
+		const resolution = state.lastClaimResolution;
+		if (resolution) this.handleGatewayClaimResolution(resolution);
+	}
+	handleGatewayClaimResolution(resolution) {
+		const key = `${resolution.matchId}:${resolution.ownerAccountId}:${resolution.candidateId}:${resolution.revision}:${resolution.accepted}`;
+		if (this.processedClaimResolutionIds.has(key) || resolution.matchId !== this.matchState.matchId) return;
+		this.processedClaimResolutionIds.add(key);
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		const side = resolution.ownerAccountId === selfAccountId ? "self" : "opponent";
+		const runtime = this.options.challengeEngine.getInstances().find((item) => item.challengeId === resolution.challengeId);
+		if (!resolution.accepted || !resolution.claimId) {
+			if (side === "self" && runtime?.status === "completion-pending") this.options.challengeEngine.resolveCompletion(runtime.instanceId, {
+				outcome: "reopen",
+				reason: resolution.reason ?? "gateway-claim-rejected",
+				resolvedAt: resolution.occurredAt
+			});
+			else this.matchStore.rejectPending(resolution.challengeId, resolution.reason ?? "gateway-claim-rejected", resolution.occurredAt);
+			return;
+		}
+		if (side === "self" && runtime?.status === "completion-pending") this.options.challengeEngine.resolveCompletion(runtime.instanceId, {
+			outcome: "claimed",
+			claimId: resolution.claimId,
+			reason: "gateway-authoritative-claim",
+			resolvedAt: resolution.occurredAt
+		});
+		else {
+			this.matchStore.confirmClaim(resolution.challengeId, resolution.claimId, side, resolution.occurredAt);
+			this.insertCompletionOnce({
+				claimId: resolution.claimId,
+				side,
+				playerName: this.duelDisplayName(side),
+				challengeId: resolution.challengeId,
+				challengeName: challengeName(this.manifest, resolution.challengeId),
+				occurredAt: resolution.occurredAt
+			});
+		}
+		if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, "gateway-field-claimed");
+	}
+	synchronizeGatewayClaims(snapshot) {
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		for (const claim of [...snapshot.state.claims].sort((left, right) => left.revision - right.revision)) {
+			const side = claim.ownerAccountId === selfAccountId ? "self" : "opponent";
+			this.matchStore.confirmClaim(claim.challengeId, claim.claimId, side, claim.occurredAt);
+			this.insertCompletionOnce({
+				claimId: claim.claimId,
+				side,
+				playerName: this.duelDisplayName(side),
+				challengeId: claim.challengeId,
+				challengeName: challengeName(this.manifest, claim.challengeId),
+				occurredAt: claim.occurredAt
+			});
+			const runtime = this.options.challengeEngine.getInstances().find((item) => item.challengeId === claim.challengeId);
+			if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, "gateway-snapshot-field-claimed");
+		}
+		if (snapshot.state.phase === "finished" && snapshot.state.winnerAccountId) {
+			const winner = snapshot.state.winnerAccountId === selfAccountId ? "self" : "opponent";
+			this.matchStore.finishMatch(winner, "gateway-authoritative-win-target", snapshot.state.finishedAt ?? this.serverNow());
 		}
 	}
 	prepareGatewayCountdown(snapshot, board) {
@@ -38624,11 +38891,17 @@ var DuelProductFoundation = class {
 		}, Math.max(0, countdownEndsAt - this.serverNow()));
 	}
 	startGatewayMatchLocally(snapshot, board, startedAt) {
-		if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === "running") return;
+		if (this.matchState.matchId === snapshot.matchId && (this.matchState.phase === "running" || this.matchState.phase === "finished")) {
+			const ack = this.gatewayState.telemetryAck;
+			if (ack?.matchId === snapshot.matchId) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+			return;
+		}
 		const participants = this.gatewayParticipants(snapshot);
 		if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === "countdown") this.matchStore.startPreparedMatch(snapshot.matchId, startedAt);
 		else this.matchStore.startMatch(snapshot.matchId, board, participants, startedAt);
 		this.activateBoardChallenges(snapshot.matchId, board, startedAt, "gateway-match-started");
+		const ack = this.gatewayState.telemetryAck;
+		if (ack?.matchId === snapshot.matchId) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
 		this.settingsStore.updateBoard({ visible: true });
 		this.settingsStore.update({
 			panelOpen: false,
@@ -38723,6 +38996,9 @@ var DuelProductFoundation = class {
 		this.countdownGoUntil = 0;
 		this.currentBoard = null;
 		this.duelChatMessages = [];
+		this.processedGatewayChatIds.clear();
+		this.processedClaimResolutionIds.clear();
+		this.restoreDuelChatFocus = false;
 		this.lastWinMessageMatchId = null;
 		this.chatAdapter.reset();
 		this.telemetryGateway.resetSession();
@@ -38823,12 +39099,27 @@ var DuelProductFoundation = class {
 		if (!runtime || this.matchState.phase !== "running") return;
 		if (!this.matchState.fields.some((field) => field.challengeId === runtime.challengeId)) return;
 		if (event.type === "CHALLENGE_COMPLETION_CANDIDATE" && runtime.completionCandidate) {
-			this.matchStore.markPending(runtime.challengeId, runtime.completionCandidate.candidateId, "self", event.occurredAt);
+			const candidate = structuredClone(runtime.completionCandidate);
+			this.matchStore.markPending(runtime.challengeId, candidate.candidateId, "self", event.occurredAt);
+			const gatewayMatch = this.gatewayState.match;
+			if (gatewayMatch?.matchId === this.matchState.matchId && gatewayMatch.state.phase === "running") queueMicrotask(() => {
+				const current = this.gatewayState.match;
+				if (!current || current.matchId !== gatewayMatch.matchId || current.state.phase !== "running") return;
+				this.gatewayClient.submitClaimCandidate({
+					matchId: gatewayMatch.matchId,
+					candidateId: candidate.candidateId,
+					challengeId: runtime.challengeId,
+					definitionVersion: runtime.definitionVersion,
+					evidenceEventIds: candidate.evidenceEventIds,
+					occurredAt: candidate.completedAt,
+					throughSequence: this.telemetryGateway.getLastSequence()
+				});
+			});
 			return;
 		}
 		if (event.type === "CHALLENGE_CLAIMED" && runtime.claimId) {
 			this.matchStore.confirmClaim(runtime.challengeId, runtime.claimId, "self", event.occurredAt);
-			this.insertCompletion({
+			this.insertCompletionOnce({
 				claimId: runtime.claimId,
 				side: "self",
 				playerName: this.duelDisplayName("self"),
@@ -38851,8 +39142,12 @@ var DuelProductFoundation = class {
 		});
 		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
 	}
+	insertCompletionOnce(message) {
+		if (this.duelChatMessages.some((item) => item.id === `completion-${message.claimId}`)) return;
+		this.insertCompletion(message);
+	}
 };
-var BUILD_VERSION = "0.46.0";
+var BUILD_VERSION = "0.47.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

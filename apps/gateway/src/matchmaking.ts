@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type {
   GatewayClientCapability,
   GatewayClientIdentity,
+  GatewayAuthoritativeClaim,
+  GatewayClaimCandidateMessage,
+  GatewayClaimResolutionMessage,
+  GatewayDuelChatMessage,
+  GatewayDuelChatSendMessage,
   GatewayDraftBoardSnapshot,
   GatewayDraftPick,
   GatewayDraftPickMessage,
@@ -13,9 +18,11 @@ import type {
   GatewayMatchmakingState,
   GatewayQueueStatusMessage,
   GatewayReadyMessage,
-  GatewayServerMessage
+  GatewayServerMessage,
+  GatewayTelemetryBatchMessage
 } from '@skribbl-duels/gateway-contracts';
 import { GatewayDraftAuthority } from './draftAuthority';
+import { GatewayPlayerTelemetryAuthority } from './telemetryAuthority';
 
 type DuelFormat = GatewayMatchmakingJoinMessage['format'];
 
@@ -52,6 +59,8 @@ interface MatchParticipant extends MatchmakingPeer {
   simulated: boolean;
   connected: boolean;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  chatSentAt: number[];
+  claimSubmittedAt: number[];
 }
 
 interface ActiveDraft {
@@ -87,6 +96,13 @@ interface ActiveMatch {
   simulatedDraftTimer: ReturnType<typeof setTimeout> | null;
   countdownTimer: ReturnType<typeof setTimeout> | null;
   draft: ActiveDraft | null;
+  claims: GatewayAuthoritativeClaim[];
+  winnerAccountId: string | null;
+  finishedAt: number | null;
+  telemetryAuthorities: Map<string, GatewayPlayerTelemetryAuthority>;
+  chatMessages: GatewayDuelChatMessage[];
+  chatByClientId: Map<string, GatewayDuelChatMessage>;
+  claimResolutions: Map<string, GatewayClaimResolutionMessage>;
 }
 
 export type ReadyDecision =
@@ -94,6 +110,8 @@ export type ReadyDecision =
   | { ok: false; code: string; message: string };
 
 export type DraftDecision = ReadyDecision;
+export type TelemetryDecision = ReadyDecision;
+export type ChatDecision = ReadyDecision;
 
 export type MatchResumeDecision = {
   status: 'not-requested' | 'resumed' | 'not-found' | 'mismatch';
@@ -101,6 +119,16 @@ export type MatchResumeDecision = {
 };
 
 const SIMULATED_NAMES = ['QueueBot Atlas', 'QueueBot Nova', 'QueueBot Pixel', 'QueueBot Echo'];
+const MAX_CHAT_HISTORY = 100;
+
+function normalizeDuelChatMessage(value: string): string {
+  const normalized = value
+    .normalize('NFC')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return Array.from(normalized).slice(0, 300).join('');
+}
 
 export class GatewayMatchmaker {
   private readonly queues: Record<DuelFormat, QueueEntry[]> = { casual: [], ranked: [] };
@@ -171,6 +199,10 @@ export class GatewayMatchmaker {
           item.identity.accountId === accountId && !item.simulated
         );
         if (!current || !currentParticipant || currentParticipant.connected) return;
+        if (current.phase === 'finished') {
+          this.deleteMatch(current);
+          return;
+        }
         this.abortMatch(current.matchId, accountId, 'player-reconnect-timeout');
       }, this.options.reconnectGraceMs ?? 30_000);
       participant.reconnectTimer.unref?.();
@@ -205,7 +237,17 @@ export class GatewayMatchmaker {
   public publishResumeSnapshot(accountId: string): void {
     const matchId = this.accountMatches.get(accountId);
     const match = matchId ? this.matches.get(matchId) : null;
-    if (match) this.emitSnapshotToAccount(match, accountId);
+    if (!match) return;
+    const authority = match.telemetryAuthorities.get(accountId);
+    if (authority) {
+      this.emitToAccount(match, accountId, {
+        type: 'TELEMETRY_ACK',
+        matchId: match.matchId,
+        lastSequence: authority.getLastSequence()
+      });
+    }
+    this.emitSnapshotToAccount(match, accountId);
+    for (const message of match.chatMessages) this.emitToAccount(match, accountId, message);
   }
 
   public setReady(accountId: string, message: GatewayReadyMessage): ReadyDecision {
@@ -278,6 +320,186 @@ export class GatewayMatchmaker {
     return { ok: true };
   }
 
+  public sendDuelChat(accountId: string, message: GatewayDuelChatSendMessage): ChatDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId || match.phase === 'cancelled') {
+      return { ok: false, code: 'CHAT_MATCH_NOT_FOUND', message: 'The Duel chat is no longer active.' };
+    }
+    const participant = match.participants.find(item =>
+      item.identity.accountId === accountId && !item.simulated
+    );
+    if (!participant) {
+      return { ok: false, code: 'CHAT_PARTICIPANT_INVALID', message: 'This account is not a Duel participant.' };
+    }
+    const dedupeKey = `${accountId}:${message.clientMessageId}`;
+    const duplicate = match.chatByClientId.get(dedupeKey);
+    if (duplicate) {
+      participant.send(duplicate);
+      return { ok: true };
+    }
+    const normalized = normalizeDuelChatMessage(message.message);
+    if (!normalized) {
+      return { ok: false, code: 'CHAT_MESSAGE_EMPTY', message: 'The Duel message is empty after sanitization.' };
+    }
+    const now = this.now();
+    participant.chatSentAt = participant.chatSentAt.filter(timestamp => now - timestamp < 10_000);
+    if (participant.chatSentAt.length >= 8) {
+      return { ok: false, code: 'CHAT_RATE_LIMITED', message: 'Too many Duel messages were sent. Try again shortly.' };
+    }
+    participant.chatSentAt.push(now);
+    const outgoing: GatewayDuelChatMessage = {
+      type: 'DUEL_CHAT_MESSAGE',
+      matchId: match.matchId,
+      messageId: `chat-${this.createId()}`,
+      authorAccountId: accountId,
+      authorDisplayName: participant.identity.displayName,
+      message: normalized,
+      occurredAt: now
+    };
+    match.chatMessages.push(outgoing);
+    match.chatByClientId.set(dedupeKey, outgoing);
+    while (match.chatMessages.length > MAX_CHAT_HISTORY) match.chatMessages.shift();
+    if (match.chatByClientId.size > MAX_CHAT_HISTORY * 2) {
+      const retainedIds = new Set(match.chatMessages.map(item => item.messageId));
+      for (const [key, value] of match.chatByClientId) {
+        if (!retainedIds.has(value.messageId)) match.chatByClientId.delete(key);
+      }
+    }
+    this.broadcast(match, outgoing);
+    return { ok: true };
+  }
+
+  public processTelemetryBatch(
+    accountId: string,
+    message: GatewayTelemetryBatchMessage
+  ): TelemetryDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'TELEMETRY_MATCH_NOT_FOUND', message: 'The telemetry match is no longer active.' };
+    }
+    if (match.phase !== 'running') {
+      return { ok: false, code: 'TELEMETRY_MATCH_NOT_RUNNING', message: 'Duel telemetry is accepted only while the match is running.' };
+    }
+    if (JSON.stringify(message).length > 262_144) {
+      return { ok: false, code: 'TELEMETRY_BATCH_TOO_LARGE', message: 'The telemetry batch exceeds 256 KiB.' };
+    }
+    const authority = match.telemetryAuthorities.get(accountId);
+    if (!authority) {
+      return { ok: false, code: 'TELEMETRY_PARTICIPANT_INVALID', message: 'No telemetry authority exists for this participant.' };
+    }
+    const decision = authority.processBatch(message, this.now());
+    this.emitToAccount(match, accountId, {
+      type: 'TELEMETRY_ACK',
+      matchId: match.matchId,
+      lastSequence: decision.lastSequence
+    });
+    return decision.ok
+      ? { ok: true }
+      : { ok: false, code: decision.code, message: decision.message };
+  }
+
+  public submitClaimCandidate(
+    accountId: string,
+    message: GatewayClaimCandidateMessage
+  ): ReadyDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'CLAIM_MATCH_NOT_FOUND', message: 'The claim match is no longer active.' };
+    }
+    const dedupeKey = `${accountId}:${message.candidateId}`;
+    const duplicate = match.claimResolutions.get(dedupeKey);
+    if (duplicate) {
+      this.emitToAccount(match, accountId, duplicate);
+      return { ok: true };
+    }
+    const participant = match.participants.find(item =>
+      item.identity.accountId === accountId && !item.simulated
+    );
+    if (!participant) {
+      return { ok: false, code: 'CLAIM_PARTICIPANT_INVALID', message: 'This account is not a real Duel participant.' };
+    }
+    const submittedAt = this.now();
+    participant.claimSubmittedAt = participant.claimSubmittedAt.filter(timestamp =>
+      submittedAt - timestamp < 10_000
+    );
+    if (participant.claimSubmittedAt.length >= 20) {
+      return { ok: false, code: 'CLAIM_RATE_LIMITED', message: 'Too many Claim candidates were submitted. Try again shortly.' };
+    }
+    participant.claimSubmittedAt.push(submittedAt);
+    if (match.phase !== 'running') {
+      const resolution = this.rejectClaim(match, accountId, message, 'claim-match-not-running');
+      this.rememberClaimResolution(match, dedupeKey, resolution);
+      this.emitToAccount(match, accountId, resolution);
+      return { ok: true };
+    }
+    if (match.claims.some(claim => claim.challengeId === message.challengeId)) {
+      const resolution = this.rejectClaim(match, accountId, message, 'challenge-already-claimed');
+      this.rememberClaimResolution(match, dedupeKey, resolution);
+      this.emitToAccount(match, accountId, resolution);
+      return { ok: true };
+    }
+    const authority = match.telemetryAuthorities.get(accountId);
+    if (!authority) {
+      return { ok: false, code: 'CLAIM_PARTICIPANT_INVALID', message: 'No claim authority exists for this participant.' };
+    }
+    const validation = authority.validateClaim(message);
+    if (!validation.ok) {
+      const resolution = this.rejectClaim(match, accountId, message, validation.code.toLowerCase());
+      this.rememberClaimResolution(match, dedupeKey, resolution);
+      this.emitToAccount(match, accountId, resolution);
+      return { ok: true };
+    }
+
+    const occurredAt = this.now();
+    const claimId = `claim-${this.createId()}`;
+    authority.acceptClaim(validation.instanceId, claimId, occurredAt);
+    match.revision += 1;
+    const claim: GatewayAuthoritativeClaim = {
+      claimId,
+      candidateId: message.candidateId,
+      challengeId: message.challengeId,
+      definitionVersion: message.definitionVersion,
+      ownerAccountId: accountId,
+      occurredAt,
+      revision: match.revision
+    };
+    match.claims.push(claim);
+    for (const participantAuthority of match.telemetryAuthorities.values()) {
+      participantAuthority.closeChallenge(message.challengeId);
+    }
+    const board = match.draft?.board;
+    const ownedCount = match.claims.filter(item => item.ownerAccountId === accountId).length;
+    if (board && ownedCount >= board.winTarget) {
+      match.phase = 'finished';
+      match.winnerAccountId = accountId;
+      match.finishedAt = occurredAt;
+    }
+    const resolution: GatewayClaimResolutionMessage = {
+      type: 'CLAIM_RESOLUTION',
+      matchId: match.matchId,
+      candidateId: message.candidateId,
+      challengeId: message.challengeId,
+      definitionVersion: message.definitionVersion,
+      ownerAccountId: accountId,
+      accepted: true,
+      claimId,
+      reason: null,
+      revision: match.revision,
+      occurredAt
+    };
+    this.rememberClaimResolution(match, dedupeKey, resolution);
+    this.broadcast(match, resolution);
+    if (match.phase === 'finished') {
+      this.emitEvent(match, {
+        type: 'MATCH_FINISHED',
+        accountId,
+        reason: 'win-target-reached'
+      });
+    }
+    this.emitSnapshot(match);
+    return { ok: true };
+  }
+
   public close(): void {
     for (const format of ['casual', 'ranked'] as const) {
       for (const entry of this.queues[format]) {
@@ -285,7 +507,11 @@ export class GatewayMatchmaker {
       }
       this.queues[format] = [];
     }
-    for (const match of this.matches.values()) this.clearMatchTimers(match);
+    for (const match of this.matches.values()) {
+      this.clearMatchTimers(match);
+      for (const authority of match.telemetryAuthorities.values()) authority.destroy();
+      match.telemetryAuthorities.clear();
+    }
     this.matches.clear();
     this.accountMatches.clear();
   }
@@ -339,7 +565,14 @@ export class GatewayMatchmaker {
       draftTimer: null,
       simulatedDraftTimer: null,
       countdownTimer: null,
-      draft: null
+      draft: null,
+      claims: [],
+      winnerAccountId: null,
+      finishedAt: null,
+      telemetryAuthorities: new Map(),
+      chatMessages: [],
+      chatByClientId: new Map(),
+      claimResolutions: new Map()
     };
     this.matches.set(matchId, match);
     for (const participant of participants) {
@@ -652,9 +885,21 @@ export class GatewayMatchmaker {
   private startRunningMatch(matchId: string, scheduledStartAt: number): void {
     const match = this.matches.get(matchId);
     if (!match || match.phase !== 'countdown' || match.countdownEndsAt !== scheduledStartAt) return;
+    const board = match.draft?.board;
+    if (!board) {
+      this.abortMatch(matchId, null, 'authoritative-board-missing-at-start');
+      return;
+    }
     match.phase = 'running';
     match.countdownEndsAt = null;
     match.startedAt = scheduledStartAt;
+    for (const participant of match.participants) {
+      if (participant.simulated) continue;
+      match.telemetryAuthorities.set(
+        participant.identity.accountId,
+        new GatewayPlayerTelemetryAuthority(participant.identity.accountId, board, scheduledStartAt)
+      );
+    }
     match.revision += 1;
     this.emitEvent(match, {
       type: 'MATCH_STARTED',
@@ -679,6 +924,9 @@ export class GatewayMatchmaker {
     match.countdownEndsAt = null;
     match.startedAt = null;
     match.draft = null;
+    match.claims = [];
+    match.winnerAccountId = null;
+    match.finishedAt = null;
     match.revision += 1;
     this.emitEvent(match, {
       type: 'READY_CHECK_EXPIRED',
@@ -697,6 +945,9 @@ export class GatewayMatchmaker {
     match.countdownEndsAt = null;
     match.startedAt = null;
     match.draft = null;
+    match.claims = [];
+    match.winnerAccountId = null;
+    match.finishedAt = null;
     match.revision += 1;
     this.emitEvent(match, { type: 'MATCH_ABORTED', accountId, reason });
     this.emitSnapshot(match);
@@ -705,6 +956,8 @@ export class GatewayMatchmaker {
 
   private deleteMatch(match: ActiveMatch): void {
     this.clearMatchTimers(match);
+    for (const authority of match.telemetryAuthorities.values()) authority.destroy();
+    match.telemetryAuthorities.clear();
     this.matches.delete(match.matchId);
     for (const participant of match.participants) {
       if (this.accountMatches.get(participant.identity.accountId) === match.matchId) {
@@ -736,6 +989,53 @@ export class GatewayMatchmaker {
     if (match.simulatedDraftTimer) clearTimeout(match.simulatedDraftTimer);
     match.draftTimer = null;
     match.simulatedDraftTimer = null;
+  }
+
+  private rejectClaim(
+    match: ActiveMatch,
+    accountId: string,
+    message: GatewayClaimCandidateMessage,
+    reason: string
+  ): GatewayClaimResolutionMessage {
+    return {
+      type: 'CLAIM_RESOLUTION',
+      matchId: match.matchId,
+      candidateId: message.candidateId,
+      challengeId: message.challengeId,
+      definitionVersion: message.definitionVersion,
+      ownerAccountId: accountId,
+      accepted: false,
+      claimId: null,
+      reason,
+      revision: match.revision,
+      occurredAt: this.now()
+    };
+  }
+
+  private rememberClaimResolution(
+    match: ActiveMatch,
+    key: string,
+    resolution: GatewayClaimResolutionMessage
+  ): void {
+    match.claimResolutions.set(key, resolution);
+    while (match.claimResolutions.size > 512) {
+      const oldest = match.claimResolutions.keys().next().value as string | undefined;
+      if (!oldest) break;
+      match.claimResolutions.delete(oldest);
+    }
+  }
+
+  private emitToAccount(match: ActiveMatch, accountId: string, message: GatewayServerMessage): void {
+    const participant = match.participants.find(item =>
+      item.identity.accountId === accountId && !item.simulated && item.connected
+    );
+    participant?.send(message);
+  }
+
+  private broadcast(match: ActiveMatch, message: GatewayServerMessage): void {
+    for (const participant of match.participants) {
+      if (!participant.simulated && participant.connected) participant.send(message);
+    }
   }
 
   private emitSnapshot(match: ActiveMatch): void {
@@ -792,6 +1092,9 @@ export class GatewayMatchmaker {
       startedAt: match.startedAt,
       startingAccountId: match.startingAccountId,
       createdAt: match.createdAt,
+      claims: match.claims.map(claim => ({ ...claim })),
+      winnerAccountId: match.winnerAccountId,
+      finishedAt: match.finishedAt,
       draft: match.draft ? {
         status: match.draft.status,
         requiredPickCount: match.draft.requiredPickCount,
@@ -808,7 +1111,15 @@ export class GatewayMatchmaker {
   }
 
   private asParticipant(peer: MatchmakingPeer, simulated: boolean): MatchParticipant {
-    return { ...peer, ready: false, simulated, connected: true, reconnectTimer: null };
+    return {
+      ...peer,
+      ready: false,
+      simulated,
+      connected: true,
+      reconnectTimer: null,
+      chatSentAt: [],
+      claimSubmittedAt: []
+    };
   }
 
   private createSimulatedPeer(): MatchParticipant {
@@ -839,6 +1150,8 @@ export class GatewayMatchmaker {
       simulated: true,
       connected: true,
       reconnectTimer: null,
+      chatSentAt: [],
+      claimSubmittedAt: [],
       send() {}
     };
   }

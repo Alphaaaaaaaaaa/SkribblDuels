@@ -255,7 +255,7 @@ export class MatchStateStore {
     if (!this.isMutable()) return this.getState();
     const index = this.state.fields.findIndex(field =>
       field.challengeId === challengeId &&
-      (field.status === 'available' || (field.status === 'pending' && field.owner === side))
+      (field.status === 'available' || field.status === 'pending')
     );
     if (index < 0) return this.getState();
 
@@ -364,6 +364,7 @@ export class MatchStateStore {
 export class MatchTelemetryGateway {
   private transport: TelemetryTransport | null = null;
   private sequence = 0;
+  private sequenceMatchId: string | null = null;
   private stats: TelemetryGatewayStats = {
     locallyObserved: 0,
     forwarded: 0,
@@ -381,6 +382,7 @@ export class MatchTelemetryGateway {
 
   public resetSession(): void {
     this.sequence = 0;
+    this.sequenceMatchId = null;
     this.stats = {
       locallyObserved: 0,
       forwarded: 0,
@@ -400,6 +402,10 @@ export class MatchTelemetryGateway {
         this.stats.lastSuppressedEventId = event.eventId;
       }
       return null;
+    }
+    if (this.sequenceMatchId !== state.matchId) {
+      this.sequenceMatchId = state.matchId;
+      this.sequence = 0;
     }
 
     const envelope: OutboundTelemetryEnvelope = {
@@ -423,5 +429,21 @@ export class MatchTelemetryGateway {
 
   public getStats(): TelemetryGatewayStats {
     return { ...this.stats };
+  }
+
+  public getLastSequence(): number {
+    return this.sequence;
+  }
+
+  public synchronizeSequence(matchId: string, lastSequence: number): void {
+    if (!Number.isInteger(lastSequence) || lastSequence < 0) return;
+    const state = this.matchStore.getState();
+    if (state.matchId !== matchId) return;
+    if (this.sequenceMatchId !== matchId) {
+      this.sequenceMatchId = matchId;
+      this.sequence = lastSequence;
+      return;
+    }
+    this.sequence = Math.max(this.sequence, lastSequence);
   }
 }

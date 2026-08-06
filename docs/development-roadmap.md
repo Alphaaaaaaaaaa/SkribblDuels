@@ -23,17 +23,20 @@
 | Embedded visual assets | Complete | Real Challenge icons in intro, Draft and board plus animated GIF countdown |
 | 3D introduction | Complete | Two non-coplanar, trackless icon orbits with perspective depth and logo crossing |
 | UI interaction hardening | Complete | Inherited Skribbl font, contained profile fields and isolated pointer-capable controls |
+| Gateway-backed Duel communication | Complete | Participant-only private chat with sanitization, rate limits, message-ID de-duplication and reconnect history |
+| Telemetry and claim authority | Complete | Contract v5 batches, ACK cursors, independent server Challenge Engines, authoritative claims and win-target finish |
 
 ## Active development sequence
 
-### 1. Gateway-backed Duel communication
+### 1. Match conclusion controls
 
-- Send private Duel-chat messages through the existing versioned Contract
-  messages instead of retaining the current local development transport.
-- Authorize sender membership, sanitize length and broadcast only to both match
-  participants.
-- Persist an in-memory reconnect window with message-id de-duplication.
-- Add independent message/SFX toggles and retain Enter/Escape focus behavior.
+- Add unilateral Forfeit as an immediate server-authoritative loss for the
+  submitting participant.
+- Add a Draw proposal that only finishes after explicit acceptance by the other
+  participant.
+- Include withdrawal, rejection, timeout, reconnect restoration and
+  simultaneous-action idempotency.
+- Keep results immutable after the first authoritative conclusion.
 
 ### 2. Friendly matches
 
@@ -41,15 +44,7 @@
 - Reuse the authoritative Ready, Draft, Countdown and reconnect lifecycle.
 - Prevent an invite token from revealing account data before it is accepted.
 
-### 3. Telemetry authority
-
-- Batch normalized telemetry from each browser over Contract v3.
-- Validate challenge claim candidates on the Gateway.
-- Broadcast accepted and rejected claim resolutions with monotonic revisions.
-- Keep skribbl.io and local telemetry running after a Duel finishes while
-  suppressing further Duel claims and board changes.
-
-### 4. Persistence and competition
+### 3. Persistence and competition
 
 - Persist matches, participants, boards, claims and final results in Supabase.
 - Add Ranked rating updates and match history only after result validation is
@@ -57,16 +52,16 @@
 - Implement two-complete-game series behavior such as Back to back without
   weakening lobby-change resets.
 
-### 5. Product completion
+### 4. Product completion
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-The immediate next milestone is Gateway-backed Duel chat because the Contract
-types already exist while the current UI still keeps messages locally. It is a
-bounded end-to-end step that exercises participant authorization, reconnect
-delivery and abuse limits before authoritative telemetry batches are enabled.
+The immediate next milestone is Forfeit plus mutually agreed Draw. Contract v5
+now has authoritative claims and terminal winner state, so these additional
+conclusions can be modeled without trusting the browser or conflating a Draw
+proposal with a completed result.
 The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.

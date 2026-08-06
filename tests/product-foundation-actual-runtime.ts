@@ -120,6 +120,19 @@ void (async () => {
   assert.equal(forwarded, 1);
   assert.equal(gateway.getStats().suppressedAfterFreeze, 1);
 
+  const claimRace = new MatchStateStore();
+  claimRace.startMatch('claim-race', casual, [
+    { playerId: 'self', displayName: 'Alpha', side: 'self' },
+    { playerId: 'opponent', displayName: 'Bravo', side: 'opponent' }
+  ], 20_000);
+  const racedField = casual.fields[0]!;
+  claimRace.markPending(racedField.challengeId, 'self-pending', 'self', 20_100);
+  claimRace.confirmClaim(racedField.challengeId, 'opponent-authoritative', 'opponent', 20_200);
+  const resolvedRace = claimRace.getState().fields.find(field => field.challengeId === racedField.challengeId);
+  assert.equal(resolvedRace?.status, 'claimed');
+  assert.equal(resolvedRace?.owner, 'opponent');
+  assert.equal(resolvedRace?.pendingCandidateId, null);
+
   console.log('Product Foundation passed with the actual 46-challenge manifest and 250 Ranked draft seeds.');
 })().catch(error => {
   console.error(error);

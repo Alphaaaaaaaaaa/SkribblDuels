@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v4 `WELCOME`. It also owns homepage matchmaking, reconnect resume, participant profile/avatar disclosure, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field and the synchronized 10-second match start.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v5 `WELCOME`. It owns homepage matchmaking, reconnect resume, participant profile/avatar disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start and authoritative Challenge claims.
 
 ## Local server
 
@@ -30,6 +30,24 @@ the same account may rebind to the exact active match. `WELCOME.resumeStatus`
 and `resumedMatchId` explicitly tell the client whether stale local state may be
 kept; the Gateway then republishes the latest authoritative snapshot. Draft and
 countdown timers continue while a player is temporarily disconnected.
+
+Private chat is normalized and sanitized on the server, limited to 300 code
+points, burst-rate-limited and retained in a bounded in-memory history. Client
+message IDs make resends idempotent; only both match participants receive live
+or replayed messages.
+
+During a running match, each real participant sends contiguous normalized
+telemetry batches. The Gateway acknowledges the last accepted sequence and
+replays the events through its own Challenge Engine. A completion is accepted
+only when its declared sequence has been processed, its challenge and
+definition match the frozen board, and its evidence IDs equal the Gateway's
+candidate. Claims and the winner remain in reconnect snapshots. Further Duel
+telemetry is rejected after the win target is reached.
+
+The production entry point loads the supported English, German, French, Korean
+and Spanish official word lists before listening. Startup fails if this
+authority dependency is unavailable instead of silently enabling unverifiable
+word-list challenges.
 
 The local health endpoint does not prove a browser connection because `skribbl.io` needs a publicly trusted HTTPS Gateway. Deploy first, then build the userscript with `VITE_GATEWAY_URL` set to that public origin.
 

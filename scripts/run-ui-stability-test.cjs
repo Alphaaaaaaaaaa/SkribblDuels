@@ -34,6 +34,13 @@ assert(source.includes("this.panelMainTab.textContent = mainTab === 'match' ? 'M
 assert(source.includes("restoredSettings.panelOpen\n      ? this.settingsStore.update({ panelOpen: false })"), 'Hub is not forced closed on initial load');
 assert(source.includes('.scd-icon:hover, button:not(:disabled):hover .scd-icon { transform:scale(1.1); }'), 'button-integrated icon hover scale is missing');
 assert(source.includes('this.renderChatTab();'), 'Duel chat is not integrated into the Match view');
+assert(source.includes('this.gatewayClient.sendDuelChat(matchId, message)'), 'Duel chat still lacks Gateway transport');
+assert(!source.includes('local-chat-'), 'Duel chat still writes local placeholder messages');
+assert(source.includes('this.gatewayClient.queueTelemetryEnvelope(envelope)'), 'normalized telemetry is not connected to Gateway batching');
+assert(source.includes('this.gatewayClient.submitClaimCandidate({'), 'completion candidates are not submitted to the Gateway');
+assert(source.includes('throughSequence: this.telemetryGateway.getLastSequence()'), 'claim candidates are not bound to their telemetry sequence');
+assert(source.includes('handleGatewayClaimResolution'), 'Gateway Claim resolutions are not applied to the local board');
+assert(source.includes('synchronizeGatewayClaims'), 'authoritative reconnect Claims are not restored');
 assert(source.includes("window.addEventListener('keydown', this.duelChatKeydown, true)"), 'Duel chat does not intercept Enter before Skribbl handlers');
 assert(source.includes('event.stopImmediatePropagation();'), 'Duel chat Enter isolation is missing');
 assert(source.includes("if (event.key === 'Escape')"), 'Escape does not unfocus Duel chat');

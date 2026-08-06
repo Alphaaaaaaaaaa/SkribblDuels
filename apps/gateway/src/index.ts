@@ -1,8 +1,10 @@
 import { createSupabaseGatewayAuthenticator } from './authenticate';
 import { readGatewayServerConfig } from './config';
 import { createGatewayServer } from './server';
+import { prepareGatewayOfficialWordLists } from './officialWordListAuthority';
 
 const config = readGatewayServerConfig();
+await prepareGatewayOfficialWordLists();
 const gateway = createGatewayServer({
   config,
   authenticate: createSupabaseGatewayAuthenticator(config)

@@ -1,3 +1,4 @@
+import { isTelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 import {
   GATEWAY_CONTRACT_VERSION,
   type GatewayAuthRequiredMessage,
@@ -149,6 +150,28 @@ function draftState(value: unknown): value is GatewayDraftState {
     && draft.board !== null;
 }
 
+function authoritativeClaim(value: unknown): boolean {
+  const claim = record(value);
+  return Boolean(claim
+    && nonEmptyString(claim.claimId)
+    && nonEmptyString(claim.candidateId)
+    && nonEmptyString(claim.challengeId)
+    && nonNegativeInteger(claim.definitionVersion)
+    && nonEmptyString(claim.ownerAccountId)
+    && finiteNumber(claim.occurredAt)
+    && nonNegativeInteger(claim.revision));
+}
+
+function telemetryEnvelope(value: unknown, matchId: string, sequence: number): boolean {
+  const envelope = record(value);
+  return Boolean(envelope
+    && envelope.contractVersion === 1
+    && envelope.matchId === matchId
+    && envelope.sequence === sequence
+    && finiteNumber(envelope.sentAt)
+    && isTelemetryEvent(envelope.event));
+}
+
 function matchmakingState(value: unknown): boolean {
   const state = record(value);
   if (!state
@@ -157,6 +180,7 @@ function matchmakingState(value: unknown): boolean {
         && state.phase !== 'draft'
         && state.phase !== 'countdown'
         && state.phase !== 'running'
+        && state.phase !== 'finished'
         && state.phase !== 'cancelled')
       || !Array.isArray(state.participants)
       || state.participants.length !== 2
@@ -165,11 +189,22 @@ function matchmakingState(value: unknown): boolean {
       || (state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt))
       || (state.startedAt !== null && !finiteNumber(state.startedAt))
       || !nonEmptyString(state.startingAccountId)
-      || !finiteNumber(state.createdAt)) return false;
+      || !finiteNumber(state.createdAt)
+      || !Array.isArray(state.claims)
+      || !state.claims.every(authoritativeClaim)
+      || (state.winnerAccountId !== null && !nonEmptyString(state.winnerAccountId))
+      || (state.finishedAt !== null && !finiteNumber(state.finishedAt))) return false;
+  const participantIds = new Set((state.participants as Array<Record<string, unknown>>)
+    .map(participant => participant.accountId));
+  if ((state.claims as Array<Record<string, unknown>>).some(claim =>
+    !participantIds.has(claim.ownerAccountId))) return false;
   if (state.phase === 'draft') {
     return state.readyDeadlineAt === null
       && state.countdownEndsAt === null
       && state.startedAt === null
+      && state.winnerAccountId === null
+      && state.finishedAt === null
+      && state.claims.length === 0
       && (state.draft === undefined || draftState(state.draft));
   }
   if (state.phase === 'countdown') {
@@ -177,6 +212,9 @@ function matchmakingState(value: unknown): boolean {
       && finiteNumber(state.countdownEndsAt)
       && state.countdownEndsAt > state.createdAt
       && state.startedAt === null
+      && state.winnerAccountId === null
+      && state.finishedAt === null
+      && state.claims.length === 0
       && draftState(state.draft)
       && state.draft.status === 'complete';
   }
@@ -185,11 +223,28 @@ function matchmakingState(value: unknown): boolean {
       && state.countdownEndsAt === null
       && finiteNumber(state.startedAt)
       && state.startedAt >= state.createdAt
+      && state.winnerAccountId === null
+      && state.finishedAt === null
+      && draftState(state.draft)
+      && state.draft.status === 'complete';
+  }
+  if (state.phase === 'finished') {
+    return state.readyDeadlineAt === null
+      && state.countdownEndsAt === null
+      && finiteNumber(state.startedAt)
+      && state.startedAt >= state.createdAt
+      && nonEmptyString(state.winnerAccountId)
+      && participantIds.has(state.winnerAccountId)
+      && finiteNumber(state.finishedAt)
+      && state.finishedAt >= state.startedAt
       && draftState(state.draft)
       && state.draft.status === 'complete';
   }
   return state.countdownEndsAt === null
     && state.startedAt === null
+    && state.winnerAccountId === null
+    && state.finishedAt === null
+    && state.claims.length === 0
     && (state.draft === undefined || state.draft === null);
 }
 
@@ -207,7 +262,8 @@ function matchmakingEvent(value: unknown): boolean {
       || event.type === 'DRAFT_FINAL_RANDOM_SELECTED'
       || event.type === 'DRAFT_COMPLETED'
       || event.type === 'MATCH_COUNTDOWN_STARTED'
-      || event.type === 'MATCH_STARTED')
+      || event.type === 'MATCH_STARTED'
+      || event.type === 'MATCH_FINISHED')
     && (event.accountId === null || nonEmptyString(event.accountId))
     && (event.reason === null || nonEmptyString(event.reason, 128))
     && (event.challengeId === undefined || nonEmptyString(event.challengeId))
@@ -252,14 +308,20 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
         && nonEmptyString(message.challengeId)
         && nonNegativeInteger(message.definitionVersion)
         && stringArray(message.evidenceEventIds)
-        && finiteNumber(message.occurredAt);
-    case 'TELEMETRY_BATCH':
-      return nonEmptyString(message.matchId)
-        && nonNegativeInteger(message.firstSequence)
-        && nonNegativeInteger(message.lastSequence)
-        && message.lastSequence >= message.firstSequence
-        && Array.isArray(message.envelopes)
-        && message.envelopes.length <= 500;
+        && finiteNumber(message.occurredAt)
+        && nonNegativeInteger(message.throughSequence);
+    case 'TELEMETRY_BATCH': {
+      if (!nonEmptyString(message.matchId)
+          || !nonNegativeInteger(message.firstSequence)
+          || !nonNegativeInteger(message.lastSequence)
+          || message.lastSequence < message.firstSequence
+          || !Array.isArray(message.envelopes)
+          || message.envelopes.length === 0
+          || message.envelopes.length > 64
+          || message.lastSequence - message.firstSequence + 1 !== message.envelopes.length) return false;
+      return message.envelopes.every((envelope, index) =>
+        telemetryEnvelope(envelope, message.matchId as string, Number(message.firstSequence) + index));
+    }
     case 'DUEL_CHAT_SEND':
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.clientMessageId)
@@ -314,10 +376,13 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.candidateId)
         && nonEmptyString(message.challengeId)
+        && nonNegativeInteger(message.definitionVersion)
+        && nonEmptyString(message.ownerAccountId)
         && typeof message.accepted === 'boolean'
         && (message.claimId === null || nonEmptyString(message.claimId))
         && (message.reason === null || nonEmptyString(message.reason))
-        && nonNegativeInteger(message.revision);
+        && nonNegativeInteger(message.revision)
+        && finiteNumber(message.occurredAt);
     case 'DUEL_CHAT_MESSAGE':
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.messageId)
@@ -325,6 +390,9 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && nonEmptyString(message.authorDisplayName, 128)
         && nonEmptyString(message.message, 300)
         && finiteNumber(message.occurredAt);
+    case 'TELEMETRY_ACK':
+      return nonEmptyString(message.matchId)
+        && nonNegativeInteger(message.lastSequence);
     case 'PONG':
       return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
     case 'ERROR':

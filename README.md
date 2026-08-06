@@ -1,26 +1,29 @@
-# Skribbl Duels visual integration v0.46.0
+# Skribbl Duels v0.47.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
-Gateway Contract v4, Discord OAuth through Supabase Auth, authoritative Duel
-profiles, resumable matchmaking and the server-authoritative draft lifecycle.
+Gateway Contract v5, Discord OAuth through Supabase Auth, authoritative Duel
+profiles, private Gateway chat, resumable matchmaking and server-validated
+challenge claims.
 
-## v0.46.0
+## v0.47.0
 
-- Expands the two non-coplanar introduction orbits and renders thirteen real
-  Challenge icons while retaining depth-based scale, opacity and logo crossing.
-- Removes the dashed orbit tracks so the icon depth is the only orbital cue.
-- Reduces the animated logo glow to the approved 7 px/14 px low-opacity pair.
-- Uses 135-degree Skribbl-style `drop-shadow()` treatment for animated and
-  product icons instead of box-shaped icon shadows.
-- Inherits Skribbl's page font instead of forcing Arial.
-- Keeps the Duel display-name input inside its field with an auto width,
-  zero minimum width and flexible remaining-space sizing.
-- Explicitly enables and isolates pointer, mouse, touch and wheel events on
-  generated buttons, inputs, selects and textareas, including Duel chat.
-- Adds an idempotent server-side Special grant for the supplied
-  `analphabetism#0` profile without embedding a service credential.
+- Routes private Duel chat through authenticated Gateway membership and only to
+  the two matched participants.
+- Sanitizes and rate-limits chat, de-duplicates client message IDs and replays a
+  bounded in-memory history on reconnect.
+- Batches normalized telemetry with contiguous per-player sequences and ACK
+  cursors.
+- Runs an independent Challenge Engine per real participant on the Gateway and
+  validates definition versions plus exact evidence event IDs.
+- Keeps browser completions pending until the Gateway accepts or rejects them.
+- Broadcasts authoritative claims with owner, timestamp and monotonic match
+  revision; reconnect snapshots retain the exact claim state.
+- Ends and freezes the Duel authoritatively when the format win target is
+  reached while Skribbl telemetry itself continues locally.
+- Preloads every supported official word list before the production Gateway
+  starts so word-list challenges use the same authority path.
 
-Gateway Contract remains v4. Ready check, 15-second pair Draft turns, the
+Gateway Contract is now v5. Ready check, 15-second pair Draft turns, the
 server-random parity field, synchronized ten-second start and 30-second
 reconnect grace period are unchanged.
 
@@ -32,7 +35,7 @@ exact version.
 
 ## Database migrations
 
-Apply the files under `supabase/migrations/` in filename order. v0.46.0 does
+Apply the files under `supabase/migrations/` in filename order. v0.47.0 does
 not add a schema migration. To enable the requested Special for the supplied
 profile, run this owner-only helper once in the Supabase SQL editor:
 
@@ -58,7 +61,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/ui-polish-special-entitlement-v0.46.0.md`,
+See `docs/gateway-chat-telemetry-authority-v0.47.0.md`,
+`docs/ui-polish-special-entitlement-v0.46.0.md`,
 `docs/intro-avatar-countdown-v0.45.0.md`,
 `docs/profile-versus-assets-v0.44.0.md`,
 `docs/vanilla-hub-match-stage-v0.43.0.md` and

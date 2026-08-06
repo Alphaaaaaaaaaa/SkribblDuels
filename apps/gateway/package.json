@@ -6,8 +6,10 @@
   "main": "../../dist/gateway/index.js",
   "dependencies": {
     "@skribbl-duels/challenge-definitions": "2.7.0",
+    "@skribbl-duels/challenge-engine": "0.1.1",
     "@skribbl-duels/gateway-contracts": "0.1.0",
     "@skribbl-duels/product-core": "0.3.0",
+    "@skribbl-duels/telemetry-contracts": "file:../../packages/telemetry-contracts",
     "@supabase/supabase-js": "2.110.8",
     "socket.io": "4.8.3"
   }

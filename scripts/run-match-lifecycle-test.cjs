@@ -28,6 +28,11 @@ assert(gateway.includes("readyTimeoutMs"), 'server ready timeout is missing');
 assert(gateway.includes('createChallengeOffer('), 'server does not create pair-draft offers');
 assert(gateway.includes('beginFinalRandomSelection('), 'server parity final field is missing');
 assert(gateway.includes('matchCountdownMs'), 'server match countdown is missing');
+assert(gateway.includes('processTelemetryBatch'), 'server telemetry authority entry point is missing');
+assert(gateway.includes('submitClaimCandidate'), 'server Claim authority entry point is missing');
+assert(gateway.includes("match.phase = 'finished'"), 'server does not own the terminal win state');
+assert(product.includes('this.telemetryGateway.setTransport'), 'match telemetry is not connected to the Gateway');
+assert(product.includes('gateway-authoritative-win-target'), 'client does not restore the authoritative winner');
 
 console.log(JSON.stringify({
   singletonRuntime: true,

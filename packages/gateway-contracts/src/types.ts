@@ -1,4 +1,6 @@
-export const GATEWAY_CONTRACT_VERSION = 4 as const;
+import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
+
+export const GATEWAY_CONTRACT_VERSION = 5 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -67,6 +69,15 @@ export interface GatewayClaimCandidateMessage {
   definitionVersion: number;
   evidenceEventIds: readonly string[];
   occurredAt: number;
+  throughSequence: number;
+}
+
+export interface GatewayTelemetryEnvelope {
+  contractVersion: 1;
+  matchId: string;
+  sequence: number;
+  sentAt: number;
+  event: TelemetryEvent;
 }
 
 export interface GatewayTelemetryBatchMessage {
@@ -74,7 +85,7 @@ export interface GatewayTelemetryBatchMessage {
   matchId: string;
   firstSequence: number;
   lastSequence: number;
-  envelopes: readonly unknown[];
+  envelopes: readonly GatewayTelemetryEnvelope[];
 }
 
 export interface GatewayDuelChatSendMessage {
@@ -178,7 +189,7 @@ export interface GatewayDraftState {
 
 export interface GatewayMatchmakingState {
   format: 'casual' | 'ranked';
-  phase: 'ready-check' | 'draft' | 'countdown' | 'running' | 'cancelled';
+  phase: 'ready-check' | 'draft' | 'countdown' | 'running' | 'finished' | 'cancelled';
   participants: readonly GatewayMatchmakingParticipant[];
   readyDeadlineAt: number | null;
   countdownEndsAt: number | null;
@@ -186,6 +197,19 @@ export interface GatewayMatchmakingState {
   startingAccountId: string;
   createdAt: number;
   draft?: GatewayDraftState | null;
+  claims: readonly GatewayAuthoritativeClaim[];
+  winnerAccountId: string | null;
+  finishedAt: number | null;
+}
+
+export interface GatewayAuthoritativeClaim {
+  claimId: string;
+  candidateId: string;
+  challengeId: string;
+  definitionVersion: number;
+  ownerAccountId: string;
+  occurredAt: number;
+  revision: number;
 }
 
 export interface GatewayMatchmakingEvent {
@@ -201,7 +225,8 @@ export interface GatewayMatchmakingEvent {
     | 'DRAFT_FINAL_RANDOM_SELECTED'
     | 'DRAFT_COMPLETED'
     | 'MATCH_COUNTDOWN_STARTED'
-    | 'MATCH_STARTED';
+    | 'MATCH_STARTED'
+    | 'MATCH_FINISHED';
   accountId: string | null;
   reason: string | null;
   challengeId?: string;
@@ -228,10 +253,13 @@ export interface GatewayClaimResolutionMessage {
   matchId: string;
   candidateId: string;
   challengeId: string;
+  definitionVersion: number;
+  ownerAccountId: string;
   accepted: boolean;
   claimId: string | null;
   reason: string | null;
   revision: number;
+  occurredAt: number;
 }
 
 export interface GatewayDuelChatMessage {
@@ -242,6 +270,12 @@ export interface GatewayDuelChatMessage {
   authorDisplayName: string;
   message: string;
   occurredAt: number;
+}
+
+export interface GatewayTelemetryAckMessage {
+  type: 'TELEMETRY_ACK';
+  matchId: string;
+  lastSequence: number;
 }
 
 export interface GatewayPongMessage {
@@ -266,5 +300,6 @@ export type GatewayServerMessage =
   | GatewayMatchEventMessage
   | GatewayClaimResolutionMessage
   | GatewayDuelChatMessage
+  | GatewayTelemetryAckMessage
   | GatewayPongMessage
   | GatewayErrorMessage;

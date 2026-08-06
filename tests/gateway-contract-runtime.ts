@@ -1,4 +1,5 @@
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   GATEWAY_CONTRACT_VERSION,
   isGatewayClientMessage,
@@ -8,11 +9,11 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.46.0',
+  clientVersion: '0.47.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 4);
+assert.equal(GATEWAY_CONTRACT_VERSION, 5);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -32,6 +33,40 @@ assert.equal(isGatewayClientMessage({
   format: 'ranked',
   page: 'game'
 }), false);
+const telemetryEvent = JSON.parse(readFileSync(
+  'fixtures/starter-challenges-with-typo-guess-challenges-v30.fixture.json',
+  'utf8'
+)).events[0].event;
+assert.equal(isGatewayClientMessage({
+  type: 'TELEMETRY_BATCH',
+  matchId: 'match-1',
+  firstSequence: 1,
+  lastSequence: 1,
+  envelopes: [{
+    contractVersion: 1,
+    matchId: 'match-1',
+    sequence: 1,
+    sentAt: telemetryEvent.occurredAt,
+    event: telemetryEvent
+  }]
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'TELEMETRY_BATCH',
+  matchId: 'match-1',
+  firstSequence: 1,
+  lastSequence: 2,
+  envelopes: []
+}), false);
+assert.equal(isGatewayClientMessage({
+  type: 'CLAIM_CANDIDATE',
+  matchId: 'match-1',
+  candidateId: 'candidate-1',
+  challengeId: 'quickscope',
+  definitionVersion: 1,
+  evidenceEventIds: ['event-1'],
+  occurredAt: 1_500,
+  throughSequence: 3
+}), true);
 assert.equal(isGatewayClientMessage({
   type: 'DRAFT_PICK',
   matchId: 'match-1',
@@ -80,6 +115,9 @@ assert.equal(isGatewayServerMessage({
     startedAt: null,
     startingAccountId: 'a',
     createdAt: 1_000,
+    claims: [],
+    winnerAccountId: null,
+    finishedAt: null,
     draft: null
   }
 }), true);
@@ -99,6 +137,9 @@ assert.equal(isGatewayServerMessage({
     startedAt: null,
     startingAccountId: 'a',
     createdAt: 1_000,
+    claims: [],
+    winnerAccountId: null,
+    finishedAt: null,
     draft: {
       status: 'selecting',
       requiredPickCount: 9,
@@ -118,10 +159,13 @@ assert.equal(isGatewayServerMessage({
   matchId: 'match-1',
   candidateId: 'candidate-1',
   challengeId: 'challenge-1',
+  definitionVersion: 1,
+  ownerAccountId: 'a',
   accepted: true,
   claimId: 'claim-1',
   reason: null,
-  revision: 1
+  revision: 1,
+  occurredAt: 1_500
 }), true);
 assert.equal(isGatewayServerMessage({ type: 'TELEMETRY_BATCH' }), false);
 

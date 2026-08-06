@@ -25,6 +25,7 @@ import {
 import {
   GATEWAY_CONTRACT_VERSION,
   type GatewayClientCapability,
+  type GatewayClaimResolutionMessage,
   type GatewayDraftState,
   type GatewayMatchmakingParticipant
 } from '@skribbl-duels/gateway-contracts';
@@ -172,6 +173,7 @@ interface ProductPublicApi {
     leaveMatchmaking(): string;
     setReady(matchId: string, ready: boolean): void;
     pickDraftChallenge(matchId: string, challengeId: string, clientRevision: number): void;
+    sendDuelChat(matchId: string, message: string): string;
   };
   manifest: {
     get(): ChallengeManifestSnapshot;
@@ -768,6 +770,9 @@ export class DuelProductFoundation {
   private readySubmissionMatchId: string | null = null;
   private draftSubmissionKey: string | null = null;
   private lastWinMessageMatchId: string | null = null;
+  private readonly processedGatewayChatIds = new Set<string>();
+  private readonly processedClaimResolutionIds = new Set<string>();
+  private restoreDuelChatFocus = false;
   private readonly draftKeydown = (event: KeyboardEvent) => this.handleDraftKeydown(event);
   private readonly duelChatKeydown = (event: KeyboardEvent) => this.handleDuelChatKeydown(event);
   private destroyed = false;
@@ -798,6 +803,9 @@ export class DuelProductFoundation {
       clientVersion: GATEWAY_CLIENT_VERSION,
       capabilities: GATEWAY_CAPABILITIES
     });
+    this.telemetryGateway.setTransport(envelope => {
+      this.gatewayClient.queueTelemetryEnvelope(envelope);
+    });
     this.gatewayState = this.gatewayClient.getState();
   }
 
@@ -811,6 +819,7 @@ export class DuelProductFoundation {
     this.unsubscribers.push(this.gatewayClient.subscribe(state => {
       this.gatewayState = state;
       this.handleGatewayMatchState(state);
+      this.handleGatewayRealtimeState(state);
       this.renderVisibility();
       this.renderStage();
       this.renderBoard();
@@ -869,7 +878,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.46.0',
+      version: '0.47.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -889,7 +898,8 @@ export class DuelProductFoundation {
         leaveMatchmaking: () => this.cancelMatchmaking(),
         setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
         pickDraftChallenge: (matchId, challengeId, clientRevision) =>
-          this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision)
+          this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
+        sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message)
       },
       manifest: {
         get: () => structuredClone(this.manifest),
@@ -978,7 +988,7 @@ export class DuelProductFoundation {
     this.boardGrid = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.46.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.47.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2134,7 +2144,7 @@ export class DuelProductFoundation {
     log.style.maxHeight = '330px';
     log.style.overflow = 'auto';
     if (this.duelChatMessages.length === 0) {
-      log.appendChild(element('div', 'scd-muted', 'Development placeholder for the private Duel channel. It does not use the Skribbl game chat.'));
+      log.appendChild(element('div', 'scd-muted', 'Private Duel channel. Messages are visible only to both matched players.'));
     } else {
       for (const message of this.duelChatMessages) {
         const line = element('div');
@@ -2148,34 +2158,42 @@ export class DuelProductFoundation {
     const form = element('form', 'scd-row');
     const input = element('input') as HTMLInputElement;
     input.dataset.scdDuelChatInput = 'true';
-    input.placeholder = 'Local development message…';
+    const gatewayChatActive = this.gatewayState.status === 'connected'
+      && this.gatewayState.match?.matchId === this.matchState.matchId
+      && this.gatewayState.match.state.phase !== 'cancelled';
+    input.placeholder = gatewayChatActive ? 'Private Duel message…' : 'Duel chat requires an active Gateway match';
+    input.disabled = !gatewayChatActive;
     input.maxLength = 300;
     input.style.cssText = 'flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(0,0,0,.25);color:white;padding:8px';
     const send = element('button', 'scd-button primary', 'Send') as HTMLButtonElement;
     send.type = 'submit';
+    send.disabled = !gatewayChatActive;
     this.tooltips.register(send, 'Send a private Duel message once the gateway is connected');
     form.append(input, send);
     form.addEventListener('submit', event => {
       event.preventDefault();
       const message = input.value.trim();
-      if (!message) return;
-      const restoreFocus = document.activeElement === input;
-      this.duelChatMessages.push({
-        id: `local-chat-${Date.now()}`,
-        side: 'self',
-        author: this.duelDisplayName('self'),
-        message,
-        occurredAt: Date.now()
-      });
-      input.value = '';
-      this.renderPanel();
-      if (restoreFocus) queueMicrotask(() => {
-        this.panel?.querySelector<HTMLInputElement>('[data-scd-duel-chat-input="true"]')?.focus();
-      });
+      const matchId = this.gatewayState.match?.matchId;
+      if (!message || !gatewayChatActive || !matchId) return;
+      this.restoreDuelChatFocus = document.activeElement === input;
+      try {
+        this.gatewayClient.sendDuelChat(matchId, message);
+        input.value = '';
+      } catch (error) {
+        this.restoreDuelChatFocus = false;
+        this.matchmakingError = error instanceof Error ? error.message : String(error);
+        this.renderPanel();
+      }
     });
 
     stack.append(log, form);
     this.panelBody.appendChild(stack);
+    if (this.restoreDuelChatFocus) {
+      this.restoreDuelChatFocus = false;
+      queueMicrotask(() => {
+        this.panel?.querySelector<HTMLInputElement>('[data-scd-duel-chat-input="true"]')?.focus();
+      });
+    }
   }
 
   private handleDuelChatKeydown(event: KeyboardEvent): void {
@@ -2573,9 +2591,112 @@ export class DuelProductFoundation {
       this.prepareGatewayCountdown(snapshot, board);
       return;
     }
-    if (snapshot.state.phase === 'running' && board && snapshot.state.startedAt !== null) {
+    if ((snapshot.state.phase === 'running' || snapshot.state.phase === 'finished')
+        && board && snapshot.state.startedAt !== null) {
       this.clearMatchStartTimer();
       this.startGatewayMatchLocally(snapshot, board, snapshot.state.startedAt);
+      this.synchronizeGatewayClaims(snapshot);
+    }
+  }
+
+  private handleGatewayRealtimeState(state: GatewayConnectionSnapshot): void {
+    const ack = state.telemetryAck;
+    if (ack) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+    for (const message of state.duelChatMessages) {
+      if (this.processedGatewayChatIds.has(message.messageId)) continue;
+      if (message.matchId !== this.matchState.matchId) continue;
+      this.processedGatewayChatIds.add(message.messageId);
+      this.duelChatMessages.push({
+        id: message.messageId,
+        side: message.authorAccountId === state.identity?.accountId ? 'self' : 'opponent',
+        author: message.authorDisplayName,
+        message: message.message,
+        occurredAt: message.occurredAt
+      });
+    }
+    const resolution = state.lastClaimResolution;
+    if (resolution) this.handleGatewayClaimResolution(resolution);
+  }
+
+  private handleGatewayClaimResolution(resolution: GatewayClaimResolutionMessage): void {
+    const key = `${resolution.matchId}:${resolution.ownerAccountId}:${resolution.candidateId}:${resolution.revision}:${resolution.accepted}`;
+    if (this.processedClaimResolutionIds.has(key) || resolution.matchId !== this.matchState.matchId) return;
+    this.processedClaimResolutionIds.add(key);
+    const selfAccountId = this.gatewayState.identity?.accountId;
+    const side: DuelPlayerSide = resolution.ownerAccountId === selfAccountId ? 'self' : 'opponent';
+    const runtime = this.options.challengeEngine.getInstances().find(item =>
+      item.challengeId === resolution.challengeId
+    );
+    if (!resolution.accepted || !resolution.claimId) {
+      if (side === 'self' && runtime?.status === 'completion-pending') {
+        this.options.challengeEngine.resolveCompletion(runtime.instanceId, {
+          outcome: 'reopen',
+          reason: resolution.reason ?? 'gateway-claim-rejected',
+          resolvedAt: resolution.occurredAt
+        });
+      } else {
+        this.matchStore.rejectPending(
+          resolution.challengeId,
+          resolution.reason ?? 'gateway-claim-rejected',
+          resolution.occurredAt
+        );
+      }
+      return;
+    }
+
+    if (side === 'self' && runtime?.status === 'completion-pending') {
+      this.options.challengeEngine.resolveCompletion(runtime.instanceId, {
+        outcome: 'claimed',
+        claimId: resolution.claimId,
+        reason: 'gateway-authoritative-claim',
+        resolvedAt: resolution.occurredAt
+      });
+    } else {
+      this.matchStore.confirmClaim(
+        resolution.challengeId,
+        resolution.claimId,
+        side,
+        resolution.occurredAt
+      );
+      this.insertCompletionOnce({
+        claimId: resolution.claimId,
+        side,
+        playerName: this.duelDisplayName(side),
+        challengeId: resolution.challengeId,
+        challengeName: challengeName(this.manifest, resolution.challengeId),
+        occurredAt: resolution.occurredAt
+      });
+    }
+    if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, 'gateway-field-claimed');
+  }
+
+  private synchronizeGatewayClaims(
+    snapshot: NonNullable<GatewayConnectionSnapshot['match']>
+  ): void {
+    const selfAccountId = this.gatewayState.identity?.accountId;
+    for (const claim of [...snapshot.state.claims].sort((left, right) => left.revision - right.revision)) {
+      const side: DuelPlayerSide = claim.ownerAccountId === selfAccountId ? 'self' : 'opponent';
+      this.matchStore.confirmClaim(claim.challengeId, claim.claimId, side, claim.occurredAt);
+      this.insertCompletionOnce({
+        claimId: claim.claimId,
+        side,
+        playerName: this.duelDisplayName(side),
+        challengeId: claim.challengeId,
+        challengeName: challengeName(this.manifest, claim.challengeId),
+        occurredAt: claim.occurredAt
+      });
+      const runtime = this.options.challengeEngine.getInstances().find(item =>
+        item.challengeId === claim.challengeId
+      );
+      if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, 'gateway-snapshot-field-claimed');
+    }
+    if (snapshot.state.phase === 'finished' && snapshot.state.winnerAccountId) {
+      const winner: DuelPlayerSide = snapshot.state.winnerAccountId === selfAccountId ? 'self' : 'opponent';
+      this.matchStore.finishMatch(
+        winner,
+        'gateway-authoritative-win-target',
+        snapshot.state.finishedAt ?? this.serverNow()
+      );
     }
   }
 
@@ -2620,7 +2741,14 @@ export class DuelProductFoundation {
     board: DraftBoard,
     startedAt: number
   ): void {
-    if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === 'running') return;
+    if (this.matchState.matchId === snapshot.matchId
+        && (this.matchState.phase === 'running' || this.matchState.phase === 'finished')) {
+      const ack = this.gatewayState.telemetryAck;
+      if (ack?.matchId === snapshot.matchId) {
+        this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+      }
+      return;
+    }
     const participants = this.gatewayParticipants(snapshot);
     if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === 'countdown') {
       this.matchStore.startPreparedMatch(snapshot.matchId, startedAt);
@@ -2628,6 +2756,10 @@ export class DuelProductFoundation {
       this.matchStore.startMatch(snapshot.matchId, board, participants, startedAt);
     }
     this.activateBoardChallenges(snapshot.matchId, board, startedAt, 'gateway-match-started');
+    const ack = this.gatewayState.telemetryAck;
+    if (ack?.matchId === snapshot.matchId) {
+      this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+    }
     this.settingsStore.updateBoard({ visible: true });
     this.settingsStore.update({ panelOpen: false, panelTab: 'match' });
   }
@@ -2760,6 +2892,9 @@ export class DuelProductFoundation {
     this.countdownGoUntil = 0;
     this.currentBoard = null;
     this.duelChatMessages = [];
+    this.processedGatewayChatIds.clear();
+    this.processedClaimResolutionIds.clear();
+    this.restoreDuelChatFocus = false;
     this.lastWinMessageMatchId = null;
     this.chatAdapter.reset();
     this.telemetryGateway.resetSession();
@@ -2869,18 +3004,36 @@ export class DuelProductFoundation {
     if (!onBoard) return;
 
     if (event.type === 'CHALLENGE_COMPLETION_CANDIDATE' && runtime.completionCandidate) {
+      const candidate = structuredClone(runtime.completionCandidate);
       this.matchStore.markPending(
         runtime.challengeId,
-        runtime.completionCandidate.candidateId,
+        candidate.candidateId,
         'self',
         event.occurredAt
       );
+      const gatewayMatch = this.gatewayState.match;
+      if (gatewayMatch?.matchId === this.matchState.matchId
+          && gatewayMatch.state.phase === 'running') {
+        queueMicrotask(() => {
+          const current = this.gatewayState.match;
+          if (!current || current.matchId !== gatewayMatch.matchId || current.state.phase !== 'running') return;
+          this.gatewayClient.submitClaimCandidate({
+            matchId: gatewayMatch.matchId,
+            candidateId: candidate.candidateId,
+            challengeId: runtime.challengeId,
+            definitionVersion: runtime.definitionVersion,
+            evidenceEventIds: candidate.evidenceEventIds,
+            occurredAt: candidate.completedAt,
+            throughSequence: this.telemetryGateway.getLastSequence()
+          });
+        });
+      }
       return;
     }
 
     if (event.type === 'CHALLENGE_CLAIMED' && runtime.claimId) {
       this.matchStore.confirmClaim(runtime.challengeId, runtime.claimId, 'self', event.occurredAt);
-      this.insertCompletion({
+      this.insertCompletionOnce({
         claimId: runtime.claimId,
         side: 'self',
         playerName: this.duelDisplayName('self'),
@@ -2906,5 +3059,10 @@ export class DuelProductFoundation {
       occurredAt: message.occurredAt
     });
     if (this.settings.panelOpen && this.mainPanelTab() === 'match') this.renderPanel();
+  }
+
+  private insertCompletionOnce(message: CompletionMessage): void {
+    if (this.duelChatMessages.some(item => item.id === `completion-${message.claimId}`)) return;
+    this.insertCompletion(message);
   }
 }

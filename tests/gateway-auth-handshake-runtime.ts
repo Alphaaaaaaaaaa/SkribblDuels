@@ -109,7 +109,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.46.0-test',
+  clientVersion: '0.47.0-test',
   capabilities: [
     'skribbl-telemetry',
     'official-word-list',
@@ -134,6 +134,11 @@ const readyCheck = await waitForSnapshot(client, snapshot =>
 );
 assert.equal(readyCheck.queue, null);
 assert.equal(readyCheck.match?.state.participants.length, 2);
+client.sendDuelChat(readyCheck.match!.matchId, 'Private hello');
+const chatDelivered = await waitForSnapshot(client, snapshot =>
+  snapshot.duelChatMessages.some(message => message.message === 'Private hello')
+);
+assert.equal(chatDelivered.duelChatMessages.at(-1)?.authorDisplayName, 'analphabetism');
 client.setReady(readyCheck.match!.matchId, true);
 const draftReady = await waitForSnapshot(client, snapshot => snapshot.match?.state.phase === 'draft');
 assert.equal(draftReady.match?.state.readyDeadlineAt, null);
@@ -155,7 +160,7 @@ const resumedSnapshotPromise = waitForMessage(rawSocket, message =>
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.46.0-test',
+  clientVersion: '0.47.0-test',
   capabilities: ['skribbl-telemetry']
 });
 const rawWelcome = await welcomePromise;
@@ -208,6 +213,7 @@ console.log(JSON.stringify({
   authoritativeProfileWelcome: true,
   homepageMatchmaking: true,
   simulatedReadyCheck: true,
+  privateDuelChatTransport: true,
   authoritativeDraftStarted: true,
   reconnectResume: true,
   pingPong: true,

@@ -221,15 +221,25 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         }
         return;
       }
+      if (message.type === 'DUEL_CHAT_SEND') {
+        const decision = matchmaker.sendDuelChat(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
+      if (message.type === 'TELEMETRY_BATCH') {
+        const decision = matchmaker.processTelemetryBatch(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
+      if (message.type === 'CLAIM_CANDIDATE') {
+        const decision = matchmaker.submitClaimCandidate(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
       if (message.type === 'HELLO') {
         emitMessage(socket, contractError('HELLO_ALREADY_ACCEPTED', 'HELLO may only be sent once.'));
         return;
       }
-      emitMessage(socket, contractError(
-        'MESSAGE_NOT_IMPLEMENTED',
-        `${message.type} is reserved for the next Gateway milestone.`,
-        true
-      ));
     });
 
     socket.once('disconnect', () => {

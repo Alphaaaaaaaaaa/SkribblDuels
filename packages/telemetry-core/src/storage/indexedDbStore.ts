@@ -1,4 +1,8 @@
-import type { RawSocketRecord, RecordingSession } from '../recorder/rawRecord';
+import {
+  redactSensitiveRawRecord,
+  type RawSocketRecord,
+  type RecordingSession
+} from '../recorder/rawRecord';
 
 const DB_NAME = 'scdRawSocketRecorder';
 const DB_VERSION = 1;
@@ -53,13 +57,43 @@ export class IndexedDbRawPacketStore {
     const database = await this.open();
     const transaction = database.transaction(PACKETS_STORE, 'readonly');
     const index = transaction.objectStore(PACKETS_STORE).index('sessionId');
-    return requestToPromise(index.getAll(IDBKeyRange.only(sessionId)));
+    const records = await requestToPromise(index.getAll(IDBKeyRange.only(sessionId)));
+    return records.map(redactSensitiveRawRecord);
   }
 
   public async getAllRecords(): Promise<RawSocketRecord[]> {
     const database = await this.open();
     const transaction = database.transaction(PACKETS_STORE, 'readonly');
-    return requestToPromise(transaction.objectStore(PACKETS_STORE).getAll());
+    const records = await requestToPromise(transaction.objectStore(PACKETS_STORE).getAll());
+    return records.map(redactSensitiveRawRecord);
+  }
+
+  public async redactSensitiveRecords(): Promise<number> {
+    const database = await this.open();
+    const transaction = database.transaction(PACKETS_STORE, 'readwrite');
+    const request = transaction.objectStore(PACKETS_STORE).openCursor();
+    let redactedCount = 0;
+
+    const cursorDone = new Promise<void>((resolve, reject) => {
+      request.addEventListener('success', () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const record = cursor.value as RawSocketRecord;
+        const safeRecord = redactSensitiveRawRecord(record);
+        if (safeRecord !== record) {
+          cursor.update(safeRecord);
+          redactedCount += 1;
+        }
+        cursor.continue();
+      });
+      request.addEventListener('error', () => reject(request.error), { once: true });
+    });
+
+    await Promise.all([cursorDone, transactionDone(transaction)]);
+    return redactedCount;
   }
 
   public async getAllSessions(): Promise<RecordingSession[]> {

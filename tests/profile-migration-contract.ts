@@ -19,6 +19,14 @@ const specialGrant = await readFile(resolve(
   process.cwd(),
   'supabase/admin/grant-analphabetism-special.sql'
 ), 'utf8');
+const invisibleEntitlements = await readFile(resolve(
+  process.cwd(),
+  'supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql'
+), 'utf8');
+const invisibleGrant = await readFile(resolve(
+  process.cwd(),
+  'supabase/admin/grant-invisible-avatar-template.sql'
+), 'utf8');
 
 assert.match(migration, /create table if not exists public\.profiles/i);
 assert.match(migration, /id uuid primary key references auth\.users\(id\) on delete cascade/i);
@@ -51,6 +59,19 @@ assert.match(specialGrant, /insert into public\.avatar_special_entitlements/i);
 assert.match(specialGrant, /set special_avatar_id = target_special_avatar_id/i);
 assert.match(specialGrant, /on conflict \(profile_id, special_avatar_id\) do nothing/i);
 assert.doesNotMatch(specialGrant, /service[_-]?role|secret|password|token/i);
+assert.match(invisibleEntitlements, /create table if not exists public\.avatar_invisible_entitlements/i);
+assert.match(invisibleEntitlements, /alter table public\.avatar_invisible_entitlements enable row level security/i);
+assert.match(invisibleEntitlements, /for select to authenticated using \(\(select auth\.uid\(\)\) = profile_id\)/i);
+assert.match(invisibleEntitlements, /avatar_part\.value < -1/i);
+assert.match(invisibleEntitlements, /Invisible avatar parts are not entitled/i);
+assert.match(invisibleEntitlements, /skribbl_avatar\[1\] between -255 and 255/i);
+assert.doesNotMatch(invisibleEntitlements, /grant\s+(insert|update|delete|all).*avatar_invisible_entitlements.*to authenticated/i);
+assert.match(invisibleGrant, /00000000-0000-0000-0000-000000000000/i);
+assert.match(invisibleGrant, /Replace the zero UUID/i);
+assert.match(invisibleGrant, /insert into public\.avatar_invisible_entitlements/i);
+assert.match(invisibleGrant, /on conflict \(profile_id\) do nothing/i);
+assert.doesNotMatch(invisibleGrant, /c27ea4b9-984e-4efb-bfba-e9f77b28f1f4/i);
+assert.doesNotMatch(invisibleGrant, /service[_-]?role|secret|password|token/i);
 
 console.log(JSON.stringify({
   profileTable: true,
@@ -64,4 +85,6 @@ console.log(JSON.stringify({
   , specialAvatarEntitlements: true
   , analphabetismSpecialGrant: true
   , asciiAlphanumericDuelNames: true
+  , invisibleAvatarEntitlements: true
+  , safeInvisibleGrantTemplate: true
 }, null, 2));

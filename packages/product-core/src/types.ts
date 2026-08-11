@@ -4,9 +4,9 @@ import type {
 } from '@skribbl-duels/challenge-engine';
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const PRODUCT_CORE_VERSION = '0.3.0' as const;
-export const MATCH_STATE_CONTRACT_VERSION = 2 as const;
-export const UI_SETTINGS_VERSION = 1 as const;
+export const PRODUCT_CORE_VERSION = '0.4.0' as const;
+export const MATCH_STATE_CONTRACT_VERSION = 3 as const;
+export const UI_SETTINGS_VERSION = 2 as const;
 
 export type DuelFormat = 'casual' | 'ranked';
 export type DuelPlayerSide = 'self' | 'opponent';
@@ -135,7 +135,9 @@ export interface MatchState {
   fields: readonly MatchBoardFieldState[];
   participants: readonly DuelParticipant[];
   scores: Readonly<Record<DuelPlayerSide, number>>;
+  outcome: 'win' | 'draw' | null;
   winner: DuelPlayerSide | null;
+  finishReason: string | null;
   countdownEndsAt: number | null;
   startedAt: number | null;
   finishedAt: number | null;
@@ -207,6 +209,7 @@ export interface ProductUiSettings {
   panelOpen: boolean;
   panelTab: 'duel' | 'match' | 'chat' | 'settings' | 'about';
   completionMessages: boolean;
+  winAnimation: boolean;
 }
 
 export interface ChallengeManifestSource {

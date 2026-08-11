@@ -96,7 +96,8 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     simulatedDraftPickDelayMs: config.simulatedDraftPickDelayMs,
     draftFinalRevealMs: config.draftFinalRevealMs,
     matchCountdownMs: config.matchCountdownMs,
-    reconnectGraceMs: config.reconnectGraceMs
+    reconnectGraceMs: config.reconnectGraceMs,
+    drawProposalTimeoutMs: config.drawProposalTimeoutMs
   });
 
   io.use(async (socket, next) => {
@@ -223,6 +224,26 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       }
       if (message.type === 'DUEL_CHAT_SEND') {
         const decision = matchmaker.sendDuelChat(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
+      if (message.type === 'MATCH_FORFEIT') {
+        const decision = matchmaker.forfeitMatch(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
+      if (message.type === 'DRAW_PROPOSE') {
+        const decision = matchmaker.proposeDraw(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
+      if (message.type === 'DRAW_RESPOND') {
+        const decision = matchmaker.respondToDraw(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
+      if (message.type === 'DRAW_WITHDRAW') {
+        const decision = matchmaker.withdrawDraw(socket.data.account.identity.accountId, message);
         if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
         return;
       }

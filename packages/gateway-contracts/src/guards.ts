@@ -29,6 +29,10 @@ function nonEmptyString(value: unknown, maxLength = 256): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
 }
 
+function nonEmptyCodePointString(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.length > 0 && Array.from(value).length <= maxLength;
+}
+
 function optionalString(value: unknown, maxLength = 256): value is string | undefined {
   return value === undefined || nonEmptyString(value, maxLength);
 }
@@ -52,7 +56,7 @@ function nullableString(value: unknown, maxLength = 2048): boolean {
 function skribblAvatar(value: unknown): boolean {
   return value === null || (Array.isArray(value)
     && value.length === 4
-    && value.every(item => Number.isInteger(item) && Number(item) >= -1 && Number(item) <= 255));
+    && value.every(item => Number.isInteger(item) && Number(item) >= -255 && Number(item) <= 255));
 }
 
 function matchmakingParticipant(value: unknown): boolean {
@@ -65,7 +69,31 @@ function matchmakingParticipant(value: unknown): boolean {
     && (participant.avatarSource === 'discord' || participant.avatarSource === 'skribbl')
     && nullableString(participant.avatarUrl)
     && skribblAvatar(participant.skribblAvatar)
-    && nullableString(participant.specialAvatarId, 64));
+    && nullableString(participant.specialAvatarId, 64)
+    && typeof participant.invisibleAvatarEntitled === 'boolean');
+}
+
+function drawProposal(value: unknown): boolean {
+  const proposal = record(value);
+  return Boolean(proposal
+    && nonEmptyString(proposal.proposalId)
+    && nonEmptyString(proposal.proposerAccountId)
+    && finiteNumber(proposal.createdAt)
+    && finiteNumber(proposal.expiresAt)
+    && Number(proposal.expiresAt) > Number(proposal.createdAt));
+}
+
+function matchConclusion(value: unknown): boolean {
+  const conclusion = record(value);
+  return Boolean(conclusion
+    && (conclusion.outcome === 'win' || conclusion.outcome === 'draw')
+    && (conclusion.reason === 'win-target-reached'
+      || conclusion.reason === 'player-forfeit'
+      || conclusion.reason === 'mutual-draw')
+    && (conclusion.winnerAccountId === null || nonEmptyString(conclusion.winnerAccountId))
+    && (conclusion.loserAccountId === null || nonEmptyString(conclusion.loserAccountId))
+    && (conclusion.initiatedByAccountId === null || nonEmptyString(conclusion.initiatedByAccountId))
+    && finiteNumber(conclusion.occurredAt));
 }
 
 function draftPick(value: unknown): boolean {
@@ -192,18 +220,36 @@ function matchmakingState(value: unknown): boolean {
       || !finiteNumber(state.createdAt)
       || !Array.isArray(state.claims)
       || !state.claims.every(authoritativeClaim)
-      || (state.winnerAccountId !== null && !nonEmptyString(state.winnerAccountId))
-      || (state.finishedAt !== null && !finiteNumber(state.finishedAt))) return false;
+      || (state.drawProposal !== null && !drawProposal(state.drawProposal))
+      || (state.conclusion !== null && !matchConclusion(state.conclusion))) return false;
   const participantIds = new Set((state.participants as Array<Record<string, unknown>>)
     .map(participant => participant.accountId));
   if ((state.claims as Array<Record<string, unknown>>).some(claim =>
     !participantIds.has(claim.ownerAccountId))) return false;
+  if (state.drawProposal !== null) {
+    const proposal = state.drawProposal as Record<string, unknown>;
+    if (!participantIds.has(proposal.proposerAccountId)) return false;
+  }
+  if (state.conclusion !== null) {
+    const conclusion = state.conclusion as Record<string, unknown>;
+    if (conclusion.initiatedByAccountId !== null
+        && !participantIds.has(conclusion.initiatedByAccountId)) return false;
+    if (conclusion.outcome === 'win') {
+      if (!nonEmptyString(conclusion.winnerAccountId)
+          || !nonEmptyString(conclusion.loserAccountId)
+          || conclusion.winnerAccountId === conclusion.loserAccountId
+          || !participantIds.has(conclusion.winnerAccountId)
+          || !participantIds.has(conclusion.loserAccountId)) return false;
+    } else if (conclusion.winnerAccountId !== null || conclusion.loserAccountId !== null) {
+      return false;
+    }
+  }
   if (state.phase === 'draft') {
     return state.readyDeadlineAt === null
       && state.countdownEndsAt === null
       && state.startedAt === null
-      && state.winnerAccountId === null
-      && state.finishedAt === null
+      && state.drawProposal === null
+      && state.conclusion === null
       && state.claims.length === 0
       && (state.draft === undefined || draftState(state.draft));
   }
@@ -212,8 +258,8 @@ function matchmakingState(value: unknown): boolean {
       && finiteNumber(state.countdownEndsAt)
       && state.countdownEndsAt > state.createdAt
       && state.startedAt === null
-      && state.winnerAccountId === null
-      && state.finishedAt === null
+      && state.drawProposal === null
+      && state.conclusion === null
       && state.claims.length === 0
       && draftState(state.draft)
       && state.draft.status === 'complete';
@@ -223,8 +269,9 @@ function matchmakingState(value: unknown): boolean {
       && state.countdownEndsAt === null
       && finiteNumber(state.startedAt)
       && state.startedAt >= state.createdAt
-      && state.winnerAccountId === null
-      && state.finishedAt === null
+      && state.conclusion === null
+      && (state.drawProposal === null
+        || Number((state.drawProposal as Record<string, unknown>).createdAt) >= Number(state.startedAt))
       && draftState(state.draft)
       && state.draft.status === 'complete';
   }
@@ -233,17 +280,16 @@ function matchmakingState(value: unknown): boolean {
       && state.countdownEndsAt === null
       && finiteNumber(state.startedAt)
       && state.startedAt >= state.createdAt
-      && nonEmptyString(state.winnerAccountId)
-      && participantIds.has(state.winnerAccountId)
-      && finiteNumber(state.finishedAt)
-      && state.finishedAt >= state.startedAt
+      && state.drawProposal === null
+      && state.conclusion !== null
+      && Number((state.conclusion as Record<string, unknown>).occurredAt) >= Number(state.startedAt)
       && draftState(state.draft)
       && state.draft.status === 'complete';
   }
   return state.countdownEndsAt === null
     && state.startedAt === null
-    && state.winnerAccountId === null
-    && state.finishedAt === null
+    && state.drawProposal === null
+    && state.conclusion === null
     && state.claims.length === 0
     && (state.draft === undefined || state.draft === null);
 }
@@ -263,12 +309,18 @@ function matchmakingEvent(value: unknown): boolean {
       || event.type === 'DRAFT_COMPLETED'
       || event.type === 'MATCH_COUNTDOWN_STARTED'
       || event.type === 'MATCH_STARTED'
+      || event.type === 'DRAW_PROPOSED'
+      || event.type === 'DRAW_WITHDRAWN'
+      || event.type === 'DRAW_REJECTED'
+      || event.type === 'DRAW_EXPIRED'
+      || event.type === 'MATCH_FORFEITED'
       || event.type === 'MATCH_FINISHED')
     && (event.accountId === null || nonEmptyString(event.accountId))
     && (event.reason === null || nonEmptyString(event.reason, 128))
     && (event.challengeId === undefined || nonEmptyString(event.challengeId))
     && (event.pickNumber === undefined || nonNegativeInteger(event.pickNumber))
-    && (event.automatic === undefined || typeof event.automatic === 'boolean'));
+    && (event.automatic === undefined || typeof event.automatic === 'boolean')
+    && (event.proposalId === undefined || nonEmptyString(event.proposalId)));
 }
 
 export function isGatewayHelloMessage(value: unknown): value is GatewayHelloMessage {
@@ -325,7 +377,19 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
     case 'DUEL_CHAT_SEND':
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.clientMessageId)
-        && nonEmptyString(message.message, 300);
+        && nonEmptyCodePointString(message.message, 300);
+    case 'MATCH_FORFEIT':
+    case 'DRAW_PROPOSE':
+      return nonEmptyString(message.matchId) && nonEmptyString(message.actionId);
+    case 'DRAW_RESPOND':
+      return nonEmptyString(message.matchId)
+        && nonEmptyString(message.proposalId)
+        && nonEmptyString(message.actionId)
+        && typeof message.accept === 'boolean';
+    case 'DRAW_WITHDRAW':
+      return nonEmptyString(message.matchId)
+        && nonEmptyString(message.proposalId)
+        && nonEmptyString(message.actionId);
     case 'PING':
       return finiteNumber(message.sentAt);
     default:
@@ -344,7 +408,9 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && Boolean(identity
           && nonEmptyString(identity.accountId)
           && nonEmptyString(identity.displayName, 128)
-          && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)))
+          && (identity.discordUserId === null || nonEmptyString(identity.discordUserId))
+          && (identity.invisibleAvatarEntitled === undefined
+            || typeof identity.invisibleAvatarEntitled === 'boolean'))
         && finiteNumber(message.serverTime)
         && nonNegativeInteger(message.heartbeatIntervalMs)
         && (message.resumeStatus === 'not-requested'
@@ -388,7 +454,7 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && nonEmptyString(message.messageId)
         && nonEmptyString(message.authorAccountId)
         && nonEmptyString(message.authorDisplayName, 128)
-        && nonEmptyString(message.message, 300)
+        && nonEmptyCodePointString(message.message, 300)
         && finiteNumber(message.occurredAt);
     case 'TELEMETRY_ACK':
       return nonEmptyString(message.matchId)

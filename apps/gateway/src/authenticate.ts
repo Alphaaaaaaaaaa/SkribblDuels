@@ -104,6 +104,19 @@ export function createSupabaseGatewayAuthenticator(
       );
     }
 
+    const { data: invisibleEntitlement, error: invisibleEntitlementError } = await scopedClient
+      .from('avatar_invisible_entitlements')
+      .select('profile_id')
+      .eq('profile_id', accountId)
+      .maybeSingle();
+    if (invisibleEntitlementError) {
+      return gatewayError(
+        'PROFILE_ENTITLEMENT_LOOKUP_FAILED',
+        'The authenticated Skribbl Duels avatar entitlements could not be loaded.',
+        true
+      );
+    }
+
     return {
       ok: true,
       account: {
@@ -118,6 +131,7 @@ export function createSupabaseGatewayAuthenticator(
             ? profile.skribbl_avatar.map(Number) as [number, number, number, number]
             : null,
           specialAvatarId: typeof profile.special_avatar_id === 'string' ? profile.special_avatar_id : null,
+          invisibleAvatarEntitled: Boolean(invisibleEntitlement),
           preferredLanguage: profile.preferred_language === 'de' ? 'de' : 'en'
         },
         accessTokenExpiresAt

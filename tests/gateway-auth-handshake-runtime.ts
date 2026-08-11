@@ -30,7 +30,8 @@ const config: GatewayServerConfig = {
   simulatedDraftPickDelayMs: 10,
   draftFinalRevealMs: 8,
   matchCountdownMs: 10_000,
-  reconnectGraceMs: 30_000
+  reconnectGraceMs: 30_000,
+  drawProposalTimeoutMs: 30_000
 };
 
 const gateway = createGatewayServer({
@@ -109,7 +110,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.47.0-test',
+  clientVersion: '0.48.0-test',
   capabilities: [
     'skribbl-telemetry',
     'official-word-list',
@@ -160,7 +161,7 @@ const resumedSnapshotPromise = waitForMessage(rawSocket, message =>
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.47.0-test',
+  clientVersion: '0.48.0-test',
   capabilities: ['skribbl-telemetry']
 });
 const rawWelcome = await welcomePromise;

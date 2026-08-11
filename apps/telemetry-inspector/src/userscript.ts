@@ -1,4 +1,4 @@
-import { BehaviorSubject, merge } from 'rxjs';
+import { BehaviorSubject } from 'rxjs';
 import {
   TELEMETRY_CONTRACT_VERSION,
   TELEMETRY_SCHEMA_VERSION,
@@ -81,7 +81,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.47.0';
+const BUILD_VERSION = '0.48.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -266,6 +266,7 @@ function createRuntimeController(): RuntimeController {
 async function bootstrap(runtime: RuntimeController): Promise<void> {
   const bridge = new TypoRelayBridge();
   const store = new IndexedDbRawPacketStore();
+  await store.redactSensitiveRecords();
   bridge.start();
   runtime.addCleanup(() => bridge.stop());
 
@@ -421,37 +422,9 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     incomingStatus$: bridge.incomingStatus$,
     outgoingStatus$: bridge.outgoingStatus$
   });
+  panel.setVisible(false);
   panel.mount();
   runtime.addCleanup(() => panel.destroy());
-
-  const diagnosticSubscriptions = [
-    merge(bridge.incoming$, bridge.outgoing$).subscribe(envelope => {
-    const packet = envelope.data;
-    const packetId = typeof packet === 'object' && packet !== null &&
-      'id' in packet && typeof (packet as { id?: unknown }).id === 'number'
-      ? (packet as { id: number }).id
-      : null;
-    if (packetId !== 19) console.debug('[Skribbl Duels Raw]', envelope);
-    }),
-    decoder.decoded$.subscribe(record => {
-    if (record.decoded.packetId !== 19) {
-      console.debug('[Skribbl Duels Decoded]', record.decoded.kind, record.decoded.payload, record.decoded.issues);
-    }
-    }),
-    lobbyStore.changes$.subscribe(change => {
-    console.debug('[Skribbl Duels State]', change.kind, change.payload);
-    }),
-    telemetryStore.events$.subscribe(event => {
-    if (!event.highVolume) console.debug('[Skribbl Duels Telemetry]', event.type, event.payload);
-    }),
-    replayProvider.events$.subscribe(event => {
-    if (!event.highVolume) console.debug('[Skribbl Duels Replay]', event.type, event.payload);
-    }),
-    challengeEngine.events$.subscribe(event => {
-    console.debug('[Skribbl Duels Challenge Engine]', event.type, event.runtime);
-    })
-  ];
-  runtime.addCleanup(() => diagnosticSubscriptions.forEach(subscription => subscription.unsubscribe()));
 
   const protocolApi: ProtocolPublicApi = {
     getStats: () => decoder.getStats(),
@@ -706,7 +679,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     if (window.skribblDuelsWordLists === wordListApi) delete window.skribblDuelsWordLists;
   });
 
-  console.info('[Skribbl Duels Telemetry Inspector] Initialized', {
+  console.info('[Skribbl Duels] Initialized', {
     version: BUILD_VERSION,
     contractVersion: TELEMETRY_CONTRACT_VERSION,
     sessionId: recorder.getSessionId(),
@@ -715,13 +688,12 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     challengeEngine: window.skribblDuelsChallengeEngine,
     challengeDefinitions: window.skribblDuelsChallengeDefinitions,
     wordList: window.skribblDuelsWordLists?.getStatus(),
-    product: productApi,
-    inspector: window.scdRawRecorder
+    product: productApi
   });
 }
 
 const runtime = createRuntimeController();
 void bootstrap(runtime).catch(error => {
   runtime.dispose('bootstrap-failed');
-  console.error('[Skribbl Duels Telemetry Inspector] Bootstrap failed', error);
+  console.error('[Skribbl Duels] Bootstrap failed', error);
 });

@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 5 as const;
+export const GATEWAY_CONTRACT_VERSION = 6 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -24,6 +24,7 @@ export interface GatewayClientIdentity {
   avatarUrl?: string | null;
   skribblAvatar?: readonly [number, number, number, number] | null;
   specialAvatarId?: string | null;
+  invisibleAvatarEntitled?: boolean;
   preferredLanguage?: 'de' | 'en';
 }
 
@@ -95,6 +96,33 @@ export interface GatewayDuelChatSendMessage {
   message: string;
 }
 
+export interface GatewayMatchForfeitMessage {
+  type: 'MATCH_FORFEIT';
+  matchId: string;
+  actionId: string;
+}
+
+export interface GatewayDrawProposeMessage {
+  type: 'DRAW_PROPOSE';
+  matchId: string;
+  actionId: string;
+}
+
+export interface GatewayDrawRespondMessage {
+  type: 'DRAW_RESPOND';
+  matchId: string;
+  proposalId: string;
+  actionId: string;
+  accept: boolean;
+}
+
+export interface GatewayDrawWithdrawMessage {
+  type: 'DRAW_WITHDRAW';
+  matchId: string;
+  proposalId: string;
+  actionId: string;
+}
+
 export interface GatewayPingMessage {
   type: 'PING';
   sentAt: number;
@@ -109,6 +137,10 @@ export type GatewayClientMessage =
   | GatewayClaimCandidateMessage
   | GatewayTelemetryBatchMessage
   | GatewayDuelChatSendMessage
+  | GatewayMatchForfeitMessage
+  | GatewayDrawProposeMessage
+  | GatewayDrawRespondMessage
+  | GatewayDrawWithdrawMessage
   | GatewayPingMessage;
 
 export interface GatewayWelcomeMessage {
@@ -145,6 +177,7 @@ export interface GatewayMatchmakingParticipant {
   avatarUrl: string | null;
   skribblAvatar: readonly [number, number, number, number] | null;
   specialAvatarId: string | null;
+  invisibleAvatarEntitled: boolean;
 }
 
 export interface GatewayDraftPick {
@@ -198,8 +231,24 @@ export interface GatewayMatchmakingState {
   createdAt: number;
   draft?: GatewayDraftState | null;
   claims: readonly GatewayAuthoritativeClaim[];
+  drawProposal: GatewayDrawProposal | null;
+  conclusion: GatewayMatchConclusion | null;
+}
+
+export interface GatewayDrawProposal {
+  proposalId: string;
+  proposerAccountId: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface GatewayMatchConclusion {
+  outcome: 'win' | 'draw';
+  reason: 'win-target-reached' | 'player-forfeit' | 'mutual-draw';
   winnerAccountId: string | null;
-  finishedAt: number | null;
+  loserAccountId: string | null;
+  initiatedByAccountId: string | null;
+  occurredAt: number;
 }
 
 export interface GatewayAuthoritativeClaim {
@@ -226,12 +275,18 @@ export interface GatewayMatchmakingEvent {
     | 'DRAFT_COMPLETED'
     | 'MATCH_COUNTDOWN_STARTED'
     | 'MATCH_STARTED'
+    | 'DRAW_PROPOSED'
+    | 'DRAW_WITHDRAWN'
+    | 'DRAW_REJECTED'
+    | 'DRAW_EXPIRED'
+    | 'MATCH_FORFEITED'
     | 'MATCH_FINISHED';
   accountId: string | null;
   reason: string | null;
   challengeId?: string;
   pickNumber?: number;
   automatic?: boolean;
+  proposalId?: string;
 }
 
 export interface GatewayMatchSnapshotMessage {

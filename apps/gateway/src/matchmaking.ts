@@ -5,6 +5,10 @@ import type {
   GatewayAuthoritativeClaim,
   GatewayClaimCandidateMessage,
   GatewayClaimResolutionMessage,
+  GatewayDrawProposeMessage,
+  GatewayDrawProposal,
+  GatewayDrawRespondMessage,
+  GatewayDrawWithdrawMessage,
   GatewayDuelChatMessage,
   GatewayDuelChatSendMessage,
   GatewayDraftBoardSnapshot,
@@ -12,6 +16,8 @@ import type {
   GatewayDraftPickMessage,
   GatewayDraftState,
   GatewayMatchEventMessage,
+  GatewayMatchConclusion,
+  GatewayMatchForfeitMessage,
   GatewayMatchSnapshotMessage,
   GatewayMatchmakingEvent,
   GatewayMatchmakingJoinMessage,
@@ -42,6 +48,7 @@ export interface GatewayMatchmakerOptions {
   draftFinalRevealMs: number;
   matchCountdownMs: number;
   reconnectGraceMs?: number;
+  drawProposalTimeoutMs?: number;
   now?: () => number;
   createId?: () => string;
   random?: () => number;
@@ -95,14 +102,16 @@ interface ActiveMatch {
   draftTimer: ReturnType<typeof setTimeout> | null;
   simulatedDraftTimer: ReturnType<typeof setTimeout> | null;
   countdownTimer: ReturnType<typeof setTimeout> | null;
+  drawProposalTimer: ReturnType<typeof setTimeout> | null;
   draft: ActiveDraft | null;
   claims: GatewayAuthoritativeClaim[];
-  winnerAccountId: string | null;
-  finishedAt: number | null;
+  drawProposal: GatewayDrawProposal | null;
+  conclusion: GatewayMatchConclusion | null;
   telemetryAuthorities: Map<string, GatewayPlayerTelemetryAuthority>;
   chatMessages: GatewayDuelChatMessage[];
   chatByClientId: Map<string, GatewayDuelChatMessage>;
   claimResolutions: Map<string, GatewayClaimResolutionMessage>;
+  processedActions: Map<string, string>;
 }
 
 export type ReadyDecision =
@@ -112,6 +121,7 @@ export type ReadyDecision =
 export type DraftDecision = ReadyDecision;
 export type TelemetryDecision = ReadyDecision;
 export type ChatDecision = ReadyDecision;
+export type MatchActionDecision = ReadyDecision;
 
 export type MatchResumeDecision = {
   status: 'not-requested' | 'resumed' | 'not-found' | 'mismatch';
@@ -369,6 +379,203 @@ export class GatewayMatchmaker {
     return { ok: true };
   }
 
+  public forfeitMatch(
+    accountId: string,
+    message: GatewayMatchForfeitMessage
+  ): MatchActionDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'MATCH_NOT_FOUND', message: 'The Duel match is no longer active.' };
+    }
+    const participant = this.realParticipant(match, accountId);
+    if (!participant) {
+      return { ok: false, code: 'MATCH_PARTICIPANT_INVALID', message: 'This account is not a real Duel participant.' };
+    }
+    const action = this.actionStatus(match, accountId, message.actionId, 'match-forfeit');
+    if (action === 'duplicate') {
+      this.emitSnapshotToAccount(match, accountId);
+      return { ok: true };
+    }
+    if (action === 'conflict') {
+      return { ok: false, code: 'ACTION_ID_REUSED', message: 'This action ID was already used for a different match action.' };
+    }
+    if (match.phase === 'finished' || match.conclusion) {
+      return { ok: false, code: 'MATCH_ALREADY_FINISHED', message: 'The Duel already has an authoritative result.' };
+    }
+    if (match.phase !== 'running') {
+      return { ok: false, code: 'MATCH_NOT_RUNNING', message: 'A Duel can be forfeited only after it has started.' };
+    }
+    const opponent = match.participants.find(item => item.identity.accountId !== accountId);
+    if (!opponent) {
+      return { ok: false, code: 'MATCH_OPPONENT_MISSING', message: 'The opponent could not be resolved.' };
+    }
+    this.rememberAction(match, accountId, message.actionId, 'match-forfeit');
+    this.concludeMatch(match, {
+      outcome: 'win',
+      reason: 'player-forfeit',
+      winnerAccountId: opponent.identity.accountId,
+      loserAccountId: accountId,
+      initiatedByAccountId: accountId,
+      occurredAt: this.now()
+    });
+    return { ok: true };
+  }
+
+  public proposeDraw(
+    accountId: string,
+    message: GatewayDrawProposeMessage
+  ): MatchActionDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'MATCH_NOT_FOUND', message: 'The Duel match is no longer active.' };
+    }
+    if (!this.realParticipant(match, accountId)) {
+      return { ok: false, code: 'MATCH_PARTICIPANT_INVALID', message: 'This account is not a real Duel participant.' };
+    }
+    const action = this.actionStatus(match, accountId, message.actionId, 'draw-propose');
+    if (action === 'duplicate') {
+      this.emitSnapshotToAccount(match, accountId);
+      return { ok: true };
+    }
+    if (action === 'conflict') {
+      return { ok: false, code: 'ACTION_ID_REUSED', message: 'This action ID was already used for a different match action.' };
+    }
+    if (match.phase === 'finished' || match.conclusion) {
+      return { ok: false, code: 'MATCH_ALREADY_FINISHED', message: 'The Duel already has an authoritative result.' };
+    }
+    if (match.phase !== 'running') {
+      return { ok: false, code: 'MATCH_NOT_RUNNING', message: 'A Draw can be proposed only after the Duel has started.' };
+    }
+    if (match.drawProposal) {
+      return { ok: false, code: 'DRAW_PROPOSAL_ACTIVE', message: 'A Draw proposal is already active.' };
+    }
+    const createdAt = this.now();
+    const proposal: GatewayDrawProposal = {
+      proposalId: `draw-${this.createId()}`,
+      proposerAccountId: accountId,
+      createdAt,
+      expiresAt: createdAt + (this.options.drawProposalTimeoutMs ?? 30_000)
+    };
+    this.rememberAction(match, accountId, message.actionId, 'draw-propose');
+    match.drawProposal = proposal;
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'DRAW_PROPOSED',
+      accountId,
+      reason: 'player-proposed-draw',
+      proposalId: proposal.proposalId
+    });
+    this.emitSnapshot(match);
+    this.armDrawProposalTimeout(match, proposal);
+    return { ok: true };
+  }
+
+  public respondToDraw(
+    accountId: string,
+    message: GatewayDrawRespondMessage
+  ): MatchActionDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'MATCH_NOT_FOUND', message: 'The Duel match is no longer active.' };
+    }
+    if (!this.realParticipant(match, accountId)) {
+      return { ok: false, code: 'MATCH_PARTICIPANT_INVALID', message: 'This account is not a real Duel participant.' };
+    }
+    const fingerprint = `draw-respond:${message.proposalId}:${message.accept}`;
+    const action = this.actionStatus(match, accountId, message.actionId, fingerprint);
+    if (action === 'duplicate') {
+      this.emitSnapshotToAccount(match, accountId);
+      return { ok: true };
+    }
+    if (action === 'conflict') {
+      return { ok: false, code: 'ACTION_ID_REUSED', message: 'This action ID was already used for a different match action.' };
+    }
+    if (match.phase === 'finished' || match.conclusion) {
+      return { ok: false, code: 'MATCH_ALREADY_FINISHED', message: 'The Duel already has an authoritative result.' };
+    }
+    if (match.phase !== 'running') {
+      return { ok: false, code: 'MATCH_NOT_RUNNING', message: 'The Draw proposal is no longer actionable.' };
+    }
+    const proposal = match.drawProposal;
+    if (!proposal || proposal.proposalId !== message.proposalId) {
+      return { ok: false, code: 'DRAW_PROPOSAL_NOT_FOUND', message: 'The Draw proposal is no longer active.' };
+    }
+    if (proposal.proposerAccountId === accountId) {
+      return { ok: false, code: 'DRAW_SELF_RESPONSE', message: 'The proposer cannot respond to their own Draw proposal.' };
+    }
+    if (this.now() >= proposal.expiresAt) {
+      this.expireDrawProposal(match.matchId, proposal.proposalId, proposal.expiresAt);
+      return { ok: false, code: 'DRAW_PROPOSAL_EXPIRED', message: 'The Draw proposal has expired.' };
+    }
+    this.rememberAction(match, accountId, message.actionId, fingerprint);
+    if (message.accept) {
+      this.concludeMatch(match, {
+        outcome: 'draw',
+        reason: 'mutual-draw',
+        winnerAccountId: null,
+        loserAccountId: null,
+        initiatedByAccountId: proposal.proposerAccountId,
+        occurredAt: this.now()
+      });
+      return { ok: true };
+    }
+    this.clearDrawProposalTimer(match);
+    match.drawProposal = null;
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'DRAW_REJECTED',
+      accountId,
+      reason: 'opponent-rejected-draw',
+      proposalId: proposal.proposalId
+    });
+    this.emitSnapshot(match);
+    return { ok: true };
+  }
+
+  public withdrawDraw(
+    accountId: string,
+    message: GatewayDrawWithdrawMessage
+  ): MatchActionDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'MATCH_NOT_FOUND', message: 'The Duel match is no longer active.' };
+    }
+    if (!this.realParticipant(match, accountId)) {
+      return { ok: false, code: 'MATCH_PARTICIPANT_INVALID', message: 'This account is not a real Duel participant.' };
+    }
+    const fingerprint = `draw-withdraw:${message.proposalId}`;
+    const action = this.actionStatus(match, accountId, message.actionId, fingerprint);
+    if (action === 'duplicate') {
+      this.emitSnapshotToAccount(match, accountId);
+      return { ok: true };
+    }
+    if (action === 'conflict') {
+      return { ok: false, code: 'ACTION_ID_REUSED', message: 'This action ID was already used for a different match action.' };
+    }
+    if (match.phase === 'finished' || match.conclusion) {
+      return { ok: false, code: 'MATCH_ALREADY_FINISHED', message: 'The Duel already has an authoritative result.' };
+    }
+    const proposal = match.drawProposal;
+    if (!proposal || proposal.proposalId !== message.proposalId) {
+      return { ok: false, code: 'DRAW_PROPOSAL_NOT_FOUND', message: 'The Draw proposal is no longer active.' };
+    }
+    if (proposal.proposerAccountId !== accountId) {
+      return { ok: false, code: 'DRAW_WITHDRAW_FORBIDDEN', message: 'Only the proposer may withdraw this Draw proposal.' };
+    }
+    this.rememberAction(match, accountId, message.actionId, fingerprint);
+    this.clearDrawProposalTimer(match);
+    match.drawProposal = null;
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'DRAW_WITHDRAWN',
+      accountId,
+      reason: 'proposer-withdrew-draw',
+      proposalId: proposal.proposalId
+    });
+    this.emitSnapshot(match);
+    return { ok: true };
+  }
+
   public processTelemetryBatch(
     accountId: string,
     message: GatewayTelemetryBatchMessage
@@ -469,11 +676,7 @@ export class GatewayMatchmaker {
     }
     const board = match.draft?.board;
     const ownedCount = match.claims.filter(item => item.ownerAccountId === accountId).length;
-    if (board && ownedCount >= board.winTarget) {
-      match.phase = 'finished';
-      match.winnerAccountId = accountId;
-      match.finishedAt = occurredAt;
-    }
+    const reachedWinTarget = Boolean(board && ownedCount >= board.winTarget);
     const resolution: GatewayClaimResolutionMessage = {
       type: 'CLAIM_RESOLUTION',
       matchId: match.matchId,
@@ -489,12 +692,21 @@ export class GatewayMatchmaker {
     };
     this.rememberClaimResolution(match, dedupeKey, resolution);
     this.broadcast(match, resolution);
-    if (match.phase === 'finished') {
-      this.emitEvent(match, {
-        type: 'MATCH_FINISHED',
-        accountId,
-        reason: 'win-target-reached'
+    if (reachedWinTarget) {
+      const opponent = match.participants.find(item => item.identity.accountId !== accountId);
+      if (!opponent) {
+        this.abortMatch(match.matchId, accountId, 'match-opponent-missing-at-win');
+        return { ok: true };
+      }
+      this.concludeMatch(match, {
+        outcome: 'win',
+        reason: 'win-target-reached',
+        winnerAccountId: accountId,
+        loserAccountId: opponent.identity.accountId,
+        initiatedByAccountId: accountId,
+        occurredAt
       });
+      return { ok: true };
     }
     this.emitSnapshot(match);
     return { ok: true };
@@ -565,14 +777,16 @@ export class GatewayMatchmaker {
       draftTimer: null,
       simulatedDraftTimer: null,
       countdownTimer: null,
+      drawProposalTimer: null,
       draft: null,
       claims: [],
-      winnerAccountId: null,
-      finishedAt: null,
+      drawProposal: null,
+      conclusion: null,
       telemetryAuthorities: new Map(),
       chatMessages: [],
       chatByClientId: new Map(),
-      claimResolutions: new Map()
+      claimResolutions: new Map(),
+      processedActions: new Map()
     };
     this.matches.set(matchId, match);
     for (const participant of participants) {
@@ -925,8 +1139,8 @@ export class GatewayMatchmaker {
     match.startedAt = null;
     match.draft = null;
     match.claims = [];
-    match.winnerAccountId = null;
-    match.finishedAt = null;
+    match.drawProposal = null;
+    match.conclusion = null;
     match.revision += 1;
     this.emitEvent(match, {
       type: 'READY_CHECK_EXPIRED',
@@ -946,8 +1160,8 @@ export class GatewayMatchmaker {
     match.startedAt = null;
     match.draft = null;
     match.claims = [];
-    match.winnerAccountId = null;
-    match.finishedAt = null;
+    match.drawProposal = null;
+    match.conclusion = null;
     match.revision += 1;
     this.emitEvent(match, { type: 'MATCH_ABORTED', accountId, reason });
     this.emitSnapshot(match);
@@ -971,6 +1185,7 @@ export class GatewayMatchmaker {
     this.clearDraftTimers(match);
     if (match.countdownTimer) clearTimeout(match.countdownTimer);
     match.countdownTimer = null;
+    this.clearDrawProposalTimer(match);
     for (const participant of match.participants) {
       if (participant.reconnectTimer) clearTimeout(participant.reconnectTimer);
       participant.reconnectTimer = null;
@@ -989,6 +1204,96 @@ export class GatewayMatchmaker {
     if (match.simulatedDraftTimer) clearTimeout(match.simulatedDraftTimer);
     match.draftTimer = null;
     match.simulatedDraftTimer = null;
+  }
+
+  private realParticipant(match: ActiveMatch, accountId: string): MatchParticipant | null {
+    return match.participants.find(item =>
+      item.identity.accountId === accountId && !item.simulated
+    ) ?? null;
+  }
+
+  private actionStatus(
+    match: ActiveMatch,
+    accountId: string,
+    actionId: string,
+    fingerprint: string
+  ): 'new' | 'duplicate' | 'conflict' {
+    const existing = match.processedActions.get(`${accountId}:${actionId}`);
+    if (existing === undefined) return 'new';
+    return existing === fingerprint ? 'duplicate' : 'conflict';
+  }
+
+  private rememberAction(
+    match: ActiveMatch,
+    accountId: string,
+    actionId: string,
+    fingerprint: string
+  ): void {
+    match.processedActions.set(`${accountId}:${actionId}`, fingerprint);
+    while (match.processedActions.size > 512) {
+      const oldest = match.processedActions.keys().next().value as string | undefined;
+      if (!oldest) break;
+      match.processedActions.delete(oldest);
+    }
+  }
+
+  private armDrawProposalTimeout(match: ActiveMatch, proposal: GatewayDrawProposal): void {
+    this.clearDrawProposalTimer(match);
+    match.drawProposalTimer = setTimeout(() => {
+      match.drawProposalTimer = null;
+      this.expireDrawProposal(match.matchId, proposal.proposalId, proposal.expiresAt);
+    }, Math.max(0, proposal.expiresAt - this.now()));
+    match.drawProposalTimer.unref?.();
+  }
+
+  private expireDrawProposal(matchId: string, proposalId: string, expectedExpiresAt: number): void {
+    const match = this.matches.get(matchId);
+    const proposal = match?.drawProposal;
+    if (!match || match.phase !== 'running' || !proposal) return;
+    if (proposal.proposalId !== proposalId || proposal.expiresAt !== expectedExpiresAt) return;
+    if (this.now() < proposal.expiresAt) {
+      this.armDrawProposalTimeout(match, proposal);
+      return;
+    }
+    match.drawProposal = null;
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'DRAW_EXPIRED',
+      accountId: proposal.proposerAccountId,
+      reason: 'draw-proposal-timeout',
+      proposalId
+    });
+    this.emitSnapshot(match);
+  }
+
+  private clearDrawProposalTimer(match: ActiveMatch): void {
+    if (match.drawProposalTimer) clearTimeout(match.drawProposalTimer);
+    match.drawProposalTimer = null;
+  }
+
+  private concludeMatch(match: ActiveMatch, conclusion: GatewayMatchConclusion): boolean {
+    if (match.phase !== 'running' || match.conclusion) return false;
+    this.clearDrawProposalTimer(match);
+    const proposalId = match.drawProposal?.proposalId;
+    match.drawProposal = null;
+    match.conclusion = { ...conclusion };
+    match.phase = 'finished';
+    match.revision += 1;
+    if (conclusion.reason === 'player-forfeit') {
+      this.emitEvent(match, {
+        type: 'MATCH_FORFEITED',
+        accountId: conclusion.loserAccountId,
+        reason: conclusion.reason
+      });
+    }
+    this.emitEvent(match, {
+      type: 'MATCH_FINISHED',
+      accountId: conclusion.winnerAccountId,
+      reason: conclusion.reason,
+      ...(proposalId ? { proposalId } : {})
+    });
+    this.emitSnapshot(match);
+    return true;
   }
 
   private rejectClaim(
@@ -1085,7 +1390,8 @@ export class GatewayMatchmaker {
         avatarSource: participant.identity.avatarSource ?? 'discord',
         avatarUrl: participant.identity.avatarUrl ?? null,
         skribblAvatar: participant.identity.skribblAvatar ?? null,
-        specialAvatarId: participant.identity.specialAvatarId ?? null
+        specialAvatarId: participant.identity.specialAvatarId ?? null,
+        invisibleAvatarEntitled: participant.identity.invisibleAvatarEntitled === true
       })),
       readyDeadlineAt: match.readyDeadlineAt,
       countdownEndsAt: match.countdownEndsAt,
@@ -1093,8 +1399,8 @@ export class GatewayMatchmaker {
       startingAccountId: match.startingAccountId,
       createdAt: match.createdAt,
       claims: match.claims.map(claim => ({ ...claim })),
-      winnerAccountId: match.winnerAccountId,
-      finishedAt: match.finishedAt,
+      drawProposal: match.drawProposal ? { ...match.drawProposal } : null,
+      conclusion: match.conclusion ? { ...match.conclusion } : null,
       draft: match.draft ? {
         status: match.draft.status,
         requiredPickCount: match.draft.requiredPickCount,
@@ -1136,6 +1442,7 @@ export class GatewayMatchmaker {
         avatarUrl: null,
         skribblAvatar: [this.simulatedNameIndex % 16, 0, 0, -1],
         specialAvatarId: null,
+        invisibleAvatarEntitled: false,
         preferredLanguage: 'en'
       },
       capabilities: [

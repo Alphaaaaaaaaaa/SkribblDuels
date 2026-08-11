@@ -6,6 +6,8 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
-Contract v5 also types private Duel chat, contiguous telemetry batches and ACKs,
-Claim candidates/resolutions, authoritative field owners and the terminal winner.
-The browser can propose evidence but cannot award a field or result.
+Contract v6 retains private Duel chat, telemetry ACKs and authoritative Claims,
+and adds action-ID-based `MATCH_FORFEIT`, `DRAW_PROPOSE`, `DRAW_RESPOND` and
+`DRAW_WITHDRAW`. Snapshots carry either one active Draw proposal or one immutable
+win/Draw conclusion. The browser can request an action but cannot award a field
+or result.

@@ -264,7 +264,9 @@ for (const field of board.fields.slice(0, board.winTarget)) {
 }
 const finished = latestMatch(resumedAlphaMessages);
 assert.equal(finished.state.phase, 'finished');
-assert.equal(finished.state.winnerAccountId, 'alpha');
+assert.equal(finished.state.conclusion?.outcome, 'win');
+assert.equal(finished.state.conclusion?.reason, 'win-target-reached');
+assert.equal(finished.state.conclusion?.winnerAccountId, 'alpha');
 assert.equal(finished.state.claims.length, board.winTarget);
 assert.equal(new Set(finished.state.claims.map(claim => claim.challengeId)).size, board.winTarget);
 assert.ok(resumedAlphaMessages.some(message =>

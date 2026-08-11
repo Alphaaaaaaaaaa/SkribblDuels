@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Skribbl Duels - Telemetry Inspector
+// @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.47.0
+// @version      0.48.0
 // @author       Alpha
-// @description  Gateway-backed private Duel chat and server-authoritative telemetry claim validation.
+// @description  Gateway-backed Skribbl Duels with authoritative matches, Forfeit and mutual Draw.
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -1721,9 +1721,33 @@ var TypoRelayBridge = class {
 		});
 	}
 };
+function extractPacketId(socketEvent, packetData) {
+	if (socketEvent !== null && socketEvent !== "data") return null;
+	if (typeof packetData === "object" && packetData !== null && "id" in packetData && typeof packetData.id === "number") return packetData.id;
+	return null;
+}
+function redactSensitivePacketData(socketEvent, packetData) {
+	if (socketEvent !== "login" || packetData === null || typeof packetData !== "object" || Array.isArray(packetData)) return packetData;
+	const { code: _privateLobbyCode, ...safe } = packetData;
+	return safe;
+}
+function redactSensitiveRawValue(socketEvent, raw) {
+	if (socketEvent !== "login" || !Array.isArray(raw)) return raw;
+	return raw.map((value, index) => index === 1 ? redactSensitivePacketData(socketEvent, value) : value);
+}
+function redactSensitiveRawRecord(record) {
+	const packetData = redactSensitivePacketData(record.socketEvent, record.packetData);
+	const raw = redactSensitiveRawValue(record.socketEvent, record.raw);
+	if (packetData === record.packetData && raw === record.raw) return record;
+	return {
+		...record,
+		packetData,
+		raw
+	};
+}
 function filterRawRecords(records, options = {}) {
 	const includeDrawPackets = options.includeDrawPackets === true;
-	const filtered = includeDrawPackets ? records.slice() : records.filter((record) => record.packetId !== 19);
+	const filtered = (includeDrawPackets ? records.slice() : records.filter((record) => record.packetId !== 19)).map(redactSensitiveRawRecord);
 	return {
 		records: filtered,
 		summary: {
@@ -2501,11 +2525,6 @@ function now() {
 		monotonicMs: performance.now()
 	};
 }
-function extractPacketId(socketEvent, packetData) {
-	if (socketEvent !== null && socketEvent !== "data") return null;
-	if (typeof packetData === "object" && packetData !== null && "id" in packetData && typeof packetData.id === "number") return packetData.id;
-	return null;
-}
 var RawPacketRecorder = class {
 	store;
 	sequence = 0;
@@ -2578,7 +2597,7 @@ var RawPacketRecorder = class {
 		this.sequence += 1;
 		const timestamp = now();
 		const socketEvent = envelope.direction === "client-to-server" ? envelope.event : "data";
-		const packetData = envelope.direction === "client-to-server" ? envelope.data : envelope.data;
+		const packetData = redactSensitivePacketData(socketEvent, envelope.direction === "client-to-server" ? envelope.data : envelope.data);
 		const packetId = extractPacketId(socketEvent, packetData);
 		const record = {
 			recordId: createId$1(),
@@ -2590,7 +2609,7 @@ var RawPacketRecorder = class {
 			socketEvent,
 			packetId,
 			packetData,
-			raw: envelope.direction === "client-to-server" ? envelope.raw : envelope.data,
+			raw: envelope.direction === "client-to-server" ? redactSensitiveRawValue(socketEvent, envelope.raw) : envelope.data,
 			occurredAt: timestamp.occurredAt,
 			monotonicMs: timestamp.monotonicMs,
 			page: {
@@ -3435,10 +3454,34 @@ var IndexedDbRawPacketStore = class {
 		return requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").count(IDBKeyRange.only(sessionId)));
 	}
 	async getSessionRecords(sessionId) {
-		return requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").getAll(IDBKeyRange.only(sessionId)));
+		return (await requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").getAll(IDBKeyRange.only(sessionId)))).map(redactSensitiveRawRecord);
 	}
 	async getAllRecords() {
-		return requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).getAll());
+		return (await requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).getAll())).map(redactSensitiveRawRecord);
+	}
+	async redactSensitiveRecords() {
+		const transaction = (await this.open()).transaction(PACKETS_STORE, "readwrite");
+		const request = transaction.objectStore(PACKETS_STORE).openCursor();
+		let redactedCount = 0;
+		const cursorDone = new Promise((resolve, reject) => {
+			request.addEventListener("success", () => {
+				const cursor = request.result;
+				if (!cursor) {
+					resolve();
+					return;
+				}
+				const record = cursor.value;
+				const safeRecord = redactSensitiveRawRecord(record);
+				if (safeRecord !== record) {
+					cursor.update(safeRecord);
+					redactedCount += 1;
+				}
+				cursor.continue();
+			});
+			request.addEventListener("error", () => reject(request.error), { once: true });
+		});
+		await Promise.all([cursorDone, transactionDone(transaction)]);
+		return redactedCount;
 	}
 	async getAllSessions() {
 		return requestToPromise((await this.open()).transaction(SESSIONS_STORE, "readonly").objectStore(SESSIONS_STORE).getAll());
@@ -11155,7 +11198,7 @@ var DebugPanel = class {
 		].join("\n");
 	}
 };
-var PRODUCT_CORE_VERSION = "0.3.0";
+var PRODUCT_CORE_VERSION = "0.4.0";
 var WORD_LIST_IDS = /* @__PURE__ */ new Set([
 	"mogged",
 	"smol-words",
@@ -11491,7 +11534,7 @@ function generateDraftBoard(manifest, request, now = Date.now()) {
 }
 function initialMatchState() {
 	return {
-		contractVersion: 2,
+		contractVersion: 3,
 		matchId: null,
 		phase: "idle",
 		format: null,
@@ -11503,7 +11546,9 @@ function initialMatchState() {
 			self: 0,
 			opponent: 0
 		},
+		outcome: null,
 		winner: null,
+		finishReason: null,
 		countdownEndsAt: null,
 		startedAt: null,
 		finishedAt: null,
@@ -11565,7 +11610,7 @@ function normalizeMatchState(value) {
 	const phase = validPhases.has(String(input.phase)) ? input.phase : "idle";
 	const frozen = phase === "finished" || input.freeze?.frozen === true;
 	return {
-		contractVersion: 2,
+		contractVersion: 3,
 		matchId: typeof input.matchId === "string" ? input.matchId : null,
 		phase,
 		format: validFormats.has(String(input.format)) ? input.format : null,
@@ -11577,7 +11622,9 @@ function normalizeMatchState(value) {
 			self: selfScore,
 			opponent: opponentScore
 		},
+		outcome: input.outcome === "win" || input.outcome === "draw" ? input.outcome : input.winner === "self" || input.winner === "opponent" ? "win" : null,
 		winner: input.winner === "self" || input.winner === "opponent" ? input.winner : null,
+		finishReason: typeof input.finishReason === "string" ? input.finishReason : null,
 		countdownEndsAt: phase === "countdown" && Number.isFinite(input.countdownEndsAt) ? Number(input.countdownEndsAt) : null,
 		startedAt: Number.isFinite(input.startedAt) ? Number(input.startedAt) : null,
 		finishedAt: Number.isFinite(input.finishedAt) ? Number(input.finishedAt) : null,
@@ -11614,7 +11661,7 @@ var MatchStateStore = class {
 	}
 	startMatch(matchId, board, participants, startedAt = Date.now()) {
 		this.state = {
-			contractVersion: 2,
+			contractVersion: 3,
 			matchId,
 			phase: "running",
 			format: board.format,
@@ -11633,7 +11680,9 @@ var MatchStateStore = class {
 				self: 0,
 				opponent: 0
 			},
+			outcome: null,
 			winner: null,
+			finishReason: null,
 			countdownEndsAt: null,
 			startedAt,
 			finishedAt: null,
@@ -11649,7 +11698,7 @@ var MatchStateStore = class {
 	prepareMatchCountdown(matchId, board, participants, countdownEndsAt, occurredAt = Date.now()) {
 		if (!Number.isFinite(countdownEndsAt) || countdownEndsAt <= occurredAt) throw new RangeError("Match countdown must end after it starts.");
 		this.state = {
-			contractVersion: 2,
+			contractVersion: 3,
 			matchId,
 			phase: "countdown",
 			format: board.format,
@@ -11668,7 +11717,9 @@ var MatchStateStore = class {
 				self: 0,
 				opponent: 0
 			},
+			outcome: null,
 			winner: null,
+			finishReason: null,
 			countdownEndsAt,
 			startedAt: null,
 			finishedAt: null,
@@ -11760,7 +11811,9 @@ var MatchStateStore = class {
 		this.state = {
 			...this.state,
 			phase: "finished",
+			outcome: "win",
 			winner,
+			finishReason: reason,
 			finishedAt: occurredAt,
 			freeze: {
 				frozen: true,
@@ -11770,6 +11823,24 @@ var MatchStateStore = class {
 			revision: this.state.revision + 1
 		};
 		return this.emit("MATCH_FINISHED", null, winner, reason, occurredAt);
+	}
+	finishDraw(reason = "mutual-draw", occurredAt = Date.now()) {
+		if (this.state.phase === "finished") return this.getState();
+		this.state = {
+			...this.state,
+			phase: "finished",
+			outcome: "draw",
+			winner: null,
+			finishReason: reason,
+			finishedAt: occurredAt,
+			freeze: {
+				frozen: true,
+				reason: "match-ended",
+				frozenAt: occurredAt
+			},
+			revision: this.state.revision + 1
+		};
+		return this.emit("MATCH_FINISHED", null, null, reason, occurredAt);
 	}
 	reset(reason = "manual-reset", occurredAt = Date.now()) {
 		const nextRevision = this.state.revision + 1;
@@ -11879,7 +11950,7 @@ var MatchTelemetryGateway = class {
 	}
 };
 var DEFAULT_PRODUCT_UI_SETTINGS = {
-	version: 1,
+	version: 2,
 	board: {
 		visible: true,
 		mode: "anchor",
@@ -11895,7 +11966,8 @@ var DEFAULT_PRODUCT_UI_SETTINGS = {
 	},
 	panelOpen: false,
 	panelTab: "duel",
-	completionMessages: true
+	completionMessages: true,
+	winAnimation: true
 };
 function clamp(value, min, max) {
 	return Math.min(max, Math.max(min, value));
@@ -11921,7 +11993,7 @@ function normalizeProductUiSettings(value) {
 		"bottom-right"
 	]);
 	return {
-		version: 1,
+		version: 2,
 		board: {
 			visible: typeof boardInput.visible === "boolean" ? boardInput.visible : DEFAULT_PRODUCT_UI_SETTINGS.board.visible,
 			mode: boardInput.mode === "custom" ? "custom" : "anchor",
@@ -11937,7 +12009,8 @@ function normalizeProductUiSettings(value) {
 		},
 		panelOpen: typeof input.panelOpen === "boolean" ? input.panelOpen : DEFAULT_PRODUCT_UI_SETTINGS.panelOpen,
 		panelTab: validTabs.has(String(input.panelTab)) ? input.panelTab : DEFAULT_PRODUCT_UI_SETTINGS.panelTab,
-		completionMessages: typeof input.completionMessages === "boolean" ? input.completionMessages : DEFAULT_PRODUCT_UI_SETTINGS.completionMessages
+		completionMessages: typeof input.completionMessages === "boolean" ? input.completionMessages : DEFAULT_PRODUCT_UI_SETTINGS.completionMessages,
+		winAnimation: typeof input.winAnimation === "boolean" ? input.winAnimation : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation
 	};
 }
 var LocalStorageProductUiSettingsStore = class {
@@ -12015,6 +12088,9 @@ function record(value) {
 function nonEmptyString(value, maxLength = 256) {
 	return typeof value === "string" && value.length > 0 && value.length <= maxLength;
 }
+function nonEmptyCodePointString(value, maxLength) {
+	return typeof value === "string" && value.length > 0 && Array.from(value).length <= maxLength;
+}
 function optionalString(value, maxLength = 256) {
 	return value === void 0 || nonEmptyString(value, maxLength);
 }
@@ -12031,11 +12107,19 @@ function nullableString(value, maxLength = 2048) {
 	return value === null || nonEmptyString(value, maxLength);
 }
 function skribblAvatar(value) {
-	return value === null || Array.isArray(value) && value.length === 4 && value.every((item) => Number.isInteger(item) && Number(item) >= -1 && Number(item) <= 255);
+	return value === null || Array.isArray(value) && value.length === 4 && value.every((item) => Number.isInteger(item) && Number(item) >= -255 && Number(item) <= 255);
 }
 function matchmakingParticipant(value) {
 	const participant = record(value);
-	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean" && (participant.avatarSource === "discord" || participant.avatarSource === "skribbl") && nullableString(participant.avatarUrl) && skribblAvatar(participant.skribblAvatar) && nullableString(participant.specialAvatarId, 64));
+	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean" && (participant.avatarSource === "discord" || participant.avatarSource === "skribbl") && nullableString(participant.avatarUrl) && skribblAvatar(participant.skribblAvatar) && nullableString(participant.specialAvatarId, 64) && typeof participant.invisibleAvatarEntitled === "boolean");
+}
+function drawProposal(value) {
+	const proposal = record(value);
+	return Boolean(proposal && nonEmptyString(proposal.proposalId) && nonEmptyString(proposal.proposerAccountId) && finiteNumber(proposal.createdAt) && finiteNumber(proposal.expiresAt) && Number(proposal.expiresAt) > Number(proposal.createdAt));
+}
+function matchConclusion(value) {
+	const conclusion = record(value);
+	return Boolean(conclusion && (conclusion.outcome === "win" || conclusion.outcome === "draw") && (conclusion.reason === "win-target-reached" || conclusion.reason === "player-forfeit" || conclusion.reason === "mutual-draw") && (conclusion.winnerAccountId === null || nonEmptyString(conclusion.winnerAccountId)) && (conclusion.loserAccountId === null || nonEmptyString(conclusion.loserAccountId)) && (conclusion.initiatedByAccountId === null || nonEmptyString(conclusion.initiatedByAccountId)) && finiteNumber(conclusion.occurredAt));
 }
 function draftPick(value) {
 	const pick = record(value);
@@ -12063,18 +12147,29 @@ function authoritativeClaim(value) {
 }
 function matchmakingState(value) {
 	const state = record(value);
-	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || state.winnerAccountId !== null && !nonEmptyString(state.winnerAccountId) || state.finishedAt !== null && !finiteNumber(state.finishedAt)) return false;
+	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || state.drawProposal !== null && !drawProposal(state.drawProposal) || state.conclusion !== null && !matchConclusion(state.conclusion)) return false;
 	const participantIds = new Set(state.participants.map((participant) => participant.accountId));
 	if (state.claims.some((claim) => !participantIds.has(claim.ownerAccountId))) return false;
-	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && state.winnerAccountId === null && state.finishedAt === null && state.claims.length === 0 && (state.draft === void 0 || draftState(state.draft));
-	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && state.winnerAccountId === null && state.finishedAt === null && state.claims.length === 0 && draftState(state.draft) && state.draft.status === "complete";
-	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.winnerAccountId === null && state.finishedAt === null && draftState(state.draft) && state.draft.status === "complete";
-	if (state.phase === "finished") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && nonEmptyString(state.winnerAccountId) && participantIds.has(state.winnerAccountId) && finiteNumber(state.finishedAt) && state.finishedAt >= state.startedAt && draftState(state.draft) && state.draft.status === "complete";
-	return state.countdownEndsAt === null && state.startedAt === null && state.winnerAccountId === null && state.finishedAt === null && state.claims.length === 0 && (state.draft === void 0 || state.draft === null);
+	if (state.drawProposal !== null) {
+		const proposal = state.drawProposal;
+		if (!participantIds.has(proposal.proposerAccountId)) return false;
+	}
+	if (state.conclusion !== null) {
+		const conclusion = state.conclusion;
+		if (conclusion.initiatedByAccountId !== null && !participantIds.has(conclusion.initiatedByAccountId)) return false;
+		if (conclusion.outcome === "win") {
+			if (!nonEmptyString(conclusion.winnerAccountId) || !nonEmptyString(conclusion.loserAccountId) || conclusion.winnerAccountId === conclusion.loserAccountId || !participantIds.has(conclusion.winnerAccountId) || !participantIds.has(conclusion.loserAccountId)) return false;
+		} else if (conclusion.winnerAccountId !== null || conclusion.loserAccountId !== null) return false;
+	}
+	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.claims.length === 0 && (state.draft === void 0 || draftState(state.draft));
+	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.claims.length === 0 && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.conclusion === null && (state.drawProposal === null || Number(state.drawProposal.createdAt) >= Number(state.startedAt)) && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "finished") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.drawProposal === null && state.conclusion !== null && Number(state.conclusion.occurredAt) >= Number(state.startedAt) && draftState(state.draft) && state.draft.status === "complete";
+	return state.countdownEndsAt === null && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.claims.length === 0 && (state.draft === void 0 || state.draft === null);
 }
 function matchmakingEvent(value) {
 	const event = record(value);
-	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_FINAL_RANDOM_STARTED" || event.type === "DRAFT_FINAL_RANDOM_SELECTED" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED" || event.type === "MATCH_FINISHED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean"));
+	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_FINAL_RANDOM_STARTED" || event.type === "DRAFT_FINAL_RANDOM_SELECTED" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED" || event.type === "DRAW_PROPOSED" || event.type === "DRAW_WITHDRAWN" || event.type === "DRAW_REJECTED" || event.type === "DRAW_EXPIRED" || event.type === "MATCH_FORFEITED" || event.type === "MATCH_FINISHED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean") && (event.proposalId === void 0 || nonEmptyString(event.proposalId)));
 }
 function isGatewayServerMessage(value) {
 	const message = record(value);
@@ -12082,14 +12177,14 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 5 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId))) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 6 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
 		case "MATCH_SNAPSHOT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingState(message.state);
 		case "MATCH_EVENT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingEvent(message.event);
 		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && nonNegativeInteger(message.definitionVersion) && nonEmptyString(message.ownerAccountId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision) && finiteNumber(message.occurredAt);
-		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyString(message.message, 300) && finiteNumber(message.occurredAt);
+		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyCodePointString(message.message, 300) && finiteNumber(message.occurredAt);
 		case "TELEMETRY_ACK": return nonEmptyString(message.matchId) && nonNegativeInteger(message.lastSequence);
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
@@ -12105,7 +12200,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.47.0";
+var GATEWAY_CLIENT_VERSION = "0.48.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15476,6 +15571,45 @@ var SocketIoGatewayClient = class {
 		});
 		return clientMessageId;
 	}
+	forfeitMatch(matchId) {
+		const actionId = this.createRequestId("forfeit");
+		this.emit({
+			type: "MATCH_FORFEIT",
+			matchId,
+			actionId
+		});
+		return actionId;
+	}
+	proposeDraw(matchId) {
+		const actionId = this.createRequestId("draw-propose");
+		this.emit({
+			type: "DRAW_PROPOSE",
+			matchId,
+			actionId
+		});
+		return actionId;
+	}
+	respondToDraw(matchId, proposalId, accept) {
+		const actionId = this.createRequestId(accept ? "draw-accept" : "draw-reject");
+		this.emit({
+			type: "DRAW_RESPOND",
+			matchId,
+			proposalId,
+			actionId,
+			accept
+		});
+		return actionId;
+	}
+	withdrawDraw(matchId, proposalId) {
+		const actionId = this.createRequestId("draw-withdraw");
+		this.emit({
+			type: "DRAW_WITHDRAW",
+			matchId,
+			proposalId,
+			actionId
+		});
+		return actionId;
+	}
 	queueTelemetryEnvelope(envelope) {
 		if (this.state.match?.matchId !== envelope.matchId) return;
 		if (this.telemetryQueue.some((item) => item.sequence === envelope.sequence)) return;
@@ -15519,7 +15653,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 5,
+				contractVersion: 6,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -15558,7 +15692,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v5 message.`
+				error: `Gateway sent an invalid Contract v6 message.`
 			});
 			return;
 		}
@@ -36718,6 +36852,8 @@ var PROFILE_COPY = {
 		saved: "Profile saved. Reconnecting authoritative profile\u2026",
 		specialControlled: "Special avatar parts remain server-controlled.",
 		specialEntitlement: "Special avatar entitlement",
+		invisibleEntitlement: "Invisible avatar entitlement",
+		invisibleNotEntitled: "This profile is not entitled to invisible avatar parts.",
 		nameTooShort: "Duel display name must contain at least 3 characters.",
 		nameTooLong: "Duel display name must contain no more than 24 characters.",
 		nameAsciiOnly: "Only A-Z, a-z and 0-9 are allowed.",
@@ -36735,6 +36871,8 @@ var PROFILE_COPY = {
 		saved: "Profil gespeichert. Autoritatives Profil wird neu verbunden\u2026",
 		specialControlled: "Special-Avatarteile bleiben serverseitig kontrolliert.",
 		specialEntitlement: "Special-Avatar-Berechtigung",
+		invisibleEntitlement: "Unsichtbarer-Avatar-Berechtigung",
+		invisibleNotEntitled: "Dieses Profil ist nicht f\u00FCr unsichtbare Avatarteile berechtigt.",
 		nameTooShort: "Der Duel-Anzeigename muss mindestens 3 Zeichen lang sein.",
 		nameTooLong: "Der Duel-Anzeigename darf h\u00F6chstens 24 Zeichen lang sein.",
 		nameAsciiOnly: "Erlaubt sind nur A\u2013Z, a\u2013z und 0\u20139.",
@@ -36766,6 +36904,21 @@ function element(tag, className, text) {
 		for (const eventName of ISOLATED_POINTER_EVENTS) node.addEventListener(eventName, (event) => event.stopPropagation());
 	}
 	return node;
+}
+function canConsumeWheel(node, deltaY) {
+	if (!(node instanceof HTMLElement)) return false;
+	const overflowY = getComputedStyle(node).overflowY;
+	if (overflowY !== "auto" && overflowY !== "scroll") return false;
+	if (node.scrollHeight <= node.clientHeight) return false;
+	return deltaY < 0 ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight - 1;
+}
+function isolateScrollRoot(root) {
+	root.style.overscrollBehavior = "contain";
+	root.addEventListener("wheel", (event) => {
+		event.stopPropagation();
+		if (!event.composedPath().some((target) => target instanceof Element && root.contains(target) && canConsumeWheel(target, event.deltaY))) event.preventDefault();
+	}, { passive: false });
+	root.addEventListener("touchmove", (event) => event.stopPropagation(), { passive: false });
 }
 function formatTime(timestamp) {
 	return new Date(timestamp).toLocaleTimeString([], {
@@ -36908,7 +37061,9 @@ var CompletionChatAdapter = class {
   --COLOR_CHAT_BG_LEAVE_BASE: #FFF4E8;
   --SCD_PANEL_BG: rgba(22, 24, 31, .97);
   --SCD_PANEL_BORDER: rgba(255, 255, 255, .16);
-  --SCD_ACCENT: #7f8cff;
+  --SCD_ACCENT: var(--COLOR_PANEL_BUTTON, #2a51d1);
+  --SCD_ACCENT_HOVER: var(--COLOR_PANEL_BUTTON_HOVER, #1e44be);
+  --SCD_ACCENT_ACTIVE: var(--COLOR_PANEL_BUTTON_ACTIVE, #1d40b4);
   --SCD_SELF: #8ee087;
   --SCD_OPPONENT: #ff9f72;
 }
@@ -36950,6 +37105,7 @@ var CompletionChatAdapter = class {
 .scd-modal-overlay { position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.55);animation:scd-modal-opacity .21s ease-in-out; }
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
+#skribbl-duels-panel [data-role='body'],.scd-stage-shell,.scd-chat-log { overscroll-behavior:contain; }
 .scd-modal-header { display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:10px;padding:8px 10px 4px; }
 .scd-modal-title { font-size:1.8em;font-weight:700;text-align:center;white-space:nowrap; }
 .scd-modal-account { min-width:0;display:flex;align-items:center;gap:7px;font-size:11px; }
@@ -36961,7 +37117,6 @@ var CompletionChatAdapter = class {
 .scd-modal-close:hover { color:white; }
 .scd-main-tabs { display:flex;justify-content:center;padding:4px 10px 8px; }
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
-#skribbl-duels-panel select { width:auto; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
 .scd-versus { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
@@ -37004,6 +37159,8 @@ var CompletionChatAdapter = class {
 .scd-button { border: 1px solid rgba(255,255,255,.18); border-radius: 7px; background: rgba(255,255,255,.08); color: white; padding: 7px 10px; cursor: pointer; }
 .scd-button:hover { background: rgba(255,255,255,.14); }
 .scd-button.primary { background: var(--SCD_ACCENT); border-color: transparent; color: #fff; font-weight: 700; }
+.scd-button.primary:hover:not(:disabled),.scd-tab.active:hover:not(:disabled) { background:var(--SCD_ACCENT_HOVER); }
+.scd-button.primary:active:not(:disabled),.scd-tab.active:active:not(:disabled) { background:var(--SCD_ACCENT_ACTIVE); }
 .scd-button.danger { background: rgba(255,95,95,.17); }
 .scd-field { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;aspect-ratio:1/1;border:0;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));color:white;border-radius:4px;padding:4px;overflow:hidden;box-shadow:none;transition:transform .15s; }
 .scd-field.empty { background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));opacity:.42; }
@@ -37032,7 +37189,7 @@ var CompletionChatAdapter = class {
 .scd-queue-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-stack { display: flex; flex-direction: column; gap: 9px; }
 .scd-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 10px; }
-.scd-label { display:flex; align-items:center; justify-content:space-between; gap:10px; color:white; }
+.scd-label { display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,45%);align-items:center;gap:10px;color:white; }
 .scd-label input[type='range'] { flex:1; }
 .scd-auth-profile { display:flex;align-items:center;gap:10px;min-width:0; }
 .scd-auth-avatar { width:42px;height:42px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.1);flex:none; }
@@ -37042,7 +37199,7 @@ var CompletionChatAdapter = class {
 .scd-auth-error { color:#ffb0b0;font-size:11px;white-space:pre-wrap; }
 .scd-profile-field { display:flex;flex-direction:column;gap:4px; }
 .scd-profile-field .scd-label { min-width:0; }
-.scd-profile-field input { width:auto;min-width:0;max-width:100%;flex:1 1 auto; }
+.scd-profile-field input { min-width:0;max-width:100%; }
 .scd-profile-error { color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800;white-space:pre-wrap; }
 .scd-skribbl-avatar { position:relative;width:100%;height:100%;image-rendering:pixelated; }
 .scd-skribbl-avatar .color,.scd-skribbl-avatar .eyes,.scd-skribbl-avatar .mouth { position:absolute;width:100%;height:100%;background-size:1000% 1000%; }
@@ -37058,16 +37215,43 @@ var CompletionChatAdapter = class {
 .scd-draft-option { min-width:0;min-height:76px;text-align:center;font-size:13px;line-height:1.2; }
 .scd-draft-option-key { display:block;margin-top:5px;color:rgba(255,255,255,.62);font-size:10px;font-weight:400; }
 .scd-draft-board { display:grid;gap:4px; }
+.scd-chat-log { max-height:330px;overflow:auto;min-width:0; }
+.scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
+.scd-chat-line.system { padding:6px 8px;border-left:3px solid var(--SCD_ACCENT);background:rgba(255,255,255,.055); }
+.scd-chat-form { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end; }
+.scd-chat-input-shell { min-width:0;display:flex;flex-direction:column;gap:2px; }
+.scd-chat-count { text-align:right;font-size:10px;color:rgba(255,255,255,.6); }
+.scd-match-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+.scd-draw-proposal { border-left:3px solid var(--SCD_ACCENT); }
+.scd-win-animation { position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none;overflow:hidden;background:radial-gradient(circle,rgba(42,81,209,.28),rgba(0,0,0,.7));animation:scd-win-fade 3.4s both; }
+.scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35);animation:scd-win-pop .65s cubic-bezier(.16,1,.3,1) both; }
+.scd-win-card .scd-icon { width:clamp(150px,30vw,310px);height:clamp(150px,30vw,310px);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
+.scd-confetti { position:absolute;left:var(--x);top:-12%;width:10px;height:22px;background:var(--color);transform:rotate(var(--rotate));animation:scd-confetti-fall var(--duration) var(--delay) linear both; }
+#skribbl-duels-panel input::placeholder,#skribbl-duels-panel textarea::placeholder,#skribbl-duels-stage input::placeholder,#skribbl-duels-stage textarea::placeholder { color:var(--COLOR_PANEL_TEXT_PLACEHOLDER); }
+#skribbl-duels-panel input,#skribbl-duels-panel select,#skribbl-duels-panel textarea,#skribbl-duels-stage input,#skribbl-duels-stage select,#skribbl-duels-stage textarea { font:inherit;flex:0 0 auto;height:32px;width:100%;min-width:0;color:var(--COLOR_INPUT_TEXT);background-color:var(--COLOR_INPUT_BG);border:1px solid var(--COLOR_INPUT_BORDER);border-radius:var(--BORDER_RADIUS);padding:.2em .5em;transition:background-color .12s ease,border-color .12s ease;box-sizing:border-box; }
+#skribbl-duels-panel input:focus,#skribbl-duels-panel select:focus,#skribbl-duels-panel textarea:focus,#skribbl-duels-stage input:focus,#skribbl-duels-stage select:focus,#skribbl-duels-stage textarea:focus { outline:0;background-color:var(--COLOR_INPUT_HOVER);border-color:var(--COLOR_INPUT_BORDER_FOCUS);box-shadow:0 0 10px -4px var(--COLOR_INPUT_BORDER_FOCUS); }
+#skribbl-duels-panel input:hover:not(:disabled),#skribbl-duels-panel select:hover:not(:disabled),#skribbl-duels-panel textarea:hover:not(:disabled),#skribbl-duels-stage input:hover:not(:disabled),#skribbl-duels-stage select:hover:not(:disabled),#skribbl-duels-stage textarea:hover:not(:disabled) { background-color:var(--COLOR_INPUT_HOVER); }
+#skribbl-duels-panel input:disabled,#skribbl-duels-panel select:disabled,#skribbl-duels-panel textarea:disabled,#skribbl-duels-stage input:disabled,#skribbl-duels-stage select:disabled,#skribbl-duels-stage textarea:disabled { cursor:not-allowed;opacity:.7; }
+#skribbl-duels-panel input:invalid,#skribbl-duels-panel select:invalid,#skribbl-duels-panel textarea:invalid,#skribbl-duels-stage input:invalid,#skribbl-duels-stage select:invalid,#skribbl-duels-stage textarea:invalid { border-color:red; }
+#skribbl-duels-panel input[type='range']:focus,#skribbl-duels-stage input[type='range']:focus { box-shadow:none; }
+#skribbl-duels-panel input[type='checkbox'],#skribbl-duels-stage input[type='checkbox'] { appearance:none;-webkit-appearance:none;-moz-appearance:none;margin:0;padding:0;width:1.15em;height:1.15em;transition:none;display:grid;place-content:center;justify-self:end; }
+#skribbl-duels-panel input[type='checkbox']::before,#skribbl-duels-stage input[type='checkbox']::before { content:'';width:0;height:0;border-radius:var(--BORDER_RADIUS);transition:width 50ms ease-in-out,height 50ms ease-in-out;box-shadow:inset 1em 1em var(--COLOR_INPUT_TEXT); }
+#skribbl-duels-panel input[type='checkbox']:checked::before,#skribbl-duels-stage input[type='checkbox']:checked::before { width:1em;height:1em; }
 @keyframes scd-field-reveal { from { opacity:0;transform:scale(.72) rotate(-4deg); } to { opacity:1;transform:scale(1) rotate(0); } }
 @keyframes scd-slot-flicker { 0% { opacity:.45;transform:translateY(-2px); } 50% { opacity:1;transform:translateY(2px); } 100% { opacity:.45;transform:translateY(-2px); } }
+@keyframes scd-win-pop { from { opacity:0;transform:scale(.45) rotate(-6deg); } to { opacity:1;transform:scale(1) rotate(0); } }
+@keyframes scd-win-fade { 0%,78% { opacity:1; } 100% { opacity:0; } }
+@keyframes scd-confetti-fall { from { transform:translateY(-10vh) rotate(var(--rotate)); } to { transform:translateY(125vh) rotate(calc(var(--rotate) + 720deg)); } }
 @media (max-width:620px) {
   .scd-modal-header { grid-template-columns:1fr auto; }
   .scd-modal-title { display:none; }
   .scd-versus-players { gap:8px; }
   .scd-versus-avatar { width:min(145px,31vw); }
+  .scd-label { grid-template-columns:minmax(0,1fr); }
+  .scd-label input[type='checkbox'] { justify-self:start; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name { animation:none !important; }
+  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-card,.scd-confetti { animation:none !important; }
 }
 `;
 		(document.head ?? document.documentElement).appendChild(style);
@@ -37231,6 +37415,7 @@ var DuelProductFoundation = class {
 	intro = null;
 	board = null;
 	boardGrid = null;
+	winAnimation = null;
 	mountGuard = null;
 	draftSlotTimer = null;
 	introTimer = null;
@@ -37238,6 +37423,7 @@ var DuelProductFoundation = class {
 	countdownAnimationFrame = null;
 	countdownVisualEndsAt = 0;
 	countdownGoUntil = 0;
+	winAnimationTimer = null;
 	settings;
 	matchState;
 	chatAdapter;
@@ -37254,10 +37440,14 @@ var DuelProductFoundation = class {
 	matchmakingError = null;
 	readySubmissionMatchId = null;
 	draftSubmissionKey = null;
-	lastWinMessageMatchId = null;
+	lastConclusionMessageMatchId = null;
+	lastWinAnimationMatchId = null;
 	processedGatewayChatIds = /* @__PURE__ */ new Set();
 	processedClaimResolutionIds = /* @__PURE__ */ new Set();
 	restoreDuelChatFocus = false;
+	duelChatScrollTop = 0;
+	duelChatStickToBottom = true;
+	matchActionError = null;
 	draftKeydown = (event) => this.handleDraftKeydown(event);
 	duelChatKeydown = (event) => this.handleDuelChatKeydown(event);
 	destroyed = false;
@@ -37296,13 +37486,20 @@ var DuelProductFoundation = class {
 		document.addEventListener("keydown", this.draftKeydown, true);
 		window.addEventListener("keydown", this.duelChatKeydown, true);
 		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
+			const previous = this.gatewayState;
+			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
+			const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
+			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.identity?.displayName !== state.identity?.displayName;
+			if (matchChanged) this.matchActionError = null;
 			this.gatewayState = state;
 			this.handleGatewayMatchState(state);
 			this.handleGatewayRealtimeState(state);
-			this.renderVisibility();
-			this.renderStage();
-			this.renderBoard();
-			if (this.settings.panelOpen) this.renderPanel();
+			if (presentationChanged) this.renderVisibility();
+			if (matchChanged) {
+				this.renderStage();
+				this.renderBoard();
+			}
+			if (this.settings.panelOpen && presentationChanged) this.renderPanel();
 		}));
 		this.unsubscribers.push(this.authClient.subscribe((state) => {
 			this.authState = state;
@@ -37323,14 +37520,23 @@ var DuelProductFoundation = class {
 		}));
 		this.unsubscribers.push(this.matchStore.subscribe((event) => {
 			if (event.type !== "MATCH_FINISHED" || !event.state.matchId) return;
-			if (this.lastWinMessageMatchId === event.state.matchId) return;
-			this.lastWinMessageMatchId = event.state.matchId;
-			const winner = event.state.participants.find((participant) => participant.side === event.state.winner);
-			this.chatAdapter.insertWin({
-				matchId: event.state.matchId,
-				playerName: winner?.displayName ?? "Opponent",
-				elapsedMs: Math.max(0, event.occurredAt - (event.state.startedAt ?? event.occurredAt))
-			});
+			const elapsedMs = Math.max(0, event.occurredAt - (event.state.startedAt ?? event.occurredAt));
+			if (this.lastConclusionMessageMatchId !== event.state.matchId) {
+				this.lastConclusionMessageMatchId = event.state.matchId;
+				this.insertConclusionMessage(event.state, elapsedMs, event.occurredAt);
+			}
+			if (event.state.outcome === "win" && event.state.winner) {
+				const winner = event.state.participants.find((participant) => participant.side === event.state.winner);
+				this.chatAdapter.insertWin({
+					matchId: event.state.matchId,
+					playerName: winner?.displayName ?? "Opponent",
+					elapsedMs
+				});
+				if (event.state.winner === "self" && this.settings.winAnimation && this.lastWinAnimationMatchId !== event.state.matchId) {
+					this.lastWinAnimationMatchId = event.state.matchId;
+					this.showWinAnimation(winner?.displayName ?? this.duelDisplayName("self"));
+				}
+			}
 		}));
 		this.unsubscribers.push(this.matchStore.subscribeState((state) => {
 			this.matchState = state;
@@ -37353,9 +37559,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.47.0",
+			version: "0.48.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 5,
+			gatewayContractVersion: 6,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -37373,7 +37579,11 @@ var DuelProductFoundation = class {
 				leaveMatchmaking: () => this.cancelMatchmaking(),
 				setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
 				pickDraftChallenge: (matchId, challengeId, clientRevision) => this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
-				sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message)
+				sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message),
+				forfeitMatch: (matchId) => this.gatewayClient.forfeitMatch(matchId),
+				proposeDraw: (matchId) => this.gatewayClient.proposeDraw(matchId),
+				respondToDraw: (matchId, proposalId, accept) => this.gatewayClient.respondToDraw(matchId, proposalId, accept),
+				withdrawDraw: (matchId, proposalId) => this.gatewayClient.withdrawDraw(matchId, proposalId)
 			},
 			manifest: {
 				get: () => structuredClone(this.manifest),
@@ -37391,6 +37601,7 @@ var DuelProductFoundation = class {
 				reset: () => this.resetMatch(),
 				receiveOpponentCompletion: (challengeId, claimId, playerName) => this.receiveOpponentCompletion(challengeId, claimId ?? `remote-${Date.now()}-${challengeId}`, playerName ?? this.duelDisplayName("opponent")),
 				finish: (winner) => this.matchStore.finishMatch(winner),
+				finishDraw: () => this.matchStore.finishDraw(),
 				canSendTelemetry: () => this.matchStore.canForwardTelemetry(),
 				getTelemetryStats: () => this.telemetryGateway.getStats(),
 				setTelemetryTransport: (transport) => this.telemetryGateway.setTransport(transport)
@@ -37437,8 +37648,11 @@ var DuelProductFoundation = class {
 		this.intro?.remove();
 		this.homeButton?.remove();
 		this.board?.remove();
+		this.winAnimation?.remove();
 		if (this.introTimer !== null) window.clearTimeout(this.introTimer);
 		this.introTimer = null;
+		if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
+		this.winAnimationTimer = null;
 		this.stopIntroAnimation();
 		this.stopCountdownAnimation();
 		this.homeButton = null;
@@ -37452,9 +37666,10 @@ var DuelProductFoundation = class {
 		this.intro = null;
 		this.board = null;
 		this.boardGrid = null;
+		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.47.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.48.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -37577,6 +37792,7 @@ var DuelProductFoundation = class {
 		const panel = element("div", "scd-modal-overlay");
 		panel.id = "skribbl-duels-panel";
 		panel.dataset.scdRuntimeId = this.options.runtimeId;
+		isolateScrollRoot(panel);
 		panel.addEventListener("click", (event) => {
 			if (event.target === panel) this.closePanel();
 		});
@@ -37620,6 +37836,7 @@ var DuelProductFoundation = class {
 		const stage = element("div", "scd-modal-overlay");
 		stage.id = "skribbl-duels-stage";
 		stage.dataset.scdRuntimeId = this.options.runtimeId;
+		isolateScrollRoot(stage);
 		const wrapper = element("div", "scd-modal-wrapper");
 		this.stageBody = element("div", "scd-stage-shell");
 		wrapper.appendChild(this.stageBody);
@@ -37627,18 +37844,17 @@ var DuelProductFoundation = class {
 		return stage;
 	}
 	createIconAsset(src, fallbackText, label) {
-		const wrapper = element("span", "scd-icon scd-icon-fallback", fallbackText);
+		const wrapper = element("span", "scd-icon");
 		wrapper.setAttribute("role", "img");
 		wrapper.setAttribute("aria-label", label);
 		const image = element("img", "scd-icon-image");
 		image.alt = "";
-		image.style.cssText = "display:none;width:100%;height:100%";
-		image.addEventListener("load", () => {
-			wrapper.textContent = "";
-			image.style.display = "block";
-			wrapper.appendChild(image);
+		image.style.cssText = "display:block;width:100%;height:100%";
+		image.addEventListener("error", () => {
+			image.remove();
+			wrapper.classList.add("scd-icon-fallback");
+			wrapper.textContent = fallbackText;
 		}, { once: true });
-		image.addEventListener("error", () => image.remove(), { once: true });
 		wrapper.appendChild(image);
 		image.src = EMBEDDED_ICON_ASSETS[src] ?? src;
 		return wrapper;
@@ -37759,6 +37975,7 @@ var DuelProductFoundation = class {
 		const intro = element("div", "scd-modal-overlay");
 		intro.id = "skribbl-duels-intro";
 		intro.dataset.scdRuntimeId = this.options.runtimeId;
+		isolateScrollRoot(intro);
 		const wrapper = element("div", "scd-modal-wrapper");
 		const card = element("div", "scd-intro-card");
 		const logo = this.createIconAsset("challenge-icons/skribbl-duels-logo.gif", "SD", "Skribbl Duels");
@@ -38191,6 +38408,11 @@ var DuelProductFoundation = class {
 	renderPanel() {
 		if (!this.panel || !this.panelBody) return;
 		const previousScrollTop = this.panelBody.scrollTop;
+		const previousChatLog = this.panelBody.querySelector("[data-scd-chat-log=\"true\"]");
+		if (previousChatLog) {
+			this.duelChatScrollTop = previousChatLog.scrollTop;
+			this.duelChatStickToBottom = previousChatLog.scrollHeight - previousChatLog.scrollTop <= previousChatLog.clientHeight + 24;
+		}
 		const mainTab = this.mainPanelTab();
 		const displayedTab = this.activeTab === "settings" || this.activeTab === "about" ? this.activeTab : mainTab;
 		this.renderPanelAccountSummary();
@@ -38335,6 +38557,16 @@ var DuelProductFoundation = class {
 				card.appendChild(open);
 				return card;
 			}
+			if (state.phase === "finished" && state.conclusion) {
+				const conclusion = state.conclusion;
+				const summary = conclusion.outcome === "draw" ? "The Duel ended in a mutually agreed Draw." : `${state.participants.find((item) => item.accountId === conclusion.winnerAccountId)?.displayName ?? "A player"} won${conclusion.reason === "player-forfeit" ? " by forfeit" : ""}.`;
+				card.appendChild(element("div", "", summary));
+				const open = element("button", "scd-button primary", "Open result");
+				open.type = "button";
+				open.addEventListener("click", () => this.openPanel("match"));
+				card.appendChild(open);
+				return card;
+			}
 			card.appendChild(element("div", "scd-muted", `Previous match was cancelled: ${this.gatewayState.lastMatchEvent?.event.reason ?? "superseded"}.`));
 		}
 		if (queue) {
@@ -38397,52 +38629,122 @@ var DuelProductFoundation = class {
 		const opponent = this.matchState.participants.find((participant) => participant.side === "opponent");
 		const stack = element("div", "scd-stack");
 		const status = element("div", "scd-card scd-stack");
-		status.append(element("strong", "", `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", this.matchState.freeze.frozen ? "Match frozen. Skribbl continues normally; Duel telemetry is no longer forwarded." : "Duel telemetry forwarding is available while the match is running."));
+		status.append(element("strong", "", this.matchState.outcome === "draw" ? "Status: agreed Draw" : this.matchState.outcome === "win" ? `Status: ${this.duelDisplayName(this.matchState.winner ?? "opponent")} won` : `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", this.matchState.freeze.frozen ? "Match frozen. Skribbl continues normally; Duel telemetry is no longer forwarded." : "Duel telemetry forwarding is available while the match is running."));
 		const telemetry = this.telemetryGateway.getStats();
 		const gateway = element("div", "scd-card scd-stack");
 		gateway.append(element("strong", "", "Telemetry gateway"), element("div", "scd-muted", `Connection: ${this.gatewayState.status} \u00B7 Local: ${telemetry.locallyObserved} \u00B7 Forwarded: ${telemetry.forwarded} \u00B7 Suppressed after freeze: ${telemetry.suppressedAfterFreeze}`));
-		const controls = element("div", "scd-card scd-row");
-		const selfClaim = element("button", "scd-button", `Claim next for ${this.duelDisplayName("self")}`);
-		selfClaim.addEventListener("click", () => this.demoClaim("self"));
-		const opponentClaim = element("button", "scd-button", `Claim next for ${this.duelDisplayName("opponent")}`);
-		opponentClaim.addEventListener("click", () => this.demoClaim("opponent"));
-		this.tooltips.register(selfClaim, "Development only: confirm the next free field for yourself");
-		this.tooltips.register(opponentClaim, "Development only: confirm the next free field for the opponent");
-		const reset = element("button", "scd-button danger", "Reset match");
-		reset.addEventListener("click", () => this.resetMatch());
-		this.tooltips.register(reset, "Clear the current local match and hide the board");
-		controls.append(selfClaim, opponentClaim, reset);
-		stack.append(status, gateway, controls);
+		stack.append(status, gateway);
+		const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId ? this.gatewayState.match : null;
+		if (gatewayMatch?.state.phase === "running") {
+			const proposal = gatewayMatch.state.drawProposal;
+			const selfAccountId = this.gatewayState.identity?.accountId;
+			const controls = element("div", "scd-card scd-stack");
+			controls.appendChild(element("strong", "", "Match conclusion"));
+			if (!proposal) {
+				const actions = element("div", "scd-match-actions");
+				const propose = element("button", "scd-button primary", "Propose Draw");
+				propose.type = "button";
+				propose.addEventListener("click", () => this.runMatchAction(() => this.gatewayClient.proposeDraw(gatewayMatch.matchId), propose));
+				const forfeit = element("button", "scd-button danger", "Forfeit Duel");
+				forfeit.type = "button";
+				forfeit.addEventListener("click", () => {
+					if (!window.confirm("Forfeit this Duel? Your opponent will win immediately.")) return;
+					this.runMatchAction(() => this.gatewayClient.forfeitMatch(gatewayMatch.matchId), forfeit);
+				});
+				actions.append(propose, forfeit);
+				controls.appendChild(actions);
+			} else {
+				const proposalCard = element("div", "scd-card scd-stack scd-draw-proposal");
+				const proposer = gatewayMatch.state.participants.find((item) => item.accountId === proposal.proposerAccountId);
+				const ownProposal = proposal.proposerAccountId === selfAccountId;
+				proposalCard.appendChild(element("div", "", ownProposal ? "Waiting for the opponent to accept the Draw." : `${proposer?.displayName ?? "Opponent"} proposed a Draw.`));
+				const deadline = element("div", "scd-muted");
+				this.registerDeadline(deadline, proposal.expiresAt, "Proposal expires in ", "s");
+				proposalCard.appendChild(deadline);
+				const actions = element("div", "scd-match-actions");
+				if (ownProposal) {
+					const withdraw = element("button", "scd-button", "Withdraw proposal");
+					withdraw.type = "button";
+					withdraw.addEventListener("click", () => this.runMatchAction(() => this.gatewayClient.withdrawDraw(gatewayMatch.matchId, proposal.proposalId), withdraw));
+					actions.appendChild(withdraw);
+				} else {
+					const accept = element("button", "scd-button primary", "Accept Draw");
+					accept.type = "button";
+					accept.addEventListener("click", () => this.runMatchAction(() => this.gatewayClient.respondToDraw(gatewayMatch.matchId, proposal.proposalId, true), accept));
+					const reject = element("button", "scd-button danger", "Reject");
+					reject.type = "button";
+					reject.addEventListener("click", () => this.runMatchAction(() => this.gatewayClient.respondToDraw(gatewayMatch.matchId, proposal.proposalId, false), reject));
+					actions.append(accept, reject);
+				}
+				proposalCard.appendChild(actions);
+				controls.appendChild(proposalCard);
+			}
+			const actionError = this.matchActionError ?? this.gatewayState.error;
+			if (actionError) controls.appendChild(element("div", "scd-auth-error", actionError));
+			stack.appendChild(controls);
+		} else if (this.matchState.matchId?.startsWith("demo-") && this.matchState.phase === "running") {
+			const controls = element("div", "scd-card scd-row");
+			const selfClaim = element("button", "scd-button", `Claim next for ${this.duelDisplayName("self")}`);
+			selfClaim.addEventListener("click", () => this.demoClaim("self"));
+			const opponentClaim = element("button", "scd-button", `Claim next for ${this.duelDisplayName("opponent")}`);
+			opponentClaim.addEventListener("click", () => this.demoClaim("opponent"));
+			const reset = element("button", "scd-button danger", "Reset match");
+			reset.addEventListener("click", () => this.resetMatch());
+			controls.append(selfClaim, opponentClaim, reset);
+			stack.appendChild(controls);
+		}
 		this.panelBody.appendChild(stack);
 		this.renderChatTab();
+	}
+	runMatchAction(action, button) {
+		this.matchActionError = null;
+		button.disabled = true;
+		try {
+			action();
+		} catch (error) {
+			button.disabled = false;
+			this.matchActionError = error instanceof Error ? error.message : String(error);
+			this.renderPanel();
+		}
 	}
 	renderChatTab() {
 		if (!this.panelBody) return;
 		const stack = element("div", "scd-stack");
-		const log = element("div", "scd-card scd-stack");
-		log.style.maxHeight = "330px";
-		log.style.overflow = "auto";
+		const log = element("div", "scd-card scd-stack scd-chat-log");
+		log.dataset.scdChatLog = "true";
 		if (this.duelChatMessages.length === 0) log.appendChild(element("div", "scd-muted", "Private Duel channel. Messages are visible only to both matched players."));
 		else for (const message of this.duelChatMessages) {
-			const line = element("div");
+			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}`);
 			const author = element("strong", "", `${message.author} `);
-			author.style.color = message.side === "self" ? "var(--SCD_SELF)" : "var(--SCD_OPPONENT)";
+			author.style.color = message.side === "self" ? "var(--SCD_SELF)" : message.side === "opponent" ? "var(--SCD_OPPONENT)" : "var(--SCD_ACCENT)";
 			line.append(author, document.createTextNode(message.message), element("small", "scd-muted", ` \u00B7 ${formatTime(message.occurredAt)}`));
 			log.appendChild(line);
 		}
-		const form = element("form", "scd-row");
+		log.addEventListener("scroll", () => {
+			this.duelChatScrollTop = log.scrollTop;
+			this.duelChatStickToBottom = log.scrollHeight - log.scrollTop <= log.clientHeight + 24;
+		}, { passive: true });
+		const form = element("form", "scd-chat-form");
+		const inputShell = element("div", "scd-chat-input-shell");
 		const input = element("input");
 		input.dataset.scdDuelChatInput = "true";
 		const gatewayChatActive = this.gatewayState.status === "connected" && this.gatewayState.match?.matchId === this.matchState.matchId && this.gatewayState.match.state.phase !== "cancelled";
 		input.placeholder = gatewayChatActive ? "Private Duel message\u2026" : "Duel chat requires an active Gateway match";
 		input.disabled = !gatewayChatActive;
-		input.maxLength = 300;
-		input.style.cssText = "flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(0,0,0,.25);color:white;padding:8px";
+		input.maxLength = 600;
+		const count = element("div", "scd-chat-count", "0/300");
+		const updateCount = () => {
+			const codePoints = Array.from(input.value);
+			if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join("");
+			count.textContent = `${Array.from(input.value).length}/300`;
+		};
+		input.addEventListener("input", updateCount);
+		inputShell.append(input, count);
 		const send = element("button", "scd-button primary", "Send");
 		send.type = "submit";
 		send.disabled = !gatewayChatActive;
 		this.tooltips.register(send, "Send a private Duel message once the gateway is connected");
-		form.append(input, send);
+		form.append(inputShell, send);
 		form.addEventListener("submit", (event) => {
 			event.preventDefault();
 			const message = input.value.trim();
@@ -38452,6 +38754,7 @@ var DuelProductFoundation = class {
 			try {
 				this.gatewayClient.sendDuelChat(matchId, message);
 				input.value = "";
+				updateCount();
 			} catch (error) {
 				this.restoreDuelChatFocus = false;
 				this.matchmakingError = error instanceof Error ? error.message : String(error);
@@ -38460,6 +38763,10 @@ var DuelProductFoundation = class {
 		});
 		stack.append(log, form);
 		this.panelBody.appendChild(stack);
+		queueMicrotask(() => {
+			if (!log.isConnected) return;
+			log.scrollTop = this.duelChatStickToBottom ? log.scrollHeight : this.duelChatScrollTop;
+		});
 		if (this.restoreDuelChatFocus) {
 			this.restoreDuelChatFocus = false;
 			queueMicrotask(() => {
@@ -38500,14 +38807,12 @@ var DuelProductFoundation = class {
 			name.autocomplete = "off";
 			name.spellcheck = false;
 			name.required = true;
-			name.style.cssText = "background:#222631;color:white;border:1px solid rgba(255,255,255,.18);padding:7px;border-radius:6px";
 			nameLabel.append(element("span", "", copy.displayName), name);
 			const nameError = element("div", "scd-profile-error");
 			nameError.hidden = true;
 			nameField.append(nameLabel, nameError);
 			const languageLabel = element("label", "scd-label");
 			const language = element("select");
-			language.style.cssText = name.style.cssText;
 			for (const [value, label] of [["en", "English"], ["de", "Deutsch"]]) {
 				const option = element("option");
 				option.value = value;
@@ -38518,7 +38823,6 @@ var DuelProductFoundation = class {
 			languageLabel.append(element("span", "", copy.preferredLanguage), language);
 			const avatarLabel = element("label", "scd-label");
 			const avatarSource = element("select");
-			avatarSource.style.cssText = name.style.cssText;
 			for (const [value, label] of [["discord", copy.discordAvatar], ["skribbl", copy.skribblAvatar]]) {
 				const option = element("option");
 				option.value = value;
@@ -38527,7 +38831,7 @@ var DuelProductFoundation = class {
 				avatarSource.appendChild(option);
 			}
 			avatarLabel.append(element("span", "", copy.versusAvatar), avatarSource);
-			const feedback = element("div", "scd-muted", identity.specialAvatarId ? `${copy.specialEntitlement}: ${identity.specialAvatarId}` : copy.specialControlled);
+			const feedback = element("div", "scd-muted", [identity.specialAvatarId ? `${copy.specialEntitlement}: ${identity.specialAvatarId}` : copy.specialControlled, ...identity.invisibleAvatarEntitled ? [`${copy.invisibleEntitlement}: enabled`] : []].join(" \u00B7 "));
 			const save = element("button", "scd-button primary", copy.save);
 			save.type = "submit";
 			const validateName = () => {
@@ -38552,6 +38856,11 @@ var DuelProductFoundation = class {
 					if (Array.isArray(parsed) && parsed.length === 4 && parsed.every(Number.isInteger)) currentAvatar = parsed.map(Number);
 				} catch {
 					currentAvatar = null;
+				}
+				if (avatarSource.value === "skribbl" && currentAvatar?.some((value) => value < -1) && !identity.invisibleAvatarEntitled) {
+					nameError.textContent = PROFILE_COPY[profileLanguage(language.value)].invisibleNotEntitled;
+					nameError.hidden = false;
+					return;
 				}
 				save.disabled = true;
 				feedback.textContent = PROFILE_COPY[profileLanguage(language.value)].saving;
@@ -38583,7 +38892,6 @@ var DuelProductFoundation = class {
 		const anchorLabel = element("label", "scd-label");
 		anchorLabel.appendChild(element("span", "", "Position mode"));
 		const mode = element("select");
-		mode.style.cssText = "background:#222631;color:white;border:1px solid rgba(255,255,255,.18);padding:6px;border-radius:6px";
 		for (const [value, label] of [["anchor", "Screen anchor"], ["custom", "Custom coordinates"]]) {
 			const option = element("option");
 			option.value = value;
@@ -38601,7 +38909,6 @@ var DuelProductFoundation = class {
 		const anchorSelect = element("label", "scd-label");
 		anchorSelect.appendChild(element("span", "", "Anchor"));
 		const select = element("select");
-		select.style.cssText = mode.style.cssText;
 		for (const anchor of [
 			"top-left",
 			"top-center",
@@ -38633,7 +38940,7 @@ var DuelProductFoundation = class {
 		this.tooltips.register(resetBoard, "Restore the default panel and board settings");
 		board.appendChild(resetBoard);
 		const chat = element("div", "scd-card scd-stack");
-		chat.append(element("strong", "", "Game-chat integration"), this.checkbox("Show confirmed completion messages", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })));
+		chat.append(element("strong", "", "Game-chat integration"), this.checkbox("Show confirmed completion messages", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })), this.checkbox("Play Win animation", this.settings.winAnimation, (checked) => this.settingsStore.update({ winAnimation: checked })));
 		stack.append(board, chat);
 		this.panelBody.appendChild(stack);
 	}
@@ -38645,9 +38952,9 @@ var DuelProductFoundation = class {
 		const authentication = element("div", "scd-card");
 		authentication.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION}`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."));
 		const freeze = element("div", "scd-card");
-		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Only Duel-server forwarding, board mutation and new claims are stopped after the win target is reached."));
+		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v5`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, two-option 15-second turns, the server-random parity field and the synchronized 10-second match start are implemented.`));
+		gateway.append(element("strong", "", `Gateway Contract v6`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -38863,9 +39170,13 @@ var DuelProductFoundation = class {
 			const runtime = this.options.challengeEngine.getInstances().find((item) => item.challengeId === claim.challengeId);
 			if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, "gateway-snapshot-field-claimed");
 		}
-		if (snapshot.state.phase === "finished" && snapshot.state.winnerAccountId) {
-			const winner = snapshot.state.winnerAccountId === selfAccountId ? "self" : "opponent";
-			this.matchStore.finishMatch(winner, "gateway-authoritative-win-target", snapshot.state.finishedAt ?? this.serverNow());
+		const conclusion = snapshot.state.conclusion;
+		if (snapshot.state.phase === "finished" && conclusion) {
+			if (conclusion.outcome === "draw") this.matchStore.finishDraw(conclusion.reason, conclusion.occurredAt);
+			else if (conclusion.winnerAccountId) {
+				const winner = conclusion.winnerAccountId === selfAccountId ? "self" : "opponent";
+				this.matchStore.finishMatch(winner, conclusion.reason, conclusion.occurredAt);
+			}
 		}
 	}
 	prepareGatewayCountdown(snapshot, board) {
@@ -38999,7 +39310,15 @@ var DuelProductFoundation = class {
 		this.processedGatewayChatIds.clear();
 		this.processedClaimResolutionIds.clear();
 		this.restoreDuelChatFocus = false;
-		this.lastWinMessageMatchId = null;
+		this.duelChatScrollTop = 0;
+		this.duelChatStickToBottom = true;
+		this.matchActionError = null;
+		this.lastConclusionMessageMatchId = null;
+		this.lastWinAnimationMatchId = null;
+		this.winAnimation?.remove();
+		this.winAnimation = null;
+		if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
+		this.winAnimationTimer = null;
 		this.chatAdapter.reset();
 		this.telemetryGateway.resetSession();
 		try {
@@ -39131,6 +39450,61 @@ var DuelProductFoundation = class {
 		}
 		if (event.type === "CHALLENGE_LOST" || event.type === "CHALLENGE_REOPENED") this.matchStore.rejectPending(runtime.challengeId, event.reason ?? "claim-not-accepted", event.occurredAt);
 	}
+	insertConclusionMessage(state, elapsedMs, occurredAt) {
+		if (!state.matchId) return;
+		let message;
+		if (state.outcome === "draw") message = `Both players agreed to a Draw after ${formatDurationHms(elapsedMs)}.`;
+		else {
+			const winner = state.participants.find((participant) => participant.side === state.winner);
+			const loser = state.participants.find((participant) => participant.side !== state.winner);
+			message = state.finishReason === "player-forfeit" ? `${loser?.displayName ?? "A player"} forfeited. ${winner?.displayName ?? "The opponent"} won after ${formatDurationHms(elapsedMs)}.` : `${winner?.displayName ?? "A player"} won the Duel after ${formatDurationHms(elapsedMs)}.`;
+		}
+		const id = `conclusion-${state.matchId}`;
+		if (this.duelChatMessages.some((item) => item.id === id)) return;
+		this.duelChatMessages.push({
+			id,
+			side: "system",
+			author: "Skribbl Duels",
+			message,
+			occurredAt
+		});
+		this.duelChatStickToBottom = true;
+		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
+	}
+	showWinAnimation(playerName) {
+		if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+		this.winAnimation?.remove();
+		if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
+		const overlay = element("div", "scd-win-animation");
+		overlay.dataset.scdRuntimeId = this.options.runtimeId;
+		const card = element("div", "scd-win-card");
+		card.append(this.createIconAsset("challenge-icons/skribbl-duels-logo.gif", "SD", "Skribbl Duels victory"), element("div", "", `${playerName} wins!`));
+		const colors = [
+			"#2a51d1",
+			"#53e237",
+			"#ffe45c",
+			"#e74c3c",
+			"#ff6fd8",
+			"#ffffff"
+		];
+		for (let index = 0; index < 36; index += 1) {
+			const piece = element("span", "scd-confetti");
+			piece.style.setProperty("--x", `${index * 37 % 101}%`);
+			piece.style.setProperty("--color", colors[index % colors.length]);
+			piece.style.setProperty("--rotate", `${index * 53 % 360}deg`);
+			piece.style.setProperty("--duration", `${1.9 + index % 7 * .18}s`);
+			piece.style.setProperty("--delay", `${index % 9 * .08}s`);
+			overlay.appendChild(piece);
+		}
+		overlay.appendChild(card);
+		(document.body ?? document.documentElement).appendChild(overlay);
+		this.winAnimation = overlay;
+		this.winAnimationTimer = window.setTimeout(() => {
+			this.winAnimationTimer = null;
+			overlay.remove();
+			if (this.winAnimation === overlay) this.winAnimation = null;
+		}, 3500);
+	}
 	insertCompletion(message) {
 		this.chatAdapter.insert(message);
 		this.duelChatMessages.push({
@@ -39147,7 +39521,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message);
 	}
 };
-var BUILD_VERSION = "0.47.0";
+var BUILD_VERSION = "0.48.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
@@ -39188,6 +39562,7 @@ function createRuntimeController() {
 async function bootstrap(runtime) {
 	const bridge = new TypoRelayBridge();
 	const store = new IndexedDbRawPacketStore();
+	await store.redactSensitiveRecords();
 	bridge.start();
 	runtime.addCleanup(() => bridge.stop());
 	const recorder = new RawPacketRecorder(store, bridge.incoming$, bridge.outgoing$, BUILD_VERSION);
@@ -39302,30 +39677,9 @@ async function bootstrap(runtime) {
 		incomingStatus$: bridge.incomingStatus$,
 		outgoingStatus$: bridge.outgoingStatus$
 	});
+	panel.setVisible(false);
 	panel.mount();
 	runtime.addCleanup(() => panel.destroy());
-	const diagnosticSubscriptions = [
-		merge(bridge.incoming$, bridge.outgoing$).subscribe((envelope) => {
-			const packet = envelope.data;
-			if ((typeof packet === "object" && packet !== null && "id" in packet && typeof packet.id === "number" ? packet.id : null) !== 19) console.debug("[Skribbl Duels Raw]", envelope);
-		}),
-		decoder.decoded$.subscribe((record) => {
-			if (record.decoded.packetId !== 19) console.debug("[Skribbl Duels Decoded]", record.decoded.kind, record.decoded.payload, record.decoded.issues);
-		}),
-		lobbyStore.changes$.subscribe((change) => {
-			console.debug("[Skribbl Duels State]", change.kind, change.payload);
-		}),
-		telemetryStore.events$.subscribe((event) => {
-			if (!event.highVolume) console.debug("[Skribbl Duels Telemetry]", event.type, event.payload);
-		}),
-		replayProvider.events$.subscribe((event) => {
-			if (!event.highVolume) console.debug("[Skribbl Duels Replay]", event.type, event.payload);
-		}),
-		challengeEngine.events$.subscribe((event) => {
-			console.debug("[Skribbl Duels Challenge Engine]", event.type, event.runtime);
-		})
-	];
-	runtime.addCleanup(() => diagnosticSubscriptions.forEach((subscription) => subscription.unsubscribe()));
 	const protocolApi = {
 		getStats: () => decoder.getStats(),
 		getRecent: () => decoder.getRecent(),
@@ -39561,7 +39915,7 @@ async function bootstrap(runtime) {
 		if (window.skribblDuelsChallengeDefinitions === challengeDefinitionsApi) delete window.skribblDuelsChallengeDefinitions;
 		if (window.skribblDuelsWordLists === wordListApi) delete window.skribblDuelsWordLists;
 	});
-	console.info("[Skribbl Duels Telemetry Inspector] Initialized", {
+	console.info("[Skribbl Duels] Initialized", {
 		version: BUILD_VERSION,
 		contractVersion: TELEMETRY_CONTRACT_VERSION,
 		sessionId: recorder.getSessionId(),
@@ -39570,13 +39924,12 @@ async function bootstrap(runtime) {
 		challengeEngine: window.skribblDuelsChallengeEngine,
 		challengeDefinitions: window.skribblDuelsChallengeDefinitions,
 		wordList: window.skribblDuelsWordLists?.getStatus(),
-		product: productApi,
-		inspector: window.scdRawRecorder
+		product: productApi
 	});
 }
 var runtime = createRuntimeController();
 bootstrap(runtime).catch((error) => {
 	runtime.dispose("bootstrap-failed");
-	console.error("[Skribbl Duels Telemetry Inspector] Bootstrap failed", error);
+	console.error("[Skribbl Duels] Bootstrap failed", error);
 });})}}));
 System.import("./___monkey.entry.js", "./");

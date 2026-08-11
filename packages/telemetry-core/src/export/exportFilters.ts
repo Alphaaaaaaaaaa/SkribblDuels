@@ -1,5 +1,5 @@
 import type { DecodedSocketRecord } from '../protocol/types';
-import type { RawSocketRecord } from '../recorder/rawRecord';
+import { redactSensitiveRawRecord, type RawSocketRecord } from '../recorder/rawRecord';
 
 export interface PacketExportOptions {
   includeDrawPackets?: boolean;
@@ -17,9 +17,10 @@ export function filterRawRecords(
   options: PacketExportOptions = {}
 ): { records: RawSocketRecord[]; summary: ExportFilterSummary } {
   const includeDrawPackets = options.includeDrawPackets === true;
-  const filtered = includeDrawPackets
+  const filtered = (includeDrawPackets
     ? records.slice()
-    : records.filter(record => record.packetId !== 19);
+    : records.filter(record => record.packetId !== 19))
+    .map(redactSensitiveRawRecord);
 
   return {
     records: filtered,

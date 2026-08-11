@@ -9,11 +9,11 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.47.0',
+  clientVersion: '0.48.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 5);
+assert.equal(GATEWAY_CONTRACT_VERSION, 6);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -32,6 +32,24 @@ assert.equal(isGatewayClientMessage({
   requestId: 'queue-1',
   format: 'ranked',
   page: 'game'
+}), false);
+assert.equal(isGatewayClientMessage({
+  type: 'MATCH_FORFEIT', matchId: 'match-1', actionId: 'action-1'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'DRAW_PROPOSE', matchId: 'match-1', actionId: 'action-2'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'DRAW_RESPOND', matchId: 'match-1', proposalId: 'draw-1', actionId: 'action-3', accept: true
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'DRAW_WITHDRAW', matchId: 'match-1', proposalId: 'draw-1', actionId: 'action-4'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'DUEL_CHAT_SEND', matchId: 'match-1', clientMessageId: 'chat-1', message: '😀'.repeat(300)
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'DUEL_CHAT_SEND', matchId: 'match-1', clientMessageId: 'chat-1', message: '😀'.repeat(301)
 }), false);
 const telemetryEvent = JSON.parse(readFileSync(
   'fixtures/starter-challenges-with-typo-guess-challenges-v30.fixture.json',
@@ -107,8 +125,8 @@ assert.equal(isGatewayServerMessage({
     format: 'ranked',
     phase: 'ready-check',
     participants: [
-      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null },
-      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null }
+      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null, invisibleAvatarEntitled: false },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null, invisibleAvatarEntitled: false }
     ],
     readyDeadlineAt: 31_000,
     countdownEndsAt: null,
@@ -116,8 +134,8 @@ assert.equal(isGatewayServerMessage({
     startingAccountId: 'a',
     createdAt: 1_000,
     claims: [],
-    winnerAccountId: null,
-    finishedAt: null,
+    drawProposal: null,
+    conclusion: null,
     draft: null
   }
 }), true);
@@ -129,8 +147,8 @@ assert.equal(isGatewayServerMessage({
     format: 'casual',
     phase: 'draft',
     participants: [
-      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null },
-      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null }
+      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null, invisibleAvatarEntitled: false },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null, invisibleAvatarEntitled: false }
     ],
     readyDeadlineAt: null,
     countdownEndsAt: null,
@@ -138,8 +156,8 @@ assert.equal(isGatewayServerMessage({
     startingAccountId: 'a',
     createdAt: 1_000,
     claims: [],
-    winnerAccountId: null,
-    finishedAt: null,
+    drawProposal: null,
+    conclusion: null,
     draft: {
       status: 'selecting',
       requiredPickCount: 9,

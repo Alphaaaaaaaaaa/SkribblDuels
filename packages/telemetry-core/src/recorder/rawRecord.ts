@@ -48,3 +48,25 @@ export function extractPacketId(socketEvent: string | null, packetData: unknown)
 
   return null;
 }
+
+export function redactSensitivePacketData(socketEvent: string | null, packetData: unknown): unknown {
+  if (socketEvent !== 'login' || packetData === null || typeof packetData !== 'object' || Array.isArray(packetData)) {
+    return packetData;
+  }
+  const { code: _privateLobbyCode, ...safe } = packetData as Record<string, unknown>;
+  return safe;
+}
+
+export function redactSensitiveRawValue(socketEvent: string | null, raw: unknown): unknown {
+  if (socketEvent !== 'login' || !Array.isArray(raw)) return raw;
+  return raw.map((value, index) => index === 1
+    ? redactSensitivePacketData(socketEvent, value)
+    : value);
+}
+
+export function redactSensitiveRawRecord(record: RawSocketRecord): RawSocketRecord {
+  const packetData = redactSensitivePacketData(record.socketEvent, record.packetData);
+  const raw = redactSensitiveRawValue(record.socketEvent, record.raw);
+  if (packetData === record.packetData && raw === record.raw) return record;
+  return { ...record, packetData, raw };
+}

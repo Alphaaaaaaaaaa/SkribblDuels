@@ -1,31 +1,30 @@
-# Skribbl Duels v0.47.0
+# Skribbl Duels v0.48.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
-Gateway Contract v5, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v6, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
 
-## v0.47.0
+## v0.48.0
 
-- Routes private Duel chat through authenticated Gateway membership and only to
-  the two matched participants.
-- Sanitizes and rate-limits chat, de-duplicates client message IDs and replays a
-  bounded in-memory history on reconnect.
-- Batches normalized telemetry with contiguous per-player sequences and ACK
-  cursors.
-- Runs an independent Challenge Engine per real participant on the Gateway and
-  validates definition versions plus exact evidence event IDs.
-- Keeps browser completions pending until the Gateway accepts or rejects them.
-- Broadcasts authoritative claims with owner, timestamp and monotonic match
-  revision; reconnect snapshots retain the exact claim state.
-- Ends and freezes the Duel authoritatively when the format win target is
-  reached while Skribbl telemetry itself continues locally.
-- Preloads every supported official word list before the production Gateway
-  starts so word-list challenges use the same authority path.
+- Adds unilateral, immediate, server-authoritative Forfeit.
+- Adds one active Draw proposal with explicit opponent acceptance, rejection,
+  proposer withdrawal, a 30-second timeout and reconnect restoration.
+- Makes conclusion actions idempotent and keeps the first authoritative result
+  immutable.
+- Adds Match-chat result messages and a settings-controlled Win animation.
+- Limits Duel chat to 300 Unicode code points, wraps long text and preserves
+  manual scroll position while auto-scrolling readers already at the bottom.
+- Isolates Hub/chat scrolling from the Skribbl page and adopts Skribbl's native
+  form-control colors and focus states.
+- Stops challenge-icon fallback flashes during telemetry ACK updates and keeps
+  the Telemetry Inspector hidden by default.
+- Removes private-lobby codes from live packet capture, legacy IndexedDB
+  records and exports.
+- Adds an owner-granted entitlement for historical negative avatar-part values.
 
-Gateway Contract is now v5. Ready check, 15-second pair Draft turns, the
-server-random parity field, synchronized ten-second start and 30-second
-reconnect grace period are unchanged.
+Gateway Contract is now v6. Ready check, Draft, countdown, claims and the
+46-challenge pool are otherwise unchanged.
 
 ## Install the userscript
 
@@ -35,9 +34,18 @@ exact version.
 
 ## Database migrations
 
-Apply the files under `supabase/migrations/` in filename order. v0.47.0 does
-not add a schema migration. To enable the requested Special for the supplied
-profile, run this owner-only helper once in the Supabase SQL editor:
+Apply the files under `supabase/migrations/` in filename order. v0.48.0 adds
+`202608110001_add_invisible_avatar_entitlements.sql`; deploy it before the new
+Gateway because authenticated profile loading now checks that RLS-protected
+entitlement table.
+
+To grant the invisible-parts Easter egg, copy
+`supabase/admin/grant-invisible-avatar-template.sql`, replace its single zero
+UUID with the new profile UUID and run it in the Supabase SQL editor. The old
+profile UUID is deliberately not reused. Negative values below `-1` remain
+server-rejected for every account without that grant.
+
+The existing Special helper remains:
 
 ```text
 supabase/admin/grant-analphabetism-special.sql
@@ -61,7 +69,9 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/gateway-chat-telemetry-authority-v0.47.0.md`,
+See `docs/match-conclusions-ui-security-v0.48.0.md`,
+`docs/challenge-balance-backlog-post-v0.48.0.md`,
+`docs/gateway-chat-telemetry-authority-v0.47.0.md`,
 `docs/ui-polish-special-entitlement-v0.46.0.md`,
 `docs/intro-avatar-countdown-v0.45.0.md`,
 `docs/profile-versus-assets-v0.44.0.md`,

@@ -177,6 +177,30 @@ export class SocketIoGatewayClient {
     return clientMessageId;
   }
 
+  public forfeitMatch(matchId: string): string {
+    const actionId = this.createRequestId('forfeit');
+    this.emit({ type: 'MATCH_FORFEIT', matchId, actionId });
+    return actionId;
+  }
+
+  public proposeDraw(matchId: string): string {
+    const actionId = this.createRequestId('draw-propose');
+    this.emit({ type: 'DRAW_PROPOSE', matchId, actionId });
+    return actionId;
+  }
+
+  public respondToDraw(matchId: string, proposalId: string, accept: boolean): string {
+    const actionId = this.createRequestId(accept ? 'draw-accept' : 'draw-reject');
+    this.emit({ type: 'DRAW_RESPOND', matchId, proposalId, actionId, accept });
+    return actionId;
+  }
+
+  public withdrawDraw(matchId: string, proposalId: string): string {
+    const actionId = this.createRequestId('draw-withdraw');
+    this.emit({ type: 'DRAW_WITHDRAW', matchId, proposalId, actionId });
+    return actionId;
+  }
+
   public queueTelemetryEnvelope(envelope: GatewayTelemetryEnvelope): void {
     if (this.state.match?.matchId !== envelope.matchId) return;
     if (this.telemetryQueue.some(item => item.sequence === envelope.sequence)) return;

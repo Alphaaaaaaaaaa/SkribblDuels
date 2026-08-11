@@ -31,8 +31,17 @@ assert(gateway.includes('matchCountdownMs'), 'server match countdown is missing'
 assert(gateway.includes('processTelemetryBatch'), 'server telemetry authority entry point is missing');
 assert(gateway.includes('submitClaimCandidate'), 'server Claim authority entry point is missing');
 assert(gateway.includes("match.phase = 'finished'"), 'server does not own the terminal win state');
+assert(gateway.includes('public forfeitMatch('), 'server-authoritative Forfeit is missing');
+assert(gateway.includes('public proposeDraw('), 'server-authoritative Draw proposal is missing');
+assert(gateway.includes('public respondToDraw('), 'explicit Draw response is missing');
+assert(gateway.includes('public withdrawDraw('), 'Draw withdrawal is missing');
+assert(gateway.includes("reason: 'player-forfeit'"), 'Forfeit result reason is missing');
+assert(gateway.includes("reason: 'mutual-draw'"), 'mutual Draw result reason is missing');
+assert(product.includes('this.gatewayClient.forfeitMatch('), 'Match UI does not send Forfeit');
+assert(product.includes('this.gatewayClient.respondToDraw('), 'Match UI does not accept or reject Draw proposals');
+assert(product.includes('this.matchStore.finishDraw('), 'client does not restore authoritative Draw results');
 assert(product.includes('this.telemetryGateway.setTransport'), 'match telemetry is not connected to the Gateway');
-assert(product.includes('gateway-authoritative-win-target'), 'client does not restore the authoritative winner');
+assert(product.includes('this.matchStore.finishMatch(winner, conclusion.reason, conclusion.occurredAt)'), 'client does not restore the authoritative winner');
 
 console.log(JSON.stringify({
   singletonRuntime: true,
@@ -48,4 +57,6 @@ console.log(JSON.stringify({
   hubClosedUntilInvoked: true,
   synchronizedTimerCleanup: true,
   draftedChallengeActivation: true
+  , authoritativeForfeit: true
+  , mutualDrawLifecycle: true
 }, null, 2));

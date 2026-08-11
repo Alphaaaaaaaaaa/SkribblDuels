@@ -25,18 +25,21 @@
 | UI interaction hardening | Complete | Inherited Skribbl font, contained profile fields and isolated pointer-capable controls |
 | Gateway-backed Duel communication | Complete | Participant-only private chat with sanitization, rate limits, message-ID de-duplication and reconnect history |
 | Telemetry and claim authority | Complete | Contract v5 batches, ACK cursors, independent server Challenge Engines, authoritative claims and win-target finish |
+| Match conclusion controls | Complete | Contract v6 immediate Forfeit plus accepted/rejected/withdrawn/expired reconnect-safe Draw proposals |
+| v0.48 UI and capture hardening | Complete | Bounded wrapped chat, isolated scrolling, native forms, stable icons, optional Win animation and login-code redaction |
+| Invisible avatar entitlement | Complete | RLS grant table and profile RPC enforcement for historical negative avatar parts |
 
 ## Active development sequence
 
-### 1. Match conclusion controls
+### 1. Challenge validation and balancing pass
 
-- Add unilateral Forfeit as an immediate server-authoritative loss for the
-  submitting participant.
-- Add a Draw proposal that only finishes after explicit acceptance by the other
-  participant.
-- Include withdrawal, rejection, timeout, reconnect restoration and
-  simultaneous-action idempotency.
-- Keep results immutable after the first authoritative conclusion.
+- Reproduce and fix the Bloodline `/credits` pending-state race without
+  weakening server validation.
+- Evaluate the proposed changes in
+  `challenge-balance-backlog-post-v0.48.0.md` against replay fixtures and
+  language-specific word-list metrics.
+- Keep the published 46-challenge IDs stable unless a separately reviewed
+  migration requires otherwise.
 
 ### 2. Friendly matches
 
@@ -59,9 +62,8 @@
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-The immediate next milestone is Forfeit plus mutually agreed Draw. Contract v5
-now has authoritative claims and terminal winner state, so these additional
-conclusions can be modeled without trusting the browser or conflating a Draw
-proposal with a completed result.
+Forfeit and mutually agreed Draw shipped in Contract v6. The next milestone is
+the deferred Challenge correctness/balance pass, starting with Bloodline's
+pending-state race and replay-backed threshold decisions.
 The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.

@@ -5,6 +5,8 @@ import type { RelayEnvelope } from '../bridge/relayTypes';
 import type { IndexedDbRawPacketStore } from '../storage/indexedDbStore';
 import {
   extractPacketId,
+  redactSensitivePacketData,
+  redactSensitiveRawValue,
   type RawSocketRecord,
   type RecordingSession
 } from './rawRecord';
@@ -113,9 +115,10 @@ export class RawPacketRecorder {
       ? envelope.event
       : 'data';
 
-    const packetData = envelope.direction === 'client-to-server'
+    const unredactedPacketData = envelope.direction === 'client-to-server'
       ? envelope.data
       : envelope.data;
+    const packetData = redactSensitivePacketData(socketEvent, unredactedPacketData);
 
     const packetId = extractPacketId(socketEvent, packetData);
 
@@ -131,7 +134,9 @@ export class RawPacketRecorder {
       socketEvent,
       packetId,
       packetData,
-      raw: envelope.direction === 'client-to-server' ? envelope.raw : envelope.data,
+      raw: envelope.direction === 'client-to-server'
+        ? redactSensitiveRawValue(socketEvent, envelope.raw)
+        : envelope.data,
 
       occurredAt: timestamp.occurredAt,
       monotonicMs: timestamp.monotonicMs,

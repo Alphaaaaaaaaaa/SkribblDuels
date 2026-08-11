@@ -26,7 +26,9 @@ function initialMatchState(): MatchState {
     fields: [],
     participants: [],
     scores: { self: 0, opponent: 0 },
+    outcome: null,
     winner: null,
+    finishReason: null,
     countdownEndsAt: null,
     startedAt: null,
     finishedAt: null,
@@ -85,7 +87,13 @@ export function normalizeMatchState(value: unknown): MatchState {
     fields,
     participants,
     scores: { self: selfScore, opponent: opponentScore },
+    outcome: input.outcome === 'win' || input.outcome === 'draw'
+      ? input.outcome
+      : input.winner === 'self' || input.winner === 'opponent'
+        ? 'win'
+        : null,
     winner: input.winner === 'self' || input.winner === 'opponent' ? input.winner : null,
+    finishReason: typeof input.finishReason === 'string' ? input.finishReason : null,
     countdownEndsAt: phase === 'countdown' && Number.isFinite(input.countdownEndsAt)
       ? Number(input.countdownEndsAt)
       : null,
@@ -152,7 +160,9 @@ export class MatchStateStore {
       })),
       participants: participants.map(participant => ({ ...participant })),
       scores: { self: 0, opponent: 0 },
+      outcome: null,
       winner: null,
+      finishReason: null,
       countdownEndsAt: null,
       startedAt,
       finishedAt: null,
@@ -189,7 +199,9 @@ export class MatchStateStore {
       })),
       participants: participants.map(participant => ({ ...participant })),
       scores: { self: 0, opponent: 0 },
+      outcome: null,
       winner: null,
+      finishReason: null,
       countdownEndsAt,
       startedAt: null,
       finishedAt: null,
@@ -318,7 +330,9 @@ export class MatchStateStore {
     this.state = {
       ...this.state,
       phase: 'finished',
+      outcome: 'win',
       winner,
+      finishReason: reason,
       finishedAt: occurredAt,
       freeze: {
         frozen: true,
@@ -328,6 +342,28 @@ export class MatchStateStore {
       revision: this.state.revision + 1
     };
     return this.emit('MATCH_FINISHED', null, winner, reason, occurredAt);
+  }
+
+  public finishDraw(
+    reason = 'mutual-draw',
+    occurredAt = Date.now()
+  ): MatchState {
+    if (this.state.phase === 'finished') return this.getState();
+    this.state = {
+      ...this.state,
+      phase: 'finished',
+      outcome: 'draw',
+      winner: null,
+      finishReason: reason,
+      finishedAt: occurredAt,
+      freeze: {
+        frozen: true,
+        reason: 'match-ended',
+        frozenAt: occurredAt
+      },
+      revision: this.state.revision + 1
+    };
+    return this.emit('MATCH_FINISHED', null, null, reason, occurredAt);
   }
 
   public reset(reason = 'manual-reset', occurredAt = Date.now()): MatchState {

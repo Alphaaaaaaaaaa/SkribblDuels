@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row, and returns a Contract v5 `WELCOME`. It owns homepage matchmaking, reconnect resume, participant profile/avatar disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start and authoritative Challenge claims.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v6 `WELCOME`. It owns homepage matchmaking, reconnect resume, participant profile/avatar disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, immediate Forfeit and mutual Draw.
 
 ## Local server
 
@@ -44,6 +44,13 @@ definition match the frozen board, and its evidence IDs equal the Gateway's
 candidate. Claims and the winner remain in reconnect snapshots. Further Duel
 telemetry is rejected after the win target is reached.
 
+Forfeit immediately concludes a running match as a loss for its sender. A Draw
+is only a proposal until the other real participant explicitly accepts it; the
+proposer can withdraw, the opponent can reject and the Gateway expires it after
+30 seconds. The proposal and absolute deadline live in revisioned snapshots, so
+reconnects restore the same choice. Action IDs make retries idempotent and the
+first accepted terminal action makes the result immutable.
+
 The production entry point loads the supported English, German, French, Korean
 and Spanish official word lists before listening. Startup fails if this
 authority dependency is unavailable instead of silently enabling unverifiable
@@ -51,4 +58,4 @@ word-list challenges.
 
 The local health endpoint does not prove a browser connection because `skribbl.io` needs a publicly trusted HTTPS Gateway. Deploy first, then build the userscript with `VITE_GATEWAY_URL` set to that public origin.
 
-No Supabase secret/service-role key is needed in this milestone. Authentication uses `auth.getClaims(accessToken)`, and profile lookup runs with the same user's bearer token so the existing RLS policy remains active.
+No Supabase secret/service-role key is needed in this milestone. Authentication uses `auth.getClaims(accessToken)`, and profile/entitlement lookup runs with the same user's bearer token so RLS remains active. Apply the v0.48 invisible-avatar migration before deploying this Gateway.

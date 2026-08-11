@@ -72,7 +72,7 @@ interface WinMessage {
 
 interface DuelChatMessage {
   id: string;
-  side: DuelPlayerSide;
+  side: DuelPlayerSide | 'system';
   author: string;
   message: string;
   occurredAt: number;
@@ -128,6 +128,8 @@ const PROFILE_COPY = {
     saved: 'Profile saved. Reconnecting authoritative profile…',
     specialControlled: 'Special avatar parts remain server-controlled.',
     specialEntitlement: 'Special avatar entitlement',
+    invisibleEntitlement: 'Invisible avatar entitlement',
+    invisibleNotEntitled: 'This profile is not entitled to invisible avatar parts.',
     nameTooShort: 'Duel display name must contain at least 3 characters.',
     nameTooLong: 'Duel display name must contain no more than 24 characters.',
     nameAsciiOnly: 'Only A-Z, a-z and 0-9 are allowed.',
@@ -145,6 +147,8 @@ const PROFILE_COPY = {
     saved: 'Profil gespeichert. Autoritatives Profil wird neu verbunden…',
     specialControlled: 'Special-Avatarteile bleiben serverseitig kontrolliert.',
     specialEntitlement: 'Special-Avatar-Berechtigung',
+    invisibleEntitlement: 'Unsichtbarer-Avatar-Berechtigung',
+    invisibleNotEntitled: 'Dieses Profil ist nicht für unsichtbare Avatarteile berechtigt.',
     nameTooShort: 'Der Duel-Anzeigename muss mindestens 3 Zeichen lang sein.',
     nameTooLong: 'Der Duel-Anzeigename darf höchstens 24 Zeichen lang sein.',
     nameAsciiOnly: 'Erlaubt sind nur A–Z, a–z und 0–9.',
@@ -174,6 +178,10 @@ interface ProductPublicApi {
     setReady(matchId: string, ready: boolean): void;
     pickDraftChallenge(matchId: string, challengeId: string, clientRevision: number): void;
     sendDuelChat(matchId: string, message: string): string;
+    forfeitMatch(matchId: string): string;
+    proposeDraw(matchId: string): string;
+    respondToDraw(matchId: string, proposalId: string, accept: boolean): string;
+    withdrawDraw(matchId: string, proposalId: string): string;
   };
   manifest: {
     get(): ChallengeManifestSnapshot;
@@ -191,6 +199,7 @@ interface ProductPublicApi {
     reset(): MatchState;
     receiveOpponentCompletion(challengeId: string, claimId?: string, playerName?: string): MatchState;
     finish(winner: DuelPlayerSide): MatchState;
+    finishDraw(): MatchState;
     canSendTelemetry(): boolean;
     getTelemetryStats(): ReturnType<MatchTelemetryGateway['getStats']>;
     setTelemetryTransport(transport: ((envelope: OutboundTelemetryEnvelope) => void | Promise<void>) | null): void;
@@ -253,6 +262,26 @@ function element<K extends keyof HTMLElementTagNameMap>(
     }
   }
   return node;
+}
+
+function canConsumeWheel(node: Element, deltaY: number): boolean {
+  if (!(node instanceof HTMLElement)) return false;
+  const overflowY = getComputedStyle(node).overflowY;
+  if (overflowY !== 'auto' && overflowY !== 'scroll') return false;
+  if (node.scrollHeight <= node.clientHeight) return false;
+  return deltaY < 0 ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight - 1;
+}
+
+function isolateScrollRoot(root: HTMLElement): void {
+  root.style.overscrollBehavior = 'contain';
+  root.addEventListener('wheel', event => {
+    event.stopPropagation();
+    const consumes = event.composedPath().some(target =>
+      target instanceof Element && root.contains(target) && canConsumeWheel(target, event.deltaY)
+    );
+    if (!consumes) event.preventDefault();
+  }, { passive: false });
+  root.addEventListener('touchmove', event => event.stopPropagation(), { passive: false });
 }
 
 function formatTime(timestamp: number): string {
@@ -411,7 +440,9 @@ class CompletionChatAdapter {
   --COLOR_CHAT_BG_LEAVE_BASE: #FFF4E8;
   --SCD_PANEL_BG: rgba(22, 24, 31, .97);
   --SCD_PANEL_BORDER: rgba(255, 255, 255, .16);
-  --SCD_ACCENT: #7f8cff;
+  --SCD_ACCENT: var(--COLOR_PANEL_BUTTON, #2a51d1);
+  --SCD_ACCENT_HOVER: var(--COLOR_PANEL_BUTTON_HOVER, #1e44be);
+  --SCD_ACCENT_ACTIVE: var(--COLOR_PANEL_BUTTON_ACTIVE, #1d40b4);
   --SCD_SELF: #8ee087;
   --SCD_OPPONENT: #ff9f72;
 }
@@ -453,6 +484,7 @@ class CompletionChatAdapter {
 .scd-modal-overlay { position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.55);animation:scd-modal-opacity .21s ease-in-out; }
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
+#skribbl-duels-panel [data-role='body'],.scd-stage-shell,.scd-chat-log { overscroll-behavior:contain; }
 .scd-modal-header { display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:10px;padding:8px 10px 4px; }
 .scd-modal-title { font-size:1.8em;font-weight:700;text-align:center;white-space:nowrap; }
 .scd-modal-account { min-width:0;display:flex;align-items:center;gap:7px;font-size:11px; }
@@ -464,7 +496,6 @@ class CompletionChatAdapter {
 .scd-modal-close:hover { color:white; }
 .scd-main-tabs { display:flex;justify-content:center;padding:4px 10px 8px; }
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
-#skribbl-duels-panel select { width:auto; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
 .scd-versus { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
@@ -507,6 +538,8 @@ class CompletionChatAdapter {
 .scd-button { border: 1px solid rgba(255,255,255,.18); border-radius: 7px; background: rgba(255,255,255,.08); color: white; padding: 7px 10px; cursor: pointer; }
 .scd-button:hover { background: rgba(255,255,255,.14); }
 .scd-button.primary { background: var(--SCD_ACCENT); border-color: transparent; color: #fff; font-weight: 700; }
+.scd-button.primary:hover:not(:disabled),.scd-tab.active:hover:not(:disabled) { background:var(--SCD_ACCENT_HOVER); }
+.scd-button.primary:active:not(:disabled),.scd-tab.active:active:not(:disabled) { background:var(--SCD_ACCENT_ACTIVE); }
 .scd-button.danger { background: rgba(255,95,95,.17); }
 .scd-field { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;aspect-ratio:1/1;border:0;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));color:white;border-radius:4px;padding:4px;overflow:hidden;box-shadow:none;transition:transform .15s; }
 .scd-field.empty { background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));opacity:.42; }
@@ -535,7 +568,7 @@ class CompletionChatAdapter {
 .scd-queue-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-stack { display: flex; flex-direction: column; gap: 9px; }
 .scd-card { background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 10px; }
-.scd-label { display:flex; align-items:center; justify-content:space-between; gap:10px; color:white; }
+.scd-label { display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,45%);align-items:center;gap:10px;color:white; }
 .scd-label input[type='range'] { flex:1; }
 .scd-auth-profile { display:flex;align-items:center;gap:10px;min-width:0; }
 .scd-auth-avatar { width:42px;height:42px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.1);flex:none; }
@@ -545,7 +578,7 @@ class CompletionChatAdapter {
 .scd-auth-error { color:#ffb0b0;font-size:11px;white-space:pre-wrap; }
 .scd-profile-field { display:flex;flex-direction:column;gap:4px; }
 .scd-profile-field .scd-label { min-width:0; }
-.scd-profile-field input { width:auto;min-width:0;max-width:100%;flex:1 1 auto; }
+.scd-profile-field input { min-width:0;max-width:100%; }
 .scd-profile-error { color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800;white-space:pre-wrap; }
 .scd-skribbl-avatar { position:relative;width:100%;height:100%;image-rendering:pixelated; }
 .scd-skribbl-avatar .color,.scd-skribbl-avatar .eyes,.scd-skribbl-avatar .mouth { position:absolute;width:100%;height:100%;background-size:1000% 1000%; }
@@ -561,16 +594,43 @@ class CompletionChatAdapter {
 .scd-draft-option { min-width:0;min-height:76px;text-align:center;font-size:13px;line-height:1.2; }
 .scd-draft-option-key { display:block;margin-top:5px;color:rgba(255,255,255,.62);font-size:10px;font-weight:400; }
 .scd-draft-board { display:grid;gap:4px; }
+.scd-chat-log { max-height:330px;overflow:auto;min-width:0; }
+.scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
+.scd-chat-line.system { padding:6px 8px;border-left:3px solid var(--SCD_ACCENT);background:rgba(255,255,255,.055); }
+.scd-chat-form { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end; }
+.scd-chat-input-shell { min-width:0;display:flex;flex-direction:column;gap:2px; }
+.scd-chat-count { text-align:right;font-size:10px;color:rgba(255,255,255,.6); }
+.scd-match-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+.scd-draw-proposal { border-left:3px solid var(--SCD_ACCENT); }
+.scd-win-animation { position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none;overflow:hidden;background:radial-gradient(circle,rgba(42,81,209,.28),rgba(0,0,0,.7));animation:scd-win-fade 3.4s both; }
+.scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35);animation:scd-win-pop .65s cubic-bezier(.16,1,.3,1) both; }
+.scd-win-card .scd-icon { width:clamp(150px,30vw,310px);height:clamp(150px,30vw,310px);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
+.scd-confetti { position:absolute;left:var(--x);top:-12%;width:10px;height:22px;background:var(--color);transform:rotate(var(--rotate));animation:scd-confetti-fall var(--duration) var(--delay) linear both; }
+#skribbl-duels-panel input::placeholder,#skribbl-duels-panel textarea::placeholder,#skribbl-duels-stage input::placeholder,#skribbl-duels-stage textarea::placeholder { color:var(--COLOR_PANEL_TEXT_PLACEHOLDER); }
+#skribbl-duels-panel input,#skribbl-duels-panel select,#skribbl-duels-panel textarea,#skribbl-duels-stage input,#skribbl-duels-stage select,#skribbl-duels-stage textarea { font:inherit;flex:0 0 auto;height:32px;width:100%;min-width:0;color:var(--COLOR_INPUT_TEXT);background-color:var(--COLOR_INPUT_BG);border:1px solid var(--COLOR_INPUT_BORDER);border-radius:var(--BORDER_RADIUS);padding:.2em .5em;transition:background-color .12s ease,border-color .12s ease;box-sizing:border-box; }
+#skribbl-duels-panel input:focus,#skribbl-duels-panel select:focus,#skribbl-duels-panel textarea:focus,#skribbl-duels-stage input:focus,#skribbl-duels-stage select:focus,#skribbl-duels-stage textarea:focus { outline:0;background-color:var(--COLOR_INPUT_HOVER);border-color:var(--COLOR_INPUT_BORDER_FOCUS);box-shadow:0 0 10px -4px var(--COLOR_INPUT_BORDER_FOCUS); }
+#skribbl-duels-panel input:hover:not(:disabled),#skribbl-duels-panel select:hover:not(:disabled),#skribbl-duels-panel textarea:hover:not(:disabled),#skribbl-duels-stage input:hover:not(:disabled),#skribbl-duels-stage select:hover:not(:disabled),#skribbl-duels-stage textarea:hover:not(:disabled) { background-color:var(--COLOR_INPUT_HOVER); }
+#skribbl-duels-panel input:disabled,#skribbl-duels-panel select:disabled,#skribbl-duels-panel textarea:disabled,#skribbl-duels-stage input:disabled,#skribbl-duels-stage select:disabled,#skribbl-duels-stage textarea:disabled { cursor:not-allowed;opacity:.7; }
+#skribbl-duels-panel input:invalid,#skribbl-duels-panel select:invalid,#skribbl-duels-panel textarea:invalid,#skribbl-duels-stage input:invalid,#skribbl-duels-stage select:invalid,#skribbl-duels-stage textarea:invalid { border-color:red; }
+#skribbl-duels-panel input[type='range']:focus,#skribbl-duels-stage input[type='range']:focus { box-shadow:none; }
+#skribbl-duels-panel input[type='checkbox'],#skribbl-duels-stage input[type='checkbox'] { appearance:none;-webkit-appearance:none;-moz-appearance:none;margin:0;padding:0;width:1.15em;height:1.15em;transition:none;display:grid;place-content:center;justify-self:end; }
+#skribbl-duels-panel input[type='checkbox']::before,#skribbl-duels-stage input[type='checkbox']::before { content:'';width:0;height:0;border-radius:var(--BORDER_RADIUS);transition:width 50ms ease-in-out,height 50ms ease-in-out;box-shadow:inset 1em 1em var(--COLOR_INPUT_TEXT); }
+#skribbl-duels-panel input[type='checkbox']:checked::before,#skribbl-duels-stage input[type='checkbox']:checked::before { width:1em;height:1em; }
 @keyframes scd-field-reveal { from { opacity:0;transform:scale(.72) rotate(-4deg); } to { opacity:1;transform:scale(1) rotate(0); } }
 @keyframes scd-slot-flicker { 0% { opacity:.45;transform:translateY(-2px); } 50% { opacity:1;transform:translateY(2px); } 100% { opacity:.45;transform:translateY(-2px); } }
+@keyframes scd-win-pop { from { opacity:0;transform:scale(.45) rotate(-6deg); } to { opacity:1;transform:scale(1) rotate(0); } }
+@keyframes scd-win-fade { 0%,78% { opacity:1; } 100% { opacity:0; } }
+@keyframes scd-confetti-fall { from { transform:translateY(-10vh) rotate(var(--rotate)); } to { transform:translateY(125vh) rotate(calc(var(--rotate) + 720deg)); } }
 @media (max-width:620px) {
   .scd-modal-header { grid-template-columns:1fr auto; }
   .scd-modal-title { display:none; }
   .scd-versus-players { gap:8px; }
   .scd-versus-avatar { width:min(145px,31vw); }
+  .scd-label { grid-template-columns:minmax(0,1fr); }
+  .scd-label input[type='checkbox'] { justify-self:start; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name { animation:none !important; }
+  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-card,.scd-confetti { animation:none !important; }
 }
 `;
     (document.head ?? document.documentElement).appendChild(style);
@@ -746,6 +806,7 @@ export class DuelProductFoundation {
   private intro: HTMLDivElement | null = null;
   private board: HTMLDivElement | null = null;
   private boardGrid: HTMLDivElement | null = null;
+  private winAnimation: HTMLDivElement | null = null;
   private mountGuard: number | null = null;
   private draftSlotTimer: number | null = null;
   private introTimer: number | null = null;
@@ -753,6 +814,7 @@ export class DuelProductFoundation {
   private countdownAnimationFrame: number | null = null;
   private countdownVisualEndsAt = 0;
   private countdownGoUntil = 0;
+  private winAnimationTimer: number | null = null;
   private settings: ProductUiSettings;
   private matchState: MatchState;
   private chatAdapter: CompletionChatAdapter;
@@ -769,10 +831,14 @@ export class DuelProductFoundation {
   private matchmakingError: string | null = null;
   private readySubmissionMatchId: string | null = null;
   private draftSubmissionKey: string | null = null;
-  private lastWinMessageMatchId: string | null = null;
+  private lastConclusionMessageMatchId: string | null = null;
+  private lastWinAnimationMatchId: string | null = null;
   private readonly processedGatewayChatIds = new Set<string>();
   private readonly processedClaimResolutionIds = new Set<string>();
   private restoreDuelChatFocus = false;
+  private duelChatScrollTop = 0;
+  private duelChatStickToBottom = true;
+  private matchActionError: string | null = null;
   private readonly draftKeydown = (event: KeyboardEvent) => this.handleDraftKeydown(event);
   private readonly duelChatKeydown = (event: KeyboardEvent) => this.handleDuelChatKeydown(event);
   private destroyed = false;
@@ -817,13 +883,27 @@ export class DuelProductFoundation {
     document.addEventListener('keydown', this.draftKeydown, true);
     window.addEventListener('keydown', this.duelChatKeydown, true);
     this.unsubscribers.push(this.gatewayClient.subscribe(state => {
+      const previous = this.gatewayState;
+      const matchChanged = previous.match?.matchId !== state.match?.matchId
+        || previous.match?.revision !== state.match?.revision;
+      const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
+      const presentationChanged = matchChanged
+        || chatChanged
+        || previous.status !== state.status
+        || previous.error !== state.error
+        || previous.queue?.requestId !== state.queue?.requestId
+        || previous.queue?.position !== state.queue?.position
+        || previous.identity?.displayName !== state.identity?.displayName;
+      if (matchChanged) this.matchActionError = null;
       this.gatewayState = state;
       this.handleGatewayMatchState(state);
       this.handleGatewayRealtimeState(state);
-      this.renderVisibility();
-      this.renderStage();
-      this.renderBoard();
-      if (this.settings.panelOpen) this.renderPanel();
+      if (presentationChanged) this.renderVisibility();
+      if (matchChanged) {
+        this.renderStage();
+        this.renderBoard();
+      }
+      if (this.settings.panelOpen && presentationChanged) this.renderPanel();
     }));
     this.unsubscribers.push(this.authClient.subscribe(state => {
       this.authState = state;
@@ -846,14 +926,25 @@ export class DuelProductFoundation {
     }));
     this.unsubscribers.push(this.matchStore.subscribe(event => {
       if (event.type !== 'MATCH_FINISHED' || !event.state.matchId) return;
-      if (this.lastWinMessageMatchId === event.state.matchId) return;
-      this.lastWinMessageMatchId = event.state.matchId;
-      const winner = event.state.participants.find(participant => participant.side === event.state.winner);
-      this.chatAdapter.insertWin({
-        matchId: event.state.matchId,
-        playerName: winner?.displayName ?? 'Opponent',
-        elapsedMs: Math.max(0, event.occurredAt - (event.state.startedAt ?? event.occurredAt))
-      });
+      const elapsedMs = Math.max(0, event.occurredAt - (event.state.startedAt ?? event.occurredAt));
+      if (this.lastConclusionMessageMatchId !== event.state.matchId) {
+        this.lastConclusionMessageMatchId = event.state.matchId;
+        this.insertConclusionMessage(event.state, elapsedMs, event.occurredAt);
+      }
+      if (event.state.outcome === 'win' && event.state.winner) {
+        const winner = event.state.participants.find(participant => participant.side === event.state.winner);
+        this.chatAdapter.insertWin({
+          matchId: event.state.matchId,
+          playerName: winner?.displayName ?? 'Opponent',
+          elapsedMs
+        });
+        if (event.state.winner === 'self'
+            && this.settings.winAnimation
+            && this.lastWinAnimationMatchId !== event.state.matchId) {
+          this.lastWinAnimationMatchId = event.state.matchId;
+          this.showWinAnimation(winner?.displayName ?? this.duelDisplayName('self'));
+        }
+      }
     }));
     this.unsubscribers.push(this.matchStore.subscribeState(state => {
       this.matchState = state;
@@ -878,7 +969,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.47.0',
+      version: '0.48.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -899,7 +990,12 @@ export class DuelProductFoundation {
         setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
         pickDraftChallenge: (matchId, challengeId, clientRevision) =>
           this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
-        sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message)
+        sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message),
+        forfeitMatch: matchId => this.gatewayClient.forfeitMatch(matchId),
+        proposeDraw: matchId => this.gatewayClient.proposeDraw(matchId),
+        respondToDraw: (matchId, proposalId, accept) =>
+          this.gatewayClient.respondToDraw(matchId, proposalId, accept),
+        withdrawDraw: (matchId, proposalId) => this.gatewayClient.withdrawDraw(matchId, proposalId)
       },
       manifest: {
         get: () => structuredClone(this.manifest),
@@ -924,6 +1020,7 @@ export class DuelProductFoundation {
             playerName ?? this.duelDisplayName('opponent')
           ),
         finish: winner => this.matchStore.finishMatch(winner),
+        finishDraw: () => this.matchStore.finishDraw(),
         canSendTelemetry: () => this.matchStore.canForwardTelemetry(),
         getTelemetryStats: () => this.telemetryGateway.getStats(),
         setTelemetryTransport: transport => this.telemetryGateway.setTransport(transport)
@@ -971,8 +1068,11 @@ export class DuelProductFoundation {
     this.intro?.remove();
     this.homeButton?.remove();
     this.board?.remove();
+    this.winAnimation?.remove();
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = null;
+    if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
+    this.winAnimationTimer = null;
     this.stopIntroAnimation();
     this.stopCountdownAnimation();
     this.homeButton = null;
@@ -986,9 +1086,10 @@ export class DuelProductFoundation {
     this.intro = null;
     this.board = null;
     this.boardGrid = null;
+    this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.47.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.48.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1095,6 +1196,7 @@ export class DuelProductFoundation {
     const panel = element('div', 'scd-modal-overlay');
     panel.id = 'skribbl-duels-panel';
     panel.dataset.scdRuntimeId = this.options.runtimeId;
+    isolateScrollRoot(panel);
     panel.addEventListener('click', event => {
       if (event.target === panel) this.closePanel();
     });
@@ -1143,6 +1245,7 @@ export class DuelProductFoundation {
     const stage = element('div', 'scd-modal-overlay');
     stage.id = 'skribbl-duels-stage';
     stage.dataset.scdRuntimeId = this.options.runtimeId;
+    isolateScrollRoot(stage);
     const wrapper = element('div', 'scd-modal-wrapper');
     this.stageBody = element('div', 'scd-stage-shell');
     wrapper.appendChild(this.stageBody);
@@ -1151,18 +1254,17 @@ export class DuelProductFoundation {
   }
 
   private createIconAsset(src: string, fallbackText: string, label: string): HTMLSpanElement {
-    const wrapper = element('span', 'scd-icon scd-icon-fallback', fallbackText);
+    const wrapper = element('span', 'scd-icon');
     wrapper.setAttribute('role', 'img');
     wrapper.setAttribute('aria-label', label);
     const image = element('img', 'scd-icon-image') as HTMLImageElement;
     image.alt = '';
-    image.style.cssText = 'display:none;width:100%;height:100%';
-    image.addEventListener('load', () => {
-      wrapper.textContent = '';
-      image.style.display = 'block';
-      wrapper.appendChild(image);
+    image.style.cssText = 'display:block;width:100%;height:100%';
+    image.addEventListener('error', () => {
+      image.remove();
+      wrapper.classList.add('scd-icon-fallback');
+      wrapper.textContent = fallbackText;
     }, { once: true });
-    image.addEventListener('error', () => image.remove(), { once: true });
     wrapper.appendChild(image);
     image.src = EMBEDDED_ICON_ASSETS[src] ?? src;
     return wrapper;
@@ -1303,6 +1405,7 @@ export class DuelProductFoundation {
     const intro = element('div', 'scd-modal-overlay');
     intro.id = 'skribbl-duels-intro';
     intro.dataset.scdRuntimeId = this.options.runtimeId;
+    isolateScrollRoot(intro);
     const wrapper = element('div', 'scd-modal-wrapper');
     const card = element('div', 'scd-intro-card');
     const logo = this.createIconAsset(
@@ -1856,6 +1959,12 @@ export class DuelProductFoundation {
   private renderPanel(): void {
     if (!this.panel || !this.panelBody) return;
     const previousScrollTop = this.panelBody.scrollTop;
+    const previousChatLog = this.panelBody.querySelector<HTMLElement>('[data-scd-chat-log="true"]');
+    if (previousChatLog) {
+      this.duelChatScrollTop = previousChatLog.scrollTop;
+      this.duelChatStickToBottom = previousChatLog.scrollHeight - previousChatLog.scrollTop
+        <= previousChatLog.clientHeight + 24;
+    }
     const mainTab = this.mainPanelTab();
     const displayedTab = this.activeTab === 'settings' || this.activeTab === 'about'
       ? this.activeTab
@@ -2028,6 +2137,18 @@ export class DuelProductFoundation {
         card.appendChild(open);
         return card;
       }
+      if (state.phase === 'finished' && state.conclusion) {
+        const conclusion = state.conclusion;
+        const summary = conclusion.outcome === 'draw'
+          ? 'The Duel ended in a mutually agreed Draw.'
+          : `${state.participants.find(item => item.accountId === conclusion.winnerAccountId)?.displayName ?? 'A player'} won${conclusion.reason === 'player-forfeit' ? ' by forfeit' : ''}.`;
+        card.appendChild(element('div', '', summary));
+        const open = element('button', 'scd-button primary', 'Open result') as HTMLButtonElement;
+        open.type = 'button';
+        open.addEventListener('click', () => this.openPanel('match'));
+        card.appendChild(open);
+        return card;
+      }
       card.appendChild(element('div', 'scd-muted', `Previous match was cancelled: ${this.gatewayState.lastMatchEvent?.event.reason ?? 'superseded'}.`));
     }
 
@@ -2106,7 +2227,11 @@ export class DuelProductFoundation {
     const stack = element('div', 'scd-stack');
     const status = element('div', 'scd-card scd-stack');
     status.append(
-      element('strong', '', `Status: ${this.matchState.phase}`),
+      element('strong', '', this.matchState.outcome === 'draw'
+        ? 'Status: agreed Draw'
+        : this.matchState.outcome === 'win'
+          ? `Status: ${this.duelDisplayName(this.matchState.winner ?? 'opponent')} won`
+          : `Status: ${this.matchState.phase}`),
       element('div', '', `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`),
       element('div', 'scd-muted', this.matchState.freeze.frozen
         ? 'Match frozen. Skribbl continues normally; Duel telemetry is no longer forwarded.'
@@ -2120,42 +2245,123 @@ export class DuelProductFoundation {
       element('div', 'scd-muted', `Connection: ${this.gatewayState.status} · Local: ${telemetry.locallyObserved} · Forwarded: ${telemetry.forwarded} · Suppressed after freeze: ${telemetry.suppressedAfterFreeze}`)
     );
 
-    const controls = element('div', 'scd-card scd-row');
-    const selfClaim = element('button', 'scd-button', `Claim next for ${this.duelDisplayName('self')}`) as HTMLButtonElement;
-    selfClaim.addEventListener('click', () => this.demoClaim('self'));
-    const opponentClaim = element('button', 'scd-button', `Claim next for ${this.duelDisplayName('opponent')}`) as HTMLButtonElement;
-    opponentClaim.addEventListener('click', () => this.demoClaim('opponent'));
-    this.tooltips.register(selfClaim, 'Development only: confirm the next free field for yourself');
-    this.tooltips.register(opponentClaim, 'Development only: confirm the next free field for the opponent');
-    const reset = element('button', 'scd-button danger', 'Reset match') as HTMLButtonElement;
-    reset.addEventListener('click', () => this.resetMatch());
-    this.tooltips.register(reset, 'Clear the current local match and hide the board');
-    controls.append(selfClaim, opponentClaim, reset);
-
-    stack.append(status, gateway, controls);
+    stack.append(status, gateway);
+    const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId
+      ? this.gatewayState.match
+      : null;
+    if (gatewayMatch?.state.phase === 'running') {
+      const proposal = gatewayMatch.state.drawProposal;
+      const selfAccountId = this.gatewayState.identity?.accountId;
+      const controls = element('div', 'scd-card scd-stack');
+      controls.appendChild(element('strong', '', 'Match conclusion'));
+      if (!proposal) {
+        const actions = element('div', 'scd-match-actions');
+        const propose = element('button', 'scd-button primary', 'Propose Draw') as HTMLButtonElement;
+        propose.type = 'button';
+        propose.addEventListener('click', () => this.runMatchAction(() =>
+          this.gatewayClient.proposeDraw(gatewayMatch.matchId), propose));
+        const forfeit = element('button', 'scd-button danger', 'Forfeit Duel') as HTMLButtonElement;
+        forfeit.type = 'button';
+        forfeit.addEventListener('click', () => {
+          if (!window.confirm('Forfeit this Duel? Your opponent will win immediately.')) return;
+          this.runMatchAction(() => this.gatewayClient.forfeitMatch(gatewayMatch.matchId), forfeit);
+        });
+        actions.append(propose, forfeit);
+        controls.appendChild(actions);
+      } else {
+        const proposalCard = element('div', 'scd-card scd-stack scd-draw-proposal');
+        const proposer = gatewayMatch.state.participants.find(item =>
+          item.accountId === proposal.proposerAccountId
+        );
+        const ownProposal = proposal.proposerAccountId === selfAccountId;
+        proposalCard.appendChild(element(
+          'div',
+          '',
+          ownProposal
+            ? 'Waiting for the opponent to accept the Draw.'
+            : `${proposer?.displayName ?? 'Opponent'} proposed a Draw.`
+        ));
+        const deadline = element('div', 'scd-muted');
+        this.registerDeadline(deadline, proposal.expiresAt, 'Proposal expires in ', 's');
+        proposalCard.appendChild(deadline);
+        const actions = element('div', 'scd-match-actions');
+        if (ownProposal) {
+          const withdraw = element('button', 'scd-button', 'Withdraw proposal') as HTMLButtonElement;
+          withdraw.type = 'button';
+          withdraw.addEventListener('click', () => this.runMatchAction(() =>
+            this.gatewayClient.withdrawDraw(gatewayMatch.matchId, proposal.proposalId), withdraw));
+          actions.appendChild(withdraw);
+        } else {
+          const accept = element('button', 'scd-button primary', 'Accept Draw') as HTMLButtonElement;
+          accept.type = 'button';
+          accept.addEventListener('click', () => this.runMatchAction(() =>
+            this.gatewayClient.respondToDraw(gatewayMatch.matchId, proposal.proposalId, true), accept));
+          const reject = element('button', 'scd-button danger', 'Reject') as HTMLButtonElement;
+          reject.type = 'button';
+          reject.addEventListener('click', () => this.runMatchAction(() =>
+            this.gatewayClient.respondToDraw(gatewayMatch.matchId, proposal.proposalId, false), reject));
+          actions.append(accept, reject);
+        }
+        proposalCard.appendChild(actions);
+        controls.appendChild(proposalCard);
+      }
+      const actionError = this.matchActionError ?? this.gatewayState.error;
+      if (actionError) controls.appendChild(element('div', 'scd-auth-error', actionError));
+      stack.appendChild(controls);
+    } else if (this.matchState.matchId?.startsWith('demo-') && this.matchState.phase === 'running') {
+      const controls = element('div', 'scd-card scd-row');
+      const selfClaim = element('button', 'scd-button', `Claim next for ${this.duelDisplayName('self')}`) as HTMLButtonElement;
+      selfClaim.addEventListener('click', () => this.demoClaim('self'));
+      const opponentClaim = element('button', 'scd-button', `Claim next for ${this.duelDisplayName('opponent')}`) as HTMLButtonElement;
+      opponentClaim.addEventListener('click', () => this.demoClaim('opponent'));
+      const reset = element('button', 'scd-button danger', 'Reset match') as HTMLButtonElement;
+      reset.addEventListener('click', () => this.resetMatch());
+      controls.append(selfClaim, opponentClaim, reset);
+      stack.appendChild(controls);
+    }
     this.panelBody.appendChild(stack);
     this.renderChatTab();
+  }
+
+  private runMatchAction(action: () => string, button: HTMLButtonElement): void {
+    this.matchActionError = null;
+    button.disabled = true;
+    try {
+      action();
+    } catch (error) {
+      button.disabled = false;
+      this.matchActionError = error instanceof Error ? error.message : String(error);
+      this.renderPanel();
+    }
   }
 
   private renderChatTab(): void {
     if (!this.panelBody) return;
     const stack = element('div', 'scd-stack');
-    const log = element('div', 'scd-card scd-stack');
-    log.style.maxHeight = '330px';
-    log.style.overflow = 'auto';
+    const log = element('div', 'scd-card scd-stack scd-chat-log');
+    log.dataset.scdChatLog = 'true';
     if (this.duelChatMessages.length === 0) {
       log.appendChild(element('div', 'scd-muted', 'Private Duel channel. Messages are visible only to both matched players.'));
     } else {
       for (const message of this.duelChatMessages) {
-        const line = element('div');
+        const line = element('div', `scd-chat-line${message.side === 'system' ? ' system' : ''}`);
         const author = element('strong', '', `${message.author} `);
-        author.style.color = message.side === 'self' ? 'var(--SCD_SELF)' : 'var(--SCD_OPPONENT)';
+        author.style.color = message.side === 'self'
+          ? 'var(--SCD_SELF)'
+          : message.side === 'opponent'
+            ? 'var(--SCD_OPPONENT)'
+            : 'var(--SCD_ACCENT)';
         line.append(author, document.createTextNode(message.message), element('small', 'scd-muted', ` · ${formatTime(message.occurredAt)}`));
         log.appendChild(line);
       }
     }
+    log.addEventListener('scroll', () => {
+      this.duelChatScrollTop = log.scrollTop;
+      this.duelChatStickToBottom = log.scrollHeight - log.scrollTop <= log.clientHeight + 24;
+    }, { passive: true });
 
-    const form = element('form', 'scd-row');
+    const form = element('form', 'scd-chat-form');
+    const inputShell = element('div', 'scd-chat-input-shell');
     const input = element('input') as HTMLInputElement;
     input.dataset.scdDuelChatInput = 'true';
     const gatewayChatActive = this.gatewayState.status === 'connected'
@@ -2163,13 +2369,20 @@ export class DuelProductFoundation {
       && this.gatewayState.match.state.phase !== 'cancelled';
     input.placeholder = gatewayChatActive ? 'Private Duel message…' : 'Duel chat requires an active Gateway match';
     input.disabled = !gatewayChatActive;
-    input.maxLength = 300;
-    input.style.cssText = 'flex:1;min-width:0;border:1px solid rgba(255,255,255,.18);border-radius:7px;background:rgba(0,0,0,.25);color:white;padding:8px';
+    input.maxLength = 600;
+    const count = element('div', 'scd-chat-count', '0/300');
+    const updateCount = (): void => {
+      const codePoints = Array.from(input.value);
+      if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join('');
+      count.textContent = `${Array.from(input.value).length}/300`;
+    };
+    input.addEventListener('input', updateCount);
+    inputShell.append(input, count);
     const send = element('button', 'scd-button primary', 'Send') as HTMLButtonElement;
     send.type = 'submit';
     send.disabled = !gatewayChatActive;
     this.tooltips.register(send, 'Send a private Duel message once the gateway is connected');
-    form.append(input, send);
+    form.append(inputShell, send);
     form.addEventListener('submit', event => {
       event.preventDefault();
       const message = input.value.trim();
@@ -2179,6 +2392,7 @@ export class DuelProductFoundation {
       try {
         this.gatewayClient.sendDuelChat(matchId, message);
         input.value = '';
+        updateCount();
       } catch (error) {
         this.restoreDuelChatFocus = false;
         this.matchmakingError = error instanceof Error ? error.message : String(error);
@@ -2188,6 +2402,10 @@ export class DuelProductFoundation {
 
     stack.append(log, form);
     this.panelBody.appendChild(stack);
+    queueMicrotask(() => {
+      if (!log.isConnected) return;
+      log.scrollTop = this.duelChatStickToBottom ? log.scrollHeight : this.duelChatScrollTop;
+    });
     if (this.restoreDuelChatFocus) {
       this.restoreDuelChatFocus = false;
       queueMicrotask(() => {
@@ -2232,7 +2450,6 @@ export class DuelProductFoundation {
       name.autocomplete = 'off';
       name.spellcheck = false;
       name.required = true;
-      name.style.cssText = 'background:#222631;color:white;border:1px solid rgba(255,255,255,.18);padding:7px;border-radius:6px';
       nameLabel.append(element('span', '', copy.displayName), name);
       const nameError = element('div', 'scd-profile-error');
       nameError.hidden = true;
@@ -2240,7 +2457,6 @@ export class DuelProductFoundation {
 
       const languageLabel = element('label', 'scd-label');
       const language = element('select') as HTMLSelectElement;
-      language.style.cssText = name.style.cssText;
       for (const [value, label] of [['en', 'English'], ['de', 'Deutsch']] as const) {
         const option = element('option') as HTMLOptionElement;
         option.value = value;
@@ -2252,7 +2468,6 @@ export class DuelProductFoundation {
 
       const avatarLabel = element('label', 'scd-label');
       const avatarSource = element('select') as HTMLSelectElement;
-      avatarSource.style.cssText = name.style.cssText;
       for (const [value, label] of [['discord', copy.discordAvatar], ['skribbl', copy.skribblAvatar]] as const) {
         const option = element('option') as HTMLOptionElement;
         option.value = value;
@@ -2262,9 +2477,13 @@ export class DuelProductFoundation {
       }
       avatarLabel.append(element('span', '', copy.versusAvatar), avatarSource);
 
-      const feedback = element('div', 'scd-muted', identity.specialAvatarId
-        ? `${copy.specialEntitlement}: ${identity.specialAvatarId}`
-        : copy.specialControlled);
+      const entitlementText = [
+        identity.specialAvatarId
+          ? `${copy.specialEntitlement}: ${identity.specialAvatarId}`
+          : copy.specialControlled,
+        ...(identity.invisibleAvatarEntitled ? [`${copy.invisibleEntitlement}: enabled`] : [])
+      ].join(' · ');
+      const feedback = element('div', 'scd-muted', entitlementText);
       const save = element('button', 'scd-button primary', copy.save) as HTMLButtonElement;
       save.type = 'submit';
       const validateName = (): string | null => {
@@ -2290,6 +2509,13 @@ export class DuelProductFoundation {
             currentAvatar = parsed.map(Number) as [number, number, number, number];
           }
         } catch { currentAvatar = null; }
+        if (avatarSource.value === 'skribbl'
+            && currentAvatar?.some(value => value < -1)
+            && !identity.invisibleAvatarEntitled) {
+          nameError.textContent = PROFILE_COPY[profileLanguage(language.value)].invisibleNotEntitled;
+          nameError.hidden = false;
+          return;
+        }
         save.disabled = true;
         feedback.textContent = PROFILE_COPY[profileLanguage(language.value)].saving;
         void this.authClient.updateDuelProfile({
@@ -2325,7 +2551,6 @@ export class DuelProductFoundation {
     const anchorLabel = element('label', 'scd-label');
     anchorLabel.appendChild(element('span', '', 'Position mode'));
     const mode = element('select') as HTMLSelectElement;
-    mode.style.cssText = 'background:#222631;color:white;border:1px solid rgba(255,255,255,.18);padding:6px;border-radius:6px';
     for (const [value, label] of [['anchor', 'Screen anchor'], ['custom', 'Custom coordinates']] as const) {
       const option = element('option') as HTMLOptionElement;
       option.value = value;
@@ -2344,7 +2569,6 @@ export class DuelProductFoundation {
     const anchorSelect = element('label', 'scd-label');
     anchorSelect.appendChild(element('span', '', 'Anchor'));
     const select = element('select') as HTMLSelectElement;
-    select.style.cssText = mode.style.cssText;
     const anchors: ProductUiSettings['board']['anchor'][] = [
       'top-left', 'top-center', 'top-right', 'center-left',
       'center-right', 'bottom-left', 'bottom-center', 'bottom-right'
@@ -2386,7 +2610,9 @@ export class DuelProductFoundation {
     chat.append(
       element('strong', '', 'Game-chat integration'),
       this.checkbox('Show confirmed completion messages', this.settings.completionMessages, checked =>
-        this.settingsStore.update({ completionMessages: checked }))
+        this.settingsStore.update({ completionMessages: checked })),
+      this.checkbox('Play Win animation', this.settings.winAnimation, checked =>
+        this.settingsStore.update({ winAnimation: checked }))
     );
 
     stack.append(board, chat);
@@ -2412,12 +2638,12 @@ export class DuelProductFoundation {
     const freeze = element('div', 'scd-card');
     freeze.append(
       element('strong', '', 'What match freeze means'),
-      element('p', 'scd-muted', 'The normal Skribbl lobby and local telemetry continue. Only Duel-server forwarding, board mutation and new claims are stopped after the win target is reached.')
+      element('p', 'scd-muted', 'The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw.')
     );
     const gateway = element('div', 'scd-card');
     gateway.append(
       element('strong', '', `Gateway Contract v${GATEWAY_CONTRACT_VERSION}`),
-      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. Homepage matchmaking, the 30-second ready check, two-option 15-second turns, the server-random parity field and the synchronized 10-second match start are implemented.`)
+      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`)
     );
     stack.append(rules, authentication, freeze, gateway);
     this.panelBody.appendChild(stack);
@@ -2690,13 +2916,14 @@ export class DuelProductFoundation {
       );
       if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, 'gateway-snapshot-field-claimed');
     }
-    if (snapshot.state.phase === 'finished' && snapshot.state.winnerAccountId) {
-      const winner: DuelPlayerSide = snapshot.state.winnerAccountId === selfAccountId ? 'self' : 'opponent';
-      this.matchStore.finishMatch(
-        winner,
-        'gateway-authoritative-win-target',
-        snapshot.state.finishedAt ?? this.serverNow()
-      );
+    const conclusion = snapshot.state.conclusion;
+    if (snapshot.state.phase === 'finished' && conclusion) {
+      if (conclusion.outcome === 'draw') {
+        this.matchStore.finishDraw(conclusion.reason, conclusion.occurredAt);
+      } else if (conclusion.winnerAccountId) {
+        const winner: DuelPlayerSide = conclusion.winnerAccountId === selfAccountId ? 'self' : 'opponent';
+        this.matchStore.finishMatch(winner, conclusion.reason, conclusion.occurredAt);
+      }
     }
   }
 
@@ -2895,7 +3122,15 @@ export class DuelProductFoundation {
     this.processedGatewayChatIds.clear();
     this.processedClaimResolutionIds.clear();
     this.restoreDuelChatFocus = false;
-    this.lastWinMessageMatchId = null;
+    this.duelChatScrollTop = 0;
+    this.duelChatStickToBottom = true;
+    this.matchActionError = null;
+    this.lastConclusionMessageMatchId = null;
+    this.lastWinAnimationMatchId = null;
+    this.winAnimation?.remove();
+    this.winAnimation = null;
+    if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
+    this.winAnimationTimer = null;
     this.chatAdapter.reset();
     this.telemetryGateway.resetSession();
     try { sessionStorage.removeItem(this.matchStorageKey); } catch {}
@@ -3047,6 +3282,62 @@ export class DuelProductFoundation {
     if (event.type === 'CHALLENGE_LOST' || event.type === 'CHALLENGE_REOPENED') {
       this.matchStore.rejectPending(runtime.challengeId, event.reason ?? 'claim-not-accepted', event.occurredAt);
     }
+  }
+
+  private insertConclusionMessage(state: MatchState, elapsedMs: number, occurredAt: number): void {
+    if (!state.matchId) return;
+    let message: string;
+    if (state.outcome === 'draw') {
+      message = `Both players agreed to a Draw after ${formatDurationHms(elapsedMs)}.`;
+    } else {
+      const winner = state.participants.find(participant => participant.side === state.winner);
+      const loser = state.participants.find(participant => participant.side !== state.winner);
+      message = state.finishReason === 'player-forfeit'
+        ? `${loser?.displayName ?? 'A player'} forfeited. ${winner?.displayName ?? 'The opponent'} won after ${formatDurationHms(elapsedMs)}.`
+        : `${winner?.displayName ?? 'A player'} won the Duel after ${formatDurationHms(elapsedMs)}.`;
+    }
+    const id = `conclusion-${state.matchId}`;
+    if (this.duelChatMessages.some(item => item.id === id)) return;
+    this.duelChatMessages.push({
+      id,
+      side: 'system',
+      author: 'Skribbl Duels',
+      message,
+      occurredAt
+    });
+    this.duelChatStickToBottom = true;
+    if (this.settings.panelOpen && this.mainPanelTab() === 'match') this.renderPanel();
+  }
+
+  private showWinAnimation(playerName: string): void {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    this.winAnimation?.remove();
+    if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
+    const overlay = element('div', 'scd-win-animation');
+    overlay.dataset.scdRuntimeId = this.options.runtimeId;
+    const card = element('div', 'scd-win-card');
+    card.append(
+      this.createIconAsset('challenge-icons/skribbl-duels-logo.gif', 'SD', 'Skribbl Duels victory'),
+      element('div', '', `${playerName} wins!`)
+    );
+    const colors = ['#2a51d1', '#53e237', '#ffe45c', '#e74c3c', '#ff6fd8', '#ffffff'];
+    for (let index = 0; index < 36; index += 1) {
+      const piece = element('span', 'scd-confetti');
+      piece.style.setProperty('--x', `${(index * 37) % 101}%`);
+      piece.style.setProperty('--color', colors[index % colors.length]!);
+      piece.style.setProperty('--rotate', `${(index * 53) % 360}deg`);
+      piece.style.setProperty('--duration', `${1.9 + (index % 7) * .18}s`);
+      piece.style.setProperty('--delay', `${(index % 9) * .08}s`);
+      overlay.appendChild(piece);
+    }
+    overlay.appendChild(card);
+    (document.body ?? document.documentElement).appendChild(overlay);
+    this.winAnimation = overlay;
+    this.winAnimationTimer = window.setTimeout(() => {
+      this.winAnimationTimer = null;
+      overlay.remove();
+      if (this.winAnimation === overlay) this.winAnimation = null;
+    }, 3_500);
   }
 
   private insertCompletion(message: CompletionMessage): void {

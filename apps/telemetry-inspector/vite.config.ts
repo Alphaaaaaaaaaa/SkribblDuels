@@ -30,10 +30,10 @@ export default defineConfig(({ mode }) => {
       monkey({
         entry: 'apps/telemetry-inspector/src/userscript.ts',
         userscript: {
-          name: 'Skribbl Duels - Telemetry Inspector',
+          name: 'Skribbl Duels',
           namespace: 'https://github.com/skribbl-duels',
-          version: '0.47.0',
-          description: 'Gateway-backed private Duel chat and server-authoritative telemetry claim validation.',
+          version: '0.48.0',
+          description: 'Gateway-backed Skribbl Duels with authoritative matches, Forfeit and mutual Draw.',
           author: 'Alpha',
           match: ['https://skribbl.io/*'],
           grant: 'none',

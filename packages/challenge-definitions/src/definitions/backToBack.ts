@@ -10,6 +10,7 @@ export interface BackToBackState {
   streakLobbyId: string | null;
   winningGameKeys: string[];
   winningEvidenceEventIds: string[];
+  observedGameStartEventIds: Record<string, string>;
   lastEndedGameKey: string | null;
 }
 
@@ -26,7 +27,7 @@ function winnerSummary(
     if (entry.playerId === meId) selfScore = entry.totalScore;
   }
   if (selfScore === null || !Number.isFinite(winningScore)) return null;
-  return { selfScore, winningScore, won: selfScore === winningScore };
+  return { selfScore, winningScore, won: selfScore > 0 && selfScore === winningScore };
 }
 
 function emptyState(): BackToBackState {
@@ -35,20 +36,25 @@ function emptyState(): BackToBackState {
     streakLobbyId: null,
     winningGameKeys: [],
     winningEvidenceEventIds: [],
+    observedGameStartEventIds: {},
     lastEndedGameKey: null
   };
 }
 
+function gameKey(lobbyId: string, gameSessionId: string | null, eventId: string): string {
+  return `${lobbyId}:${gameSessionId ?? eventId}`;
+}
+
 export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBackParameters> = {
   id: 'back-to-back',
-  version: 3,
+  version: 4,
   metadata: {
     category: 'progress',
     localization: localization(
       'Back to back',
-      'Win two consecutive public skribbl games in the same lobby. The first win may come from a game joined after it already started.',
+      'Win two consecutive public skribbl games in the same lobby with a positive score. The first win may be joined late; the second game must be observed from its start.',
       'Back to back',
-      'Gewinne zwei öffentliche Skribbl-Spiele direkt hintereinander in derselben Lobby. Dem ersten gewonnenen Spiel darfst du erst nach dessen Start beigetreten sein.'
+      'Gewinne zwei öffentliche Skribbl-Spiele mit positiver Punktzahl direkt hintereinander in derselben Lobby. Dem ersten Spiel darfst du später beitreten; das zweite muss ab Spielstart beobachtet werden.'
     ),
     icon: 'back-to-back-wins',
     rankedEligible: true,
@@ -63,49 +69,84 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
     if (typeof value !== 'object' || value === null) return false;
     return isPositiveInteger((value as Partial<BackToBackParameters>).games);
   },
-  relevantEvents: ['GAME_ENDED'],
+  relevantEvents: ['GAME_STARTING', 'GAME_ENDED'],
   allowedLobbyTypes: [0],
-  resetOn: ['lobby-change'],
   reduce({ event, runtime, parameters }) {
+    if (event.type === 'GAME_STARTING') {
+      const lobbyId = event.context.lobbyId;
+      if (lobbyId === null || event.context.gameSessionId === null) return null;
+      const key = gameKey(lobbyId, event.context.gameSessionId, event.eventId);
+      if (runtime.internalState.observedGameStartEventIds[key]) return null;
+      const observed = {
+        ...runtime.internalState.observedGameStartEventIds,
+        [key]: event.eventId
+      };
+      const recent = Object.entries(observed).slice(-16);
+      return {
+        internalState: {
+          ...runtime.internalState,
+          observedGameStartEventIds: Object.fromEntries(recent)
+        },
+        reason: 'back-to-back-game-start-observed',
+        evidenceEventIds: [event.eventId]
+      };
+    }
+
     if (event.type !== 'GAME_ENDED') return null;
     const lobbyId = event.context.lobbyId;
     if (lobbyId === null) return null;
-    const gameKey = `${lobbyId}:${event.context.gameSessionId ?? event.eventId}`;
-    if (runtime.internalState.lastEndedGameKey === gameKey) return null;
+    const endedGameKey = gameKey(lobbyId, event.context.gameSessionId, event.eventId);
+    if (runtime.internalState.lastEndedGameKey === endedGameKey) return null;
 
     const summary = winnerSummary(event.context.meId, event.payload.finalScores);
     const sameLobby = runtime.internalState.streakLobbyId === null || runtime.internalState.streakLobbyId === lobbyId;
-    if (summary === null || !summary.won || !sameLobby) {
+    if (summary === null || !summary.won) {
       return {
         internalState: {
           ...emptyState(),
-          lastEndedGameKey: gameKey
+          lastEndedGameKey: endedGameKey
         },
         progress: 0,
-        reason: !sameLobby
-          ? 'back-to-back-streak-reset-by-different-lobby'
-          : summary === null
-            ? 'back-to-back-game-ended-without-final-ranking'
+        reason: summary === null
+          ? 'back-to-back-game-ended-without-final-ranking'
+          : summary.selfScore <= 0
+            ? 'back-to-back-zero-point-win-invalid'
             : 'back-to-back-streak-reset-by-loss',
         evidenceEventIds: [event.eventId]
       };
     }
 
-    const nextCount = runtime.internalState.qualifyingEvents + 1;
-    const evidence = [...runtime.internalState.winningEvidenceEventIds, event.eventId];
+    const observedStartEventId = runtime.internalState.observedGameStartEventIds[endedGameKey] ?? null;
+    const requiresObservedSecond = sameLobby && runtime.internalState.qualifyingEvents >= 1;
+    const continuesStreak = sameLobby && (!requiresObservedSecond || observedStartEventId !== null);
+    const nextCount = continuesStreak ? runtime.internalState.qualifyingEvents + 1 : 1;
+    const evidence = continuesStreak
+      ? [
+          ...runtime.internalState.winningEvidenceEventIds,
+          ...(requiresObservedSecond && observedStartEventId ? [observedStartEventId] : []),
+          event.eventId
+        ]
+      : [event.eventId];
     return {
       internalState: {
         qualifyingEvents: nextCount,
         streakLobbyId: lobbyId,
-        winningGameKeys: [...runtime.internalState.winningGameKeys, gameKey],
+        winningGameKeys: continuesStreak
+          ? [...runtime.internalState.winningGameKeys, endedGameKey]
+          : [endedGameKey],
         winningEvidenceEventIds: evidence,
-        lastEndedGameKey: gameKey
+        observedGameStartEventIds: runtime.internalState.observedGameStartEventIds,
+        lastEndedGameKey: endedGameKey
       },
       progress: nextCount,
       complete: nextCount >= parameters.games,
       reason: nextCount >= parameters.games
-        ? 'back-to-back-consecutive-same-lobby-games-won'
-        : 'back-to-back-first-same-lobby-game-won',
+        ? 'back-to-back-consecutive-same-lobby-games-won-with-second-start-observed'
+        : !sameLobby
+          ? 'back-to-back-new-lobby-first-win'
+          : requiresObservedSecond
+            ? 'back-to-back-unobserved-second-win-restarts-streak'
+            : 'back-to-back-first-same-lobby-game-won',
       evidenceEventIds: evidence
     };
   }

@@ -60,7 +60,7 @@ export function createTypoActiveGuessDefinition(
 ): ChallengeDefinition<TypoActiveGuessState, Record<string, never>> {
   return {
     id: config.id,
-    version: 2,
+    version: 3,
     metadata: {
       category: 'guessing',
       localization: localization(
@@ -180,6 +180,7 @@ export function createTypoActiveGuessDefinition(
 
       if (event.type !== 'CORRECT_GUESS') return null;
       if (!event.actor?.isSelf) return null;
+      if (event.payload.position !== 1 || event.payload.isFirstGuesser !== true) return null;
       if (current.roundSessionId === null) return null;
       if (event.context.roundSessionId !== current.roundSessionId) return null;
       if (current.disabledDuringRound || !current.effectObservedThisRound) return null;

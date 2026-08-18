@@ -116,6 +116,16 @@ const finalPayload = (selfScore: number, betaScore: number, gammaScore = 0) => (
   ]
 });
 
+const startingPayload = {
+  previousStateId: 0,
+  stateId: 1,
+  stateName: 'GAME_STARTING',
+  time: 3,
+  roundIndex: 0,
+  roundNumber: 1,
+  maxRounds: 3
+};
+
 const deserved = new ChallengeEngine({ autoPersist: false });
 deserved.register(deservedDefinition);
 deserved.activate({ instanceId: 'deserved', challengeId: 'deserved' });
@@ -166,7 +176,10 @@ backToBack.activate({ instanceId: 'b2b', challengeId: 'back-to-back' });
 backToBack.process(event('GAME_ENDED', 'b2b-mid-game-win-1', 200, finalPayload(1200, 1100), 'b2b-game-1', null, 'PROGRESS1', 6, 'GAME_ENDED'));
 assert(backToBack.getInstance('b2b')?.progress.current === 1, 'A first win may count even when GAME_STARTING was never observed.');
 backToBack.process(event('GAME_ENDED', 'b2b-win-2', 210, finalPayload(1400, 1300), 'b2b-game-2', null, 'PROGRESS1', 6, 'GAME_ENDED'));
-assert(backToBack.getInstance('b2b')?.status === 'completion-pending', 'Two consecutive wins in the same lobby should complete Back to back without GAME_STARTING events.');
+assert(backToBack.getInstance('b2b')?.progress.current === 1, 'An unobserved second win must restart the streak at 1/2.');
+backToBack.process(event('GAME_STARTING', 'b2b-game-3-start', 220, startingPayload, 'b2b-game-3', null, 'PROGRESS1', 1, 'GAME_STARTING'));
+backToBack.process(event('GAME_ENDED', 'b2b-win-3', 230, finalPayload(1500, 1400), 'b2b-game-3', null, 'PROGRESS1', 6, 'GAME_ENDED'));
+assert(backToBack.getInstance('b2b')?.status === 'completion-pending', 'A fully observed second consecutive win in the same lobby should complete Back to back.');
 
 const lobbyRestricted = new ChallengeEngine({ autoPersist: false });
 lobbyRestricted.register(backToBackDefinition);
@@ -186,4 +199,10 @@ lossReset.process(event('GAME_ENDED', 'loss-reset-win', 400, finalPayload(1200, 
 lossReset.process(event('GAME_ENDED', 'loss-reset-loss', 410, finalPayload(900, 1000), 'loss-reset-game-2', null, 'PROGRESS1', 6, 'GAME_ENDED'));
 assert(lossReset.getInstance('b2b')?.progress.current === 0, 'A loss in the same lobby must reset Back to back to 0/2.');
 
-console.log('Deserved v2 and Back to back v3 runtime tests passed.');
+const zeroScore = new ChallengeEngine({ autoPersist: false });
+zeroScore.register(backToBackDefinition);
+zeroScore.activate({ instanceId: 'b2b', challengeId: 'back-to-back' });
+zeroScore.process(event('GAME_ENDED', 'zero-score-tie', 500, finalPayload(0, 0), 'zero-score-game', null, 'PROGRESS1', 6, 'GAME_ENDED'));
+assert(zeroScore.getInstance('b2b')?.progress.current === 0, 'A 0-point first-place tie must not count as a win.');
+
+console.log('Deserved v2 and Back to back v4 runtime tests passed.');

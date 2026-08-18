@@ -11,14 +11,19 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const selfActor = { playerId: 21, name: 'Alpha', isSelf: true } as const;
 
-function context(roundSessionId: string, drawerId = 77) {
+function context(
+  roundSessionId: string,
+  drawerId = 77,
+  lobbyId = 'SPEED1',
+  languageId = 1
+) {
   return {
-    lobbySessionId: 'speed-lobby-session',
-    lobbyGeneration: 1,
-    lobbyId: 'SPEED1',
+    lobbySessionId: `speed-lobby-session-${lobbyId}`,
+    lobbyGeneration: Number(lobbyId.replace(/\D/g, '')) || 1,
+    lobbyId,
     lobbyType: 0,
-    languageId: 1,
-    languageName: 'German',
+    languageId,
+    languageName: languageId === 1 ? 'German' : languageId === 2 ? 'English' : 'Spanish',
     gameSessionId: 'speed-game-session',
     roundSessionId,
     roundIndex: 0,
@@ -38,7 +43,9 @@ function event<T extends TelemetryEvent['type']>(
   payload: Extract<TelemetryEvent, { type: T }>['payload'],
   roundSessionId: string,
   actor: TelemetryEvent['actor'] = null,
-  drawerId = 77
+  drawerId = 77,
+  lobbyId = 'SPEED1',
+  languageId = 1
 ): Extract<TelemetryEvent, { type: T }> {
   return {
     schemaVersion: 1,
@@ -49,7 +56,7 @@ function event<T extends TelemetryEvent['type']>(
     occurredAt: 1700000000000 + monotonicMs,
     monotonicMs,
     actor,
-    context: context(roundSessionId, drawerId),
+    context: context(roundSessionId, drawerId, lobbyId, languageId),
     source: {
       origin: 'decoded-packet',
       rawRecordId: null,
@@ -109,7 +116,9 @@ bullet.activate({ instanceId: 'bullet', challengeId: 'bullet-skribbl-io' });
 for (let index = 1; index <= 5; index += 1) {
   const roundSessionId = `bullet-turn-${index}`;
   const startedAt = 3000 + index * 20000;
-  bullet.process(event('ROUND_STARTED', `bullet-round-${index}`, startedAt, roundPayload(), roundSessionId));
+  const lobbyId = index <= 2 ? 'SPEED1' : index <= 4 ? 'SPEED2' : 'SPEED3';
+  const languageId = index <= 2 ? 1 : index <= 4 ? 2 : 3;
+  bullet.process(event('ROUND_STARTED', `bullet-round-${index}`, startedAt, roundPayload(), roundSessionId, null, 77, lobbyId, languageId));
   const elapsedMs = index === 5 ? 10000 : 9000;
   bullet.process(event(
     'CORRECT_GUESS',
@@ -117,7 +126,10 @@ for (let index = 1; index <= 5; index += 1) {
     startedAt + elapsedMs,
     correctPayload(elapsedMs),
     roundSessionId,
-    selfActor
+    selfActor,
+    77,
+    lobbyId,
+    languageId
   ));
   if (index === 2) {
     bullet.process(event(
@@ -126,12 +138,15 @@ for (let index = 1; index <= 5; index += 1) {
       startedAt + elapsedMs + 1,
       correctPayload(elapsedMs),
       roundSessionId,
-      selfActor
+      selfActor,
+      77,
+      lobbyId,
+      languageId
     ));
   }
 }
 
-assert(bullet.getInstance('bullet')?.status === 'completion-pending', 'Five distinct fast guessing turns must complete Bullet skribbl.io.');
+assert(bullet.getInstance('bullet')?.status === 'completion-pending', 'Five distinct observed fast turns must complete Bullet skribbl.io across lobby and language changes.');
 assert(bullet.getInstance('bullet')?.progress.current === 5, 'A duplicate correct event in one turn must not increase Bullet progress.');
 assert(
   !(bullet.getInstance('bullet')?.completionCandidate?.evidenceEventIds.includes('bullet-duplicate-same-turn') ?? true),

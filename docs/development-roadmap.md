@@ -16,7 +16,7 @@
 | Synchronized match start | Complete | Fixed 10-second server countdown, shared start timestamp and activation of only the drafted board |
 | Match reconnect continuity | Complete | Contract v3 resume cursor, 30-second server grace, authoritative snapshot restoration and stale-state rejection |
 | Draft interaction hardening | Complete | Stable clock updates, centered two-choice surface, Left/Right Arrow input and definition tooltips |
-| Lobby-series reset | Complete | Back to back and OMG Hacker reset from canonical lobby-session changes |
+| Lobby-series continuity | Complete | Back to back uses stable lobby identity; Noob vs. Pro vs. Hacker and Bullet retain global progress across lobby/language changes |
 | GIF asset template | Complete | Validated paths for all 46 challenge icons plus logo, settings, about and countdown frames |
 | Vanilla Hub and match-start stage | Complete | Homepage entry, intro, modal Hub, dynamic Duels/Match navigation and standalone Versus/Draft/Countdown views |
 | Persistent Versus identity | Complete | Duel name, language, Discord/Skribbl avatar selection and server-controlled Special entitlement |
@@ -31,6 +31,7 @@
 | Challenge recovery and rebalance | Complete | Reload-safe telemetry/Claim resume plus replay-backed updates for the twelve requested Challenges |
 | Match result and Rematch UI | Complete | Crowned winner card/animation, human elapsed time, three result actions and Contract v7 Rematch readiness |
 | Match Chat polish | Complete | Unicode counter, submit auto-scroll, top fade, native scrollbars and optional Typo-compatible toast notifications |
+| v0.50 reliability hardening | Complete | Rematch queue isolation, WebSocket-first reconnect recovery, active-lobby action locks, `.skd` collection support and Challenge boundary tests |
 
 ## Active development sequence
 
@@ -40,23 +41,37 @@
 - Reuse the authoritative Ready, Draft, Countdown and reconnect lifecycle.
 - Prevent an invite token from revealing account data before it is accepted.
 
-### 2. Persistence and competition
+### 2. Durable authority and production reliability
 
 - Persist matches, participants, boards, claims and final results in Supabase.
-- Add Ranked rating updates and match history only after result validation is
-  replay-tested.
-- Implement two-complete-game series behavior such as Back to back without
-  weakening lobby-change resets.
+- Restore matches after Gateway process restarts and make actions/claims
+  durably idempotent.
+- Add multi-instance realtime coordination, health/readiness checks, metrics,
+  alerting, rate limits and anti-replay/anti-cheat enforcement.
 
-### 3. Product completion
+### 3. Ranked competition and history
+
+- Define rating, provisional, season, Draw, Forfeit and reconnect-timeout rules.
+- Apply each rating update exactly once and add leaderboard plus match history.
+- Prevent repeated-opponent farming and certify all 46 Challenges in live
+  two-client runs.
+
+### 4. Product and release completion
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
-- Reconnect/error UX, observability and abuse limits.
+- Complete accessibility, responsive/reduced-motion QA and profile entitlement
+  administration.
+- Add two-browser end-to-end tests, transport/Gateway-restart tests, load tests,
+  staging gates, canary release and rollback automation.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-Challenge recovery, the requested balance pass and Rematch readiness shipped in
-v0.49.0 with Contract v7. The next milestone is Friendly invite ownership and
-expiry without weakening the existing authoritative lifecycle.
+Challenge recovery, the balance pass and Rematch readiness shipped in v0.49.0.
+v0.50.0 hardens the telemetry/reconnect boundary and the requested Challenge
+semantics without changing Contract v7. Invite links remain a parallel product
+workstream; durable authority and production reliability are the highest-risk
+remaining prerequisites.
+The complete post-v0.50 build gate is recorded in
+`docs/full-build-roadmap-post-v0.50.0.md`.
 The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.

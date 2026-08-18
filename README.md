@@ -1,9 +1,37 @@
-# Skribbl Duels v0.49.1
+# Skribbl Duels v0.50.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v7, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.50.0
+
+- Fixes the Forfeit/Rematch telemetry deadlock by clearing queued envelopes,
+  in-flight batches and pending candidates whenever a new match ID arrives.
+- Prefers WebSocket transport, retains polling as a fallback and exposes
+  Reconnect plus reconnect-and-forfeit controls inside an interrupted match.
+- Locks New Match and Rematch until the visible Skribbl homepage is restored,
+  so neither action can start while a Skribbl lobby is active.
+- Requires first-guesser status for Blind Guess, Drunk Vision and Deaf Guess.
+- Reads both current Typo `.skd` collections and legacy raw-command files,
+  including detached file pickers without an `accept` attribute.
+- Tightens Back to back: both wins need positive scores, the lobby must match,
+  and the second game's start must have been observed. An unobserved second win
+  becomes the first win of a fresh streak.
+- Certifies Noob vs. Pro vs. Hacker and Bullet skribbl.io progress across lobby
+  and language changes with dedicated regression coverage.
+- Delays the final win line briefly so all accepted Challenge completions are
+  inserted first, adds in-match recovery controls, and locks result actions
+  correctly.
+- Reduces Versus avatars and preserves the full Skribbl special layer without
+  clipping. Finished-match text is centered in its right-hand result column.
+- Applies the borderless panel card and accent/danger button styling requested
+  for the Duel UI.
+
+Challenge definitions are now v2.9.0. Deploy the v0.50.0 Gateway before the
+userscript so both authoritative engines use the same definition versions.
+No database or Gateway Contract migration is required.
 
 ## v0.49.1
 
@@ -61,7 +89,7 @@ repository itself contains only the single stable Userscript entry point.
 
 ## Database migrations
 
-v0.49.1 adds no migration. Installations upgrading from before v0.48.0 must
+v0.50.0 adds no migration. Installations upgrading from before v0.48.0 must
 still apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`
 before deploying the current Gateway.
 
@@ -78,7 +106,9 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/live-telemetry-ui-hotfix-v0.49.1.md`,
+See `docs/reliability-challenge-hardening-v0.50.0.md`,
+`docs/full-build-roadmap-post-v0.50.0.md`,
+`docs/live-telemetry-ui-hotfix-v0.49.1.md`,
 `docs/challenge-recovery-match-ui-v0.49.0.md`,
 `docs/match-conclusions-ui-security-v0.48.0.md`,
 `docs/gateway-chat-telemetry-authority-v0.47.0.md` and

@@ -112,16 +112,28 @@ positions.register(noobVsProVsHackerDefinition);
 positions.activate({ instanceId: 'positions', challengeId: 'noob-vs-pro-vs-hacker' });
 const positionSequence = [1, 1, 2, 2, 3, 4, 4, 5, 6, 7];
 positionSequence.forEach((position, index) => {
-  positions.process(event(
+  const positionEvent = event(
     'CORRECT_GUESS',
     `position-${position}-event-${index}`,
     9000 + index,
     correct(position, 5000 + index * 1000),
     `position-turn-${index}`,
     actor
-  ));
+  );
+  const lobbyNumber = index < 3 ? 1 : index < 7 ? 2 : 3;
+  positions.process({
+    ...positionEvent,
+    context: {
+      ...positionEvent.context,
+      lobbySessionId: `hint-position-lobby-session-${lobbyNumber}`,
+      lobbyGeneration: lobbyNumber,
+      lobbyId: `HINTPOS${lobbyNumber}`,
+      languageId: lobbyNumber,
+      languageName: lobbyNumber === 1 ? 'German' : lobbyNumber === 2 ? 'English' : 'Spanish'
+    }
+  });
 });
-assert(positions.getInstance('positions')?.status === 'completion-pending', 'Collecting positions 1 through 7 must continue after duplicate positions and complete the challenge.');
+assert(positions.getInstance('positions')?.status === 'completion-pending', 'Collecting positions 1 through 7 must continue through duplicate positions, lobby changes and language changes.');
 assert(positions.getInstance('positions')?.progress.current === 7, 'Duplicate positions must not increase progress or block later unique positions.');
 assert(
   JSON.stringify((positions.getInstance('positions')?.internalState as { collectedPositions: number[] }).collectedPositions) === '[1,2,3,4,5,6,7]',

@@ -6,6 +6,7 @@ import {
 } from '@skribbl-duels/challenge-definitions';
 import {
   fingerprintSkdCommands,
+  parseSkdCommandSequences,
   TypoAutodrawTelemetryAdapter,
   type TypoSkdLoadedPayload
 } from '@skribbl-duels/telemetry-core';
@@ -132,6 +133,13 @@ const commands = [
 const fingerprint = fingerprintSkdCommands(commands);
 assert(fingerprint === fingerprintSkdCommands(commands), 'SKD command fingerprints must be deterministic.');
 assert(fingerprint !== fingerprintSkdCommands(commands.slice(0, 2)), 'Different SKD command sequences need different fingerprints.');
+const collectionSequences = parseSkdCommandSequences([
+  { name: 'first drawing', commands },
+  { name: 'second drawing', commands: commands.slice(0, 2) }
+]);
+assert(collectionSequences.length === 2, 'Current Typo .skd collection exports must expose every contained drawing.');
+assert(collectionSequences[0]?.length === commands.length, 'The first collection entry must preserve its complete command list.');
+assert(parseSkdCommandSequences(commands).length === 1, 'Legacy bare-command .skd exports must remain supported.');
 
 const autodraw = new ChallengeEngine({ autoPersist: false });
 autodraw.register(autodrawDetectedDefinition);
@@ -236,4 +244,3 @@ assert(adapterEmitted.some(entry => entry.type === 'TYPO_SKD_PASTED'), 'The fall
 adapter.stop();
 
 console.log('Autodraw command-sequence fallback test passed.');
-

@@ -246,6 +246,8 @@ export class SocketIoGatewayClient {
       auth,
       reconnection: true,
       reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'],
+      tryAllTransports: true,
       timeout: 10_000
     });
     this.socket = socket;
@@ -356,6 +358,11 @@ export class SocketIoGatewayClient {
       if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
       const sameMatch = this.state.match?.matchId === value.matchId;
       const sameTelemetryMatch = sameMatch || this.state.telemetryAck?.matchId === value.matchId;
+      // A direct rematch does not pass through joinMatchmaking(), so the last
+      // telemetry batch of the finished match can still be in flight. If it
+      // remains at the front of the queue, the new match never reaches the
+      // server and every local completion stays pending forever.
+      if (!sameMatch) this.clearTelemetryQueue();
       if (value.state.phase === 'cancelled') this.clearResumeCursor();
       else this.setResumeCursor(value.matchId, value.revision);
       this.update({

@@ -21,8 +21,11 @@ assert(product.includes('this.awaitingTelemetryResumeCursor'), 'telemetry resume
 assert(product.includes('this.deferredTelemetryEvents.push(structuredClone(event))'), 'telemetry events are not buffered during Gateway resume');
 assert(product.includes('this.reconcileBoardChallenges(snapshot.matchId, board, startedAt)'), 'persisted challenge runtimes are not reconciled with the resumed board');
 assert(product.includes('private flushPendingClaimCandidates()'), 'pending Bloodline and reconnect claims are not flushed after resume');
+assert(product.includes('private flushForfeitAfterReconnect('), 'interrupted matches cannot reconnect and forfeit');
+assert(product.includes('this.scheduleConclusionPresentation(event.state, event.occurredAt)'), 'match conclusions are not ordered after accepted completion messages');
 assert(product.includes("'#scd-raw-recorder-panel'"), 'foreign telemetry panels are not isolated');
 assert(product.includes("window.location.pathname !== '/'"), 'homepage-only matchmaking guard is missing');
+assert(product.includes('newMatch.disabled = !this.matchState.format || !homepageAvailable'), 'New Match remains available inside a Skribbl lobby');
 assert(product.includes("this.gatewayClient.setReady(match.matchId, true)"), 'ready acceptance is not a one-way one-click action');
 assert(!product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready)"), 'ready acceptance still toggles and can require a second click');
 assert(product.includes('createDraftProgressFields'), 'draft board is not rendered incrementally');

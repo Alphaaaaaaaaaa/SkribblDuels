@@ -83,6 +83,21 @@ function parseCommandArray(value: unknown): unknown[][] | null {
   return commands as unknown[][];
 }
 
+export function parseSkdCommandSequences(value: unknown): unknown[][][] {
+  const direct = parseCommandArray(value);
+  if (direct) return [direct];
+
+  const entries = Array.isArray(value) ? value : [value];
+  const sequences: unknown[][][] = [];
+  for (const entry of entries) {
+    const record = recordValue(entry);
+    if (!record) continue;
+    const commands = parseCommandArray(record.commands);
+    if (commands) sequences.push(commands);
+  }
+  return sequences;
+}
+
 function loadedFromDetail(value: unknown): { payload: TypoSkdLoadedPayload; commands: unknown[][] | null } | null {
   const wrapper = recordValue(value);
   if (!wrapper) return null;
@@ -170,7 +185,10 @@ export class TypoAutodrawTelemetryAdapter {
     const adapter = this;
     const original = HTMLInputElement.prototype.click;
     const patched = function(this: HTMLInputElement): void {
-      if (this.type === 'file' && this.accept.toLocaleLowerCase().includes('.skd')) {
+      // Typo creates its image-lab picker as a detached input and some builds
+      // omit the accept=".skd" attribute. Observe every detached file picker;
+      // handleFileInputChange still filters strictly by the selected filename.
+      if (this.type === 'file') {
         this.addEventListener('change', adapter.handleFileInputChange, { once: true });
       }
       original.call(this);
@@ -198,16 +216,20 @@ export class TypoAutodrawTelemetryAdapter {
 
   private async readFile(file: File): Promise<void> {
     try {
-      const commands = parseCommandArray(JSON.parse(await file.text()));
-      if (!commands) return;
-      const payload: TypoSkdLoadedPayload = {
-        fileName: file.name,
-        fingerprint: fingerprintSkdCommands(commands),
-        commandCount: commands.length,
-        loadedFromFile: true,
-        method: 'file-input-fallback'
-      };
-      this.registerLoaded(payload, commands, 'confirmed');
+      // Current Typo .skd exports are collections of { name, commands }
+      // records; older exports can be a bare command array. Register every
+      // contained drawing so using any entry can be matched later.
+      const sequences = parseSkdCommandSequences(JSON.parse(await file.text()));
+      for (const commands of sequences) {
+        const payload: TypoSkdLoadedPayload = {
+          fileName: file.name,
+          fingerprint: fingerprintSkdCommands(commands),
+          commandCount: commands.length,
+          loadedFromFile: true,
+          method: 'file-input-fallback'
+        };
+        this.registerLoaded(payload, commands, 'confirmed');
+      }
     } catch (error) {
       console.warn('[Skribbl Duels Autodraw] Failed to parse selected .skd file.', file.name, error);
     }

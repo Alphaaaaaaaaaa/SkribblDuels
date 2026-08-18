@@ -82,13 +82,13 @@ function engineFor(definition: Parameters<ChallengeEngine['register']>[0], insta
 }
 
 const expectedVersions = new Map([
-  [bloodlineDefinition.id, 2], [ouchDefinition.id, 2], [picassoDefinition.id, 2],
+  [bloodlineDefinition.id, 3], [ouchDefinition.id, 2], [picassoDefinition.id, 2],
   [coolNumberDetectedDefinition.id, 2], [fanboyDefinition.id, 2], [colorPickerDefinition.id, 2],
   [timeWasteDefinition.id, 2], [moggedDefinition.id, 4], [needSomeSpaceDefinition.id, 2],
   [smolWordsDefinition.id, 2], [bigWordDefinition.id, 2], [hintReflexesDefinition.id, 2]
 ]);
 for (const [definition, version] of [
-  [bloodlineDefinition, 2], [ouchDefinition, 2], [picassoDefinition, 2],
+  [bloodlineDefinition, 3], [ouchDefinition, 2], [picassoDefinition, 2],
   [coolNumberDetectedDefinition, 2], [fanboyDefinition, 2], [colorPickerDefinition, 2],
   [timeWasteDefinition, 2], [moggedDefinition, 4], [needSomeSpaceDefinition, 2],
   [smolWordsDefinition, 2], [bigWordDefinition, 2], [hintReflexesDefinition, 2]

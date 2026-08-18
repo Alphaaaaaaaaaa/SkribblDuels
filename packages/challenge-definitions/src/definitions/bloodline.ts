@@ -13,7 +13,9 @@ export interface BloodlineState {
 
 export const bloodlineDefinition: ChallengeDefinition<BloodlineState, BloodlineParameters> = {
   id: 'bloodline',
-  version: 2,
+  // v3 intentionally invalidates v2 completion-pending snapshots whose
+  // navigation event was stranded client-side by the old reconnect queue.
+  version: 3,
   metadata: {
     category: 'home',
     localization: localization(

@@ -130,6 +130,12 @@ for (const definition of definitions) {
     selectedChallengeKeys: [definition.id],
     method: 'typo-relay'
   }, roundSessionId, self));
+  engine.process(event('CORRECT_GUESS', `${definition.id}-second-guesser`, 625, {
+    ...correctPayload,
+    position: 2,
+    isFirstGuesser: false
+  }, roundSessionId, self));
+  assert(engine.getInstance(definition.id)?.status === 'active', `${definition.id} must reject a non-first correct guess.`);
   engine.process(event('CORRECT_GUESS', `${definition.id}-correct`, 650, correctPayload, roundSessionId, self));
   assert(engine.getInstance(definition.id)?.status === 'completion-pending', `${definition.id} should complete while its Typo effect is selected and active.`);
 }

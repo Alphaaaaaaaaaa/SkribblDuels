@@ -1,9 +1,29 @@
-# Skribbl Duels v0.49.0
+# Skribbl Duels v0.49.1
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v7, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.49.1
+
+- Restores the live telemetry handshake lost in v0.48.0. The Typo relay now
+  starts synchronously before IndexedDB record redaction, so one-shot incoming
+  and outgoing `MessagePort` transfers cannot be missed during startup.
+- Runs stored-record redaction safely in the background and adds a regression
+  check that protects the startup order.
+- Restores the v0.48 square Challenge-icon sizing and scales the new result
+  avatar, crown, trophy and winner animation to match it.
+- Keeps Skribbl avatars transparent. The translucent avatar background is used
+  only for initials fallbacks and Discord images where transparent pixels need
+  a backdrop.
+- Shows only the current Match Chat character count, reserves input space for
+  it, removes WebKit scrollbar arrows and uses a full-width rounded thumb.
+- Replaces the browser Forfeit confirmation with a Typo-compatible confirm
+  toast.
+
+No Gateway Contract, Challenge definition or database migration changes are
+required for v0.49.1.
 
 ## v0.49.0
 
@@ -35,9 +55,13 @@ Install `userscript/skribbl-duels-telemetry-inspector.user.js` in Tampermonkey.
 The stable path is updated in place for each release; the metadata contains the
 exact version.
 
+If an older installation named `Skribbl Duels - Telemetry Inspector` is still
+listed next to `Skribbl Duels`, remove or disable the older entry once. The
+repository itself contains only the single stable Userscript entry point.
+
 ## Database migrations
 
-v0.49.0 adds no migration. Installations upgrading from before v0.48.0 must
+v0.49.1 adds no migration. Installations upgrading from before v0.48.0 must
 still apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`
 before deploying the current Gateway.
 
@@ -54,7 +78,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/challenge-recovery-match-ui-v0.49.0.md`,
+See `docs/live-telemetry-ui-hotfix-v0.49.1.md`,
+`docs/challenge-recovery-match-ui-v0.49.0.md`,
 `docs/match-conclusions-ui-security-v0.48.0.md`,
 `docs/gateway-chat-telemetry-authority-v0.47.0.md` and
 `docs/ui-product-direction-v0.41.0.md`.

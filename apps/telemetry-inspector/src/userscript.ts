@@ -81,7 +81,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.49.0';
+const BUILD_VERSION = '0.49.1';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -266,7 +266,10 @@ function createRuntimeController(): RuntimeController {
 async function bootstrap(runtime: RuntimeController): Promise<void> {
   const bridge = new TypoRelayBridge();
   const store = new IndexedDbRawPacketStore();
-  await store.redactSensitiveRecords();
+  // Typo transfers both relay MessagePorts only once during page startup. The
+  // listener must therefore be active before any asynchronous storage work.
+  // Awaiting IndexedDB cleanup here used to lose that handshake and left the
+  // complete live telemetry pipeline at zero events.
   bridge.start();
   runtime.addCleanup(() => bridge.stop());
 
@@ -288,6 +291,9 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
   const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
   const replayProvider = new TelemetryReplayProvider();
+  void store.redactSensitiveRecords().catch(error => {
+    console.warn('[Skribbl Duels Telemetry] Stored-record redaction failed', error);
+  });
   runtime.addCleanup(() => recorder.destroy());
   runtime.addCleanup(() => decoder.destroy());
   runtime.addCleanup(() => lobbyStore.destroy());

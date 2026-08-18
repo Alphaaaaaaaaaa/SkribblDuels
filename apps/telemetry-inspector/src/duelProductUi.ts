@@ -490,8 +490,10 @@ class CompletionChatAdapter {
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
 #skribbl-duels-panel [data-role='body'],.scd-stage-shell,.scd-chat-log { overscroll-behavior:contain; }
-#skribbl-duels-panel ::-webkit-scrollbar,#skribbl-duels-stage ::-webkit-scrollbar,#skribbl-duels-board ::-webkit-scrollbar { width:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
-#skribbl-duels-panel ::-webkit-scrollbar-thumb,#skribbl-duels-stage ::-webkit-scrollbar-thumb,#skribbl-duels-board ::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
+#skribbl-duels-panel ::-webkit-scrollbar,#skribbl-duels-stage ::-webkit-scrollbar,#skribbl-duels-board ::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
+#skribbl-duels-panel ::-webkit-scrollbar-track,#skribbl-duels-stage ::-webkit-scrollbar-track,#skribbl-duels-board ::-webkit-scrollbar-track { border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
+#skribbl-duels-panel ::-webkit-scrollbar-thumb,#skribbl-duels-stage ::-webkit-scrollbar-thumb,#skribbl-duels-board ::-webkit-scrollbar-thumb { min-height:28px;border:0;border-radius:7px;background-color:var(--COLOR_PANEL_HI);background-clip:border-box; }
+#skribbl-duels-panel ::-webkit-scrollbar-button,#skribbl-duels-stage ::-webkit-scrollbar-button,#skribbl-duels-board ::-webkit-scrollbar-button { display:none;width:0;height:0; }
 #skribbl-duels-panel *,#skribbl-duels-stage *,#skribbl-duels-board * { scrollbar-color:var(--COLOR_PANEL_HI) var(--COLOR_PANEL_LO);scrollbar-width:auto; }
 .scd-modal-header { display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:10px;padding:8px 10px 4px; }
 .scd-modal-title { font-size:1.8em;font-weight:700;text-align:center;white-space:nowrap; }
@@ -508,7 +510,7 @@ class CompletionChatAdapter {
 .scd-versus { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
 .scd-versus-player { min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center; }
-.scd-versus-avatar { width:min(190px,28vw);aspect-ratio:1;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:clamp(36px,8vw,76px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
+.scd-versus-avatar { width:min(190px,28vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(36px,8vw,76px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
 .scd-versus-name { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.35em;font-weight:800; }
 .scd-versus-vs { font-size:clamp(28px,6vw,54px);font-weight:900;text-shadow:3px 3px 0 rgba(0,0,0,.3); }
 .scd-ready-state { display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.72);font-size:12px; }
@@ -558,7 +560,7 @@ class CompletionChatAdapter {
 .scd-field.pending { outline:2px solid #ffd95f;outline-offset:-2px; }
 .scd-field.self { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#56ce27); }
 .scd-field.opponent { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#ce4f0a); }
-.scd-field-icon { display:grid;place-items:center;width:60%;height:56%;min-height:0;flex:0 1 56%;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
+.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
 .scd-field-icon .scd-icon-image { image-rendering:pixelated; }
 .scd-field-name { display:block;width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:10px;line-height:1.15;font-weight:700; }
 .scd-final-slot-name { animation:scd-slot-flicker .18s linear infinite; }
@@ -594,6 +596,7 @@ class CompletionChatAdapter {
 .scd-skribbl-avatar .eyes { background-image:url('https://skribbl.io/img/avatar/eyes_atlas.gif'); }
 .scd-skribbl-avatar .mouth { background-image:url('https://skribbl.io/img/avatar/mouth_atlas.gif'); }
 .scd-skribbl-avatar .special { position:absolute;left:-33%;top:-33%;width:166%;height:166%;background-image:url('https://skribbl.io/img/avatar/special_atlas.gif');background-size:1000% 1000%; }
+.scd-avatar-fallback,.scd-avatar-discord { background:rgba(255,255,255,.1); }
 .scd-draft-picks { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px; }
 .scd-draft-pick { min-width:0;padding:5px 7px;border-radius:6px;background:rgba(255,255,255,.06);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-draft-pick.self { border-left:3px solid var(--SCD_SELF); }
@@ -610,12 +613,13 @@ class CompletionChatAdapter {
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
 .scd-chat-characters.visible { top:.5em;opacity:1; }
-.scd-chat-form input { height:2.2em;width:100%;padding:.2em;padding-right:3.8em; }
+.scd-chat-form input { height:2.2em;width:100%;padding:.2em;padding-right:4.25em; }
 .scd-match-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .scd-draw-proposal { border-left:3px solid var(--SCD_ACCENT); }
 .scd-result-card { display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px;row-gap:8px;overflow:hidden; }
-.scd-result-visual { position:relative;grid-row:1/3;width:92px;height:92px;display:grid;place-items:center;isolation:isolate; }
-.scd-result-avatar { position:relative;z-index:1;width:78px;height:78px;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:32px;font-weight:900; }
+.scd-result-visual { position:relative;grid-row:1/3;width:70px;height:70px;display:grid;place-items:center;isolation:isolate; }
+.scd-result-visual > .scd-icon { width:56px;height:56px; }
+.scd-result-avatar { position:relative;z-index:1;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:900; }
 .avatar .owner { position:absolute;width:50%;height:50%;left:-5%;top:-22%;z-index:2;background-image:url('/img/crown.gif');background-position:center;background-size:contain;background-repeat:no-repeat; }
 .scd-result-trophy,.scd-win-trophy { z-index:-1;position:absolute;width:100%;height:100%;left:50%;background-image:url('/img/trophy.gif');background-size:cover;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
 .scd-result-title { color:var(--COLOR_CHAT_TEXT_OWNER,#ffa844);font-size:1.15em; }
@@ -626,12 +630,14 @@ class CompletionChatAdapter {
 .scd-result-actions .scd-button:active:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_ACTIVE,#1d40b4); }
 .scd-win-animation { position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none;overflow:hidden;background:radial-gradient(circle,rgba(42,81,209,.28),rgba(0,0,0,.7));animation:scd-win-fade 3.4s both; }
 .scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35); }
-.scd-win-visual { position:relative;width:clamp(150px,30vw,310px);height:clamp(150px,30vw,310px);display:grid;place-items:center;isolation:isolate; }
-.scd-win-player { position:relative;z-index:1;width:72%;height:72%;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:clamp(42px,9vw,94px);animation:player_winner 3.2s both;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
+.scd-win-visual { position:relative;width:clamp(120px,24vw,240px);height:clamp(120px,24vw,240px);display:grid;place-items:center;isolation:isolate; }
+.scd-win-player { position:relative;z-index:1;width:68%;height:68%;border-radius:50%;display:grid;place-items:center;font-size:clamp(34px,7vw,72px);animation:player_winner 3.2s both;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
 .typo-toast-container { position:fixed;left:0;right:0;top:0;height:0;overflow:visible;z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:1rem;padding-top:1rem; }
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
 .scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
+.scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
+.scd-duel-toast .typo-toast-confirm .scd-button { min-width:7rem; }
 #skribbl-duels-panel input::placeholder,#skribbl-duels-panel textarea::placeholder,#skribbl-duels-stage input::placeholder,#skribbl-duels-stage textarea::placeholder { color:var(--COLOR_PANEL_TEXT_PLACEHOLDER); }
 #skribbl-duels-panel input,#skribbl-duels-panel select,#skribbl-duels-panel textarea,#skribbl-duels-stage input,#skribbl-duels-stage select,#skribbl-duels-stage textarea { font:inherit;flex:0 0 auto;height:32px;width:100%;min-width:0;color:var(--COLOR_INPUT_TEXT);background-color:var(--COLOR_INPUT_BG);border:1px solid var(--COLOR_INPUT_BORDER);border-radius:var(--BORDER_RADIUS);padding:.2em .5em;transition:background-color .12s ease,border-color .12s ease;box-sizing:border-box; }
 #skribbl-duels-panel input:focus,#skribbl-duels-panel select:focus,#skribbl-duels-panel textarea:focus,#skribbl-duels-stage input:focus,#skribbl-duels-stage select:focus,#skribbl-duels-stage textarea:focus { outline:0;background-color:var(--COLOR_INPUT_HOVER);border-color:var(--COLOR_INPUT_BORDER_FOCUS);box-shadow:0 0 10px -4px var(--COLOR_INPUT_BORDER_FOCUS); }
@@ -1007,7 +1013,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.49.0',
+      version: '0.49.1',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1108,6 +1114,9 @@ export class DuelProductFoundation {
     this.homeButton?.remove();
     this.board?.remove();
     this.winAnimation?.remove();
+    document.querySelectorAll<HTMLElement>('.scd-duel-toast').forEach(toast => {
+      if (toast.dataset.scdRuntimeId === this.options.runtimeId) toast.remove();
+    });
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = null;
     if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
@@ -1128,7 +1137,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.49.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.49.1') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1756,9 +1765,15 @@ export class DuelProductFoundation {
     participant: GatewayMatchmakingParticipant | null,
     className = 'scd-result-avatar'
   ): HTMLDivElement {
-    const avatar = element('div', `avatar fit ${className}`, displayName.slice(0, 1).toUpperCase());
+    const avatar = element(
+      'div',
+      `avatar fit scd-avatar-fallback ${className}`,
+      displayName.slice(0, 1).toUpperCase()
+    );
     const avatarUrl = participant?.avatarSource === 'discord' ? participant.avatarUrl : null;
     if (avatarUrl) {
+      avatar.classList.remove('scd-avatar-fallback');
+      avatar.classList.add('scd-avatar-discord');
       const image = element('img') as HTMLImageElement;
       image.src = avatarUrl;
       image.alt = '';
@@ -1768,11 +1783,17 @@ export class DuelProductFoundation {
         avatar.textContent = '';
         avatar.appendChild(image);
       }, { once: true });
-      image.addEventListener('error', () => image.remove(), { once: true });
+      image.addEventListener('error', () => {
+        image.remove();
+        avatar.classList.remove('scd-avatar-discord');
+        avatar.classList.add('scd-avatar-fallback');
+      }, { once: true });
       avatar.appendChild(image);
     }
     if (!avatarUrl && participant?.avatarSource === 'skribbl' && participant.skribblAvatar) {
       avatar.textContent = '';
+      avatar.classList.remove('scd-avatar-fallback');
+      avatar.classList.add('scd-avatar-skribbl');
       avatar.appendChild(this.createSkribblAvatar(
         participant.skribblAvatar,
         `${displayName} Skribbl avatar`
@@ -2306,8 +2327,13 @@ export class DuelProductFoundation {
           this.gatewayClient.proposeDraw(gatewayMatch.matchId), propose));
         const forfeit = element('button', 'scd-button danger', 'Forfeit Duel') as HTMLButtonElement;
         forfeit.type = 'button';
-        forfeit.addEventListener('click', () => {
-          if (!window.confirm('Forfeit this Duel? Your opponent will win immediately.')) return;
+        forfeit.addEventListener('click', async () => {
+          const confirmed = await this.showConfirmToast(
+            'Forfeit Duel?',
+            'Your opponent will win immediately.',
+            { confirm: 'Forfeit', cancel: 'Cancel' }
+          );
+          if (!confirmed) return;
           this.runMatchAction(() => this.gatewayClient.forfeitMatch(gatewayMatch.matchId), forfeit);
         });
         actions.append(propose, forfeit);
@@ -2497,11 +2523,11 @@ export class DuelProductFoundation {
     // Keep enough UTF-16 room for 300 astral Unicode code points; input handling
     // enforces the actual Contract limit.
     input.maxLength = 600;
-    const count = element('span', 'scd-chat-characters', '0/300');
+    const count = element('span', 'scd-chat-characters', '0');
     const updateCount = (): void => {
       const codePoints = Array.from(input.value);
       if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join('');
-      count.textContent = `${Array.from(input.value).length}/300`;
+      count.textContent = String(Array.from(input.value).length);
       count.classList.toggle('visible', document.activeElement === input || input.value.length > 0);
     };
     input.addEventListener('input', updateCount);
@@ -3021,6 +3047,57 @@ export class DuelProductFoundation {
     );
     container.appendChild(toast);
     window.setTimeout(close, 3_500);
+  }
+
+  private showConfirmToast(
+    title: string,
+    content: string,
+    naming: { confirm: string; cancel: string },
+    timeout = 30_000
+  ): Promise<boolean> {
+    let container = document.querySelector<HTMLElement>('.typo-toast-container');
+    if (!container) {
+      container = element('div', 'typo-toast-container');
+      container.dataset.scdRuntimeId = this.options.runtimeId;
+      (document.body ?? document.documentElement).prepend(container);
+    }
+
+    return new Promise(resolve => {
+      const toast = element('div', 'typo-toast scd-duel-toast');
+      toast.dataset.scdRuntimeId = this.options.runtimeId;
+      let settled = false;
+      let timeoutTimer: number | null = null;
+      const settle = (result: boolean): void => {
+        if (settled) return;
+        settled = true;
+        if (timeoutTimer !== null) window.clearTimeout(timeoutTimer);
+        toast.classList.add('closing');
+        window.setTimeout(() => toast.remove(), 150);
+        resolve(result);
+      };
+      timeoutTimer = window.setTimeout(() => settle(false), timeout);
+
+      const closeButton = element('span', 'close-toast', '×');
+      closeButton.setAttribute('role', 'button');
+      closeButton.setAttribute('aria-label', naming.cancel);
+      closeButton.tabIndex = 0;
+      closeButton.addEventListener('click', () => settle(false));
+      closeButton.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') settle(false);
+      });
+
+      const actions = element('div', 'typo-toast-confirm');
+      const confirm = element('button', 'scd-button danger', naming.confirm) as HTMLButtonElement;
+      confirm.type = 'button';
+      confirm.addEventListener('click', () => settle(true));
+      const cancel = element('button', 'scd-button', naming.cancel) as HTMLButtonElement;
+      cancel.type = 'button';
+      cancel.addEventListener('click', () => settle(false));
+      actions.append(confirm, cancel);
+      toast.append(element('h3', '', title), closeButton, element('span', '', content), actions);
+      container.appendChild(toast);
+      confirm.focus();
+    });
   }
 
   private handleGatewayClaimResolution(resolution: GatewayClaimResolutionMessage): void {

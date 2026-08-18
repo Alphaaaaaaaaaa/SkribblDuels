@@ -66,7 +66,7 @@ assert(source.includes("backgroundPosition = `${-(index % 10) * 100}% ${-Math.fl
 assert(source.includes("'https://skribbl.io/img/avatar/special_atlas.gif'"), 'Skribbl special atlas is missing');
 assert(source.includes('displayNameValidationMessage(name.value'), 'inline Duel-name validation is missing');
 assert(source.includes('color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800'), 'Duel-name errors are not bold leave-colored text');
-assert(source.includes('won the Skribbl Duel after ${formatDurationHms(message.elapsedMs)}!'), 'Duel win chat message is missing');
+assert(source.includes('${message.playerName} won after ${formatDurationWords(message.elapsedMs)}!'), 'Duel win chat message is missing');
 assert(source.includes("'width:60px'") && source.includes("drop-shadow(3px 3px 0 rgba(0, 0, 0, .25))"), 'fixed 60px launcher logo styling is missing');
 assert(!source.includes("this.tooltips.register(button, 'Open Skribbl Duels'"), 'homepage Skribbl Duels tooltip still exists');
 assert(source.includes('--SCD_ACCENT: var(--COLOR_PANEL_BUTTON, #2a51d1)'), 'primary accent does not use the Skribbl panel button color');
@@ -75,6 +75,9 @@ assert(source.includes('--SCD_ACCENT_ACTIVE: var(--COLOR_PANEL_BUTTON_ACTIVE, #1
 assert(source.includes('overscroll-behavior:contain'), 'Hub and chat do not contain scroll chaining');
 assert(source.includes('white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word'), 'Duel messages do not wrap long text');
 assert(source.includes('if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join'), 'client-side Unicode chat limit is missing');
+assert(source.includes("element('span', 'scd-chat-characters', '0/300')"), 'chat character counter is missing');
+assert(source.includes("log.classList.toggle('at-top', log.scrollTop <= 1)"), 'chat gradient scroll state is missing');
+assert(source.includes('background-color:var(--COLOR_PANEL_HI)'), 'Skribbl scrollbar thumb styling is missing');
 assert(source.includes('this.duelChatStickToBottom ? log.scrollHeight : this.duelChatScrollTop'), 'Duel chat does not preserve reader scroll position');
 assert(source.includes('input::placeholder') && source.includes('var(--COLOR_PANEL_TEXT_PLACEHOLDER)'), 'native Skribbl placeholder styling is missing');
 assert(source.includes('var(--COLOR_INPUT_BORDER_FOCUS)'), 'native Skribbl input focus styling is missing');
@@ -82,6 +85,17 @@ assert(source.includes("image.addEventListener('error'"), 'asset-error fallback 
 assert(!source.includes('wrapper.textContent = fallbackText;\n    wrapper.appendChild(image);'), 'challenge fallback is displayed before the asset resolves');
 assert(source.includes("this.checkbox('Play Win animation'"), 'Win animation setting is missing');
 assert(source.includes('this.showWinAnimation('), 'Win animation renderer is missing');
+assert(source.includes('@keyframes player_winner'), 'winner avatar animation is missing');
+assert(source.includes("background-image:url('/img/trophy.gif')"), 'winner trophy asset is missing');
+assert(source.includes('.avatar .owner') && source.includes("background-image:url('/img/crown.gif')"), 'winner crown asset is missing');
+assert(source.includes('this.createFinishedMatchSummary('), 'finished-match result card is missing');
+assert(source.includes("element('button', 'scd-button primary', 'New Match')"), 'New Match result action is missing');
+assert(source.includes("element('button', 'scd-button primary', 'Rematch')"), 'Rematch result action is missing');
+assert(source.includes('this.gatewayClient.requestRematch('), 'Rematch result action is not gateway-backed');
+assert(source.includes("this.checkbox('Show Match Chat toast notifications'"), 'chat notification toggle is missing');
+assert(source.includes("element('div', 'typo-toast scd-duel-toast')"), 'Typo-compatible chat toast is missing');
+assert(!source.includes("heading.textContent = 'Telemetry gateway'"), 'finished Match UI still exposes telemetry diagnostics');
+assert(!source.includes('Match frozen. Skribbl continues normally'), 'finished Match UI still exposes the telemetry freeze note');
 assert(source.includes("side: 'system'"), 'Match Chat result message is missing');
 assert(userscript.includes('panel.setVisible(false);\n  panel.mount();'), 'Telemetry Inspector is not hidden by default');
 console.log(JSON.stringify({ focusSafeMounting: true, sessionMatchRestore: true, parityChat: true, settingsOnlyBoardControl: true, tooltips: true, tooltipLineWrapping: true, stableDraftClock: true, standaloneMatchStage: true, versusReadyCheck: true, isolatedDraft: true, countdownScoreReplacement: true, animatedGifCountdown: true, dynamicMainTab: true, initialHubClosed: true, arrowSelection: true, realChallengeIcons: true, nonCoplanarIntroOrbits: true, expandedTracklessIntro: true, reducedIntroGlow: true, skribblDropShadows: true, inheritedSkribblFont: true, isolatedPointerControls: true, containedProfileInput: true, skribblAvatarRenderer: true, inlineAsciiNameValidation: true, retainedDuelChatFocus: true, winChatMessage: true, boardHoverDefinitions: true, integratedChat: true, boundedWrappedChat: true, isolatedScrolling: true, nativeSkribblForms: true, stableIconLoading: true, optionalWinAnimation: true, hiddenTelemetryInspector: true }, null, 2));

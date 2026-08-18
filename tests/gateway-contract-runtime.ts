@@ -9,11 +9,11 @@ import {
 const hello = {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.48.0',
+  clientVersion: '0.49.0',
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 6);
+assert.equal(GATEWAY_CONTRACT_VERSION, 7);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -35,6 +35,9 @@ assert.equal(isGatewayClientMessage({
 }), false);
 assert.equal(isGatewayClientMessage({
   type: 'MATCH_FORFEIT', matchId: 'match-1', actionId: 'action-1'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'MATCH_REMATCH', matchId: 'match-1', actionId: 'action-rematch'
 }), true);
 assert.equal(isGatewayClientMessage({
   type: 'DRAW_PROPOSE', matchId: 'match-1', actionId: 'action-2'
@@ -136,6 +139,7 @@ assert.equal(isGatewayServerMessage({
     claims: [],
     drawProposal: null,
     conclusion: null,
+    rematchReadyAccountIds: [],
     draft: null
   }
 }), true);
@@ -158,6 +162,7 @@ assert.equal(isGatewayServerMessage({
     claims: [],
     drawProposal: null,
     conclusion: null,
+    rematchReadyAccountIds: [],
     draft: {
       status: 'selecting',
       requiredPickCount: 9,

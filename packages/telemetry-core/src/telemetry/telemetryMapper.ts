@@ -317,7 +317,7 @@ export function mapLobbyChangeToTelemetry(
           totalScore,
           roundScore,
           delta: previousScore === null || totalScore === null ? null : totalScore - previousScore,
-          coolNumber: totalScore !== null && totalScore > 0 && totalScore % 250 === 0
+          coolNumber: totalScore !== null && totalScore > 0 && totalScore % 500 === 0
         }
       }];
     }

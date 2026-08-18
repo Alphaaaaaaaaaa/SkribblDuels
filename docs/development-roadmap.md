@@ -28,26 +28,19 @@
 | Match conclusion controls | Complete | Contract v6 immediate Forfeit plus accepted/rejected/withdrawn/expired reconnect-safe Draw proposals |
 | v0.48 UI and capture hardening | Complete | Bounded wrapped chat, isolated scrolling, native forms, stable icons, optional Win animation and login-code redaction |
 | Invisible avatar entitlement | Complete | RLS grant table and profile RPC enforcement for historical negative avatar parts |
+| Challenge recovery and rebalance | Complete | Reload-safe telemetry/Claim resume plus replay-backed updates for the twelve requested Challenges |
+| Match result and Rematch UI | Complete | Crowned winner card/animation, human elapsed time, three result actions and Contract v7 Rematch readiness |
+| Match Chat polish | Complete | Unicode counter, submit auto-scroll, top fade, native scrollbars and optional Typo-compatible toast notifications |
 
 ## Active development sequence
 
-### 1. Challenge validation and balancing pass
-
-- Reproduce and fix the Bloodline `/credits` pending-state race without
-  weakening server validation.
-- Evaluate the proposed changes in
-  `challenge-balance-backlog-post-v0.48.0.md` against replay fixtures and
-  language-specific word-list metrics.
-- Keep the published 46-challenge IDs stable unless a separately reviewed
-  migration requires otherwise.
-
-### 2. Friendly matches
+### 1. Friendly matches
 
 - Add expiring Gateway-owned Friendly invite creation and join tokens.
 - Reuse the authoritative Ready, Draft, Countdown and reconnect lifecycle.
 - Prevent an invite token from revealing account data before it is accepted.
 
-### 3. Persistence and competition
+### 2. Persistence and competition
 
 - Persist matches, participants, boards, claims and final results in Supabase.
 - Add Ranked rating updates and match history only after result validation is
@@ -55,15 +48,15 @@
 - Implement two-complete-game series behavior such as Back to back without
   weakening lobby-change resets.
 
-### 4. Product completion
+### 3. Product completion
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
 - Reconnect/error UX, observability and abuse limits.
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
-Forfeit and mutually agreed Draw shipped in Contract v6. The next milestone is
-the deferred Challenge correctness/balance pass, starting with Bloodline's
-pending-state race and replay-backed threshold decisions.
+Challenge recovery, the requested balance pass and Rematch readiness shipped in
+v0.49.0 with Contract v7. The next milestone is Friendly invite ownership and
+expiry without weakening the existing authoritative lifecycle.
 The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.

@@ -50,14 +50,14 @@ function addAttempt(
 
 export const moggedDefinition: ChallengeDefinition<MoggedState, MoggedParameters> = {
   id: 'mogged',
-  version: 3,
+  version: 4,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Mogged',
-      'Guess the word after at least three different players submitted a wrong word from the official lobby word list.',
+      'Be the first guesser after at least three different players submitted a wrong word from the official lobby word list.',
       'Mogged',
-      'Errate das Wort, nachdem mindestens drei verschiedene Spieler zuvor ein falsches Wort aus der offiziellen Wortliste der Lobby eingegeben haben.'
+      'Errate das Wort als Erster, nachdem mindestens drei verschiedene Spieler zuvor ein falsches Wort aus der offiziellen Wortliste der Lobby eingegeben haben.'
     ),
     icon: 'mogged-crowd',
     rankedEligible: true,
@@ -120,6 +120,7 @@ export const moggedDefinition: ChallengeDefinition<MoggedState, MoggedParameters
     }
 
     if (event.type !== 'CORRECT_GUESS' || event.actor?.isSelf !== true) return null;
+    if (!event.payload.isFirstGuesser && event.payload.position !== 1) return null;
 
     const status = event.context.languageId === null
       ? null

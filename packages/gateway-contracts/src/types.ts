@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 6 as const;
+export const GATEWAY_CONTRACT_VERSION = 7 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -102,6 +102,12 @@ export interface GatewayMatchForfeitMessage {
   actionId: string;
 }
 
+export interface GatewayRematchRequestMessage {
+  type: 'MATCH_REMATCH';
+  matchId: string;
+  actionId: string;
+}
+
 export interface GatewayDrawProposeMessage {
   type: 'DRAW_PROPOSE';
   matchId: string;
@@ -138,6 +144,7 @@ export type GatewayClientMessage =
   | GatewayTelemetryBatchMessage
   | GatewayDuelChatSendMessage
   | GatewayMatchForfeitMessage
+  | GatewayRematchRequestMessage
   | GatewayDrawProposeMessage
   | GatewayDrawRespondMessage
   | GatewayDrawWithdrawMessage
@@ -233,6 +240,7 @@ export interface GatewayMatchmakingState {
   claims: readonly GatewayAuthoritativeClaim[];
   drawProposal: GatewayDrawProposal | null;
   conclusion: GatewayMatchConclusion | null;
+  rematchReadyAccountIds: readonly string[];
 }
 
 export interface GatewayDrawProposal {
@@ -280,7 +288,9 @@ export interface GatewayMatchmakingEvent {
     | 'DRAW_REJECTED'
     | 'DRAW_EXPIRED'
     | 'MATCH_FORFEITED'
-    | 'MATCH_FINISHED';
+    | 'MATCH_FINISHED'
+    | 'REMATCH_READY_CHANGED'
+    | 'REMATCH_STARTED';
   accountId: string | null;
   reason: string | null;
   challengeId?: string;

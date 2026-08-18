@@ -110,7 +110,7 @@ assert.deepEqual(await response.json(), {
 
 const client = new SocketIoGatewayClient({
   endpoint,
-  clientVersion: '0.48.0-test',
+  clientVersion: '0.49.0-test',
   capabilities: [
     'skribbl-telemetry',
     'official-word-list',
@@ -161,7 +161,7 @@ const resumedSnapshotPromise = waitForMessage(rawSocket, message =>
 rawSocket.emit(GATEWAY_SOCKET_EVENT, {
   type: 'HELLO',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  clientVersion: '0.48.0-test',
+  clientVersion: '0.49.0-test',
   capabilities: ['skribbl-telemetry']
 });
 const rawWelcome = await welcomePromise;

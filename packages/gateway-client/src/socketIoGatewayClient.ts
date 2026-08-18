@@ -183,6 +183,12 @@ export class SocketIoGatewayClient {
     return actionId;
   }
 
+  public requestRematch(matchId: string): string {
+    const actionId = this.createRequestId('rematch');
+    this.emit({ type: 'MATCH_REMATCH', matchId, actionId });
+    return actionId;
+  }
+
   public proposeDraw(matchId: string): string {
     const actionId = this.createRequestId('draw-propose');
     this.emit({ type: 'DRAW_PROPOSE', matchId, actionId });

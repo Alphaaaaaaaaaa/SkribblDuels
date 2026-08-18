@@ -19,24 +19,25 @@ export interface BigWordState {
   threshold: number | null;
   matchedWord: string | null;
   matchedLength: number | null;
+  requiredCount: number | null;
 }
 
 export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParameters> = {
   id: 'big-word',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Big word',
-      'Correctly guess an official word from the longest ten percent of the active lobby language list.',
+      'Be the first guesser on language-qualified long words. The required count is derived from the active official word list.',
       'Big word',
-      'Errate ein offizielles Wort aus den längsten zehn Prozent der aktiven Lobby-Wortliste.'
+      'Errate sprachabhängig lange Wörter als Erster; die nötige Anzahl wird aus der aktiven offiziellen Wortliste abgeleitet.'
     ),
     icon: 'big-word',
     rankedEligible: true,
     difficulty: 3
   },
-  defaultParameters: { amount: 1 },
+  defaultParameters: { amount: 3 },
   target: parameters => parameters.amount,
   createInitialState: () => ({
     qualifyingEvents: 0,
@@ -44,7 +45,8 @@ export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParamet
     wordListWarning: null,
     threshold: null,
     matchedWord: null,
-    matchedLength: null
+    matchedLength: null,
+    requiredCount: null
   }),
   validateParameters(value): value is BigWordParameters {
     return typeof value === 'object' && value !== null &&
@@ -54,6 +56,7 @@ export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParamet
   allowedLobbyTypes: [0],
   reduce({ event, runtime, parameters }) {
     if (event.type !== 'CORRECT_GUESS' || event.actor?.isSelf !== true) return null;
+    if (!event.payload.isFirstGuesser && event.payload.position !== 1) return null;
 
     const languageId = event.context.languageId;
     const status = languageId === null
@@ -69,14 +72,17 @@ export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParamet
           wordListWarning: status?.warning ?? 'No official word list is available for the current lobby language.',
           threshold: null,
           matchedWord: null,
-          matchedLength: null
+          matchedLength: null,
+          requiredCount: null
         },
         reason: 'big-word-official-word-list-not-ready',
         evidenceEventIds: [event.eventId]
       };
     }
 
-    const threshold = getOfficialWordLengthMetrics(languageId).longThreshold;
+    const metrics = getOfficialWordLengthMetrics(languageId);
+    const threshold = metrics.longThreshold;
+    const requiredCount = Math.min(parameters.amount, metrics.longRequiredCount);
     if (!word || threshold === null || !hasOfficialWord(languageId, word)) {
       return {
         internalState: {
@@ -85,8 +91,10 @@ export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParamet
           wordListWarning: null,
           threshold,
           matchedWord: null,
-          matchedLength: word ? getOfficialWordLetterLength(word) : null
+          matchedLength: word ? getOfficialWordLetterLength(word) : null,
+          requiredCount
         },
+        target: requiredCount,
         reason: 'big-word-guess-not-in-ready-official-list'
       };
     }
@@ -100,8 +108,10 @@ export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParamet
           wordListWarning: null,
           threshold,
           matchedWord: word,
-          matchedLength: length
+          matchedLength: length,
+          requiredCount
         },
+        target: requiredCount,
         reason: 'big-word-official-word-below-long-threshold'
       };
     }
@@ -114,10 +124,12 @@ export const bigWordDefinition: ChallengeDefinition<BigWordState, BigWordParamet
         wordListWarning: null,
         threshold,
         matchedWord: word,
-        matchedLength: length
+        matchedLength: length,
+        requiredCount
       },
+      target: requiredCount,
       progress: qualifyingEvents,
-      complete: qualifyingEvents >= parameters.amount,
+      complete: qualifyingEvents >= requiredCount,
       reason: 'big-word-official-word-at-or-above-ninetieth-percentile',
       evidenceEventIds: [event.eventId]
     };

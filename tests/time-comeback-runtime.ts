@@ -22,10 +22,10 @@ const base = {
 const timeEngine = new ChallengeEngine({ autoPersist: false });
 timeEngine.register(timeWasteDefinition);
 timeEngine.activate({ instanceId: 'time', challengeId: 'time-waste' });
-timeEngine.process({ ...base, eventId: 'short', type: 'CANVAS_METRICS', category: 'drawing', payload: { width: 800, height: 600, totalPixels: 480000, whitePixels: 480000, nonWhitePixels: 0, whiteRatio: 1, validStrokeCount: 0, trigger: 'continuous-white-duration', whiteDurationMs: 59999 } } as TelemetryEvent);
-assert(timeEngine.getInstance('time')?.progress.current === 0, '59.999 seconds must not complete Time Waste.');
-timeEngine.process({ ...base, eventId: 'enough', type: 'CANVAS_METRICS', category: 'drawing', payload: { width: 800, height: 600, totalPixels: 480000, whitePixels: 480000, nonWhitePixels: 0, whiteRatio: 1, validStrokeCount: 0, trigger: 'continuous-white-duration', whiteDurationMs: 60000 } } as TelemetryEvent);
-assert(timeEngine.getInstance('time')?.status === 'completion-pending', '60 seconds should complete Time Waste.');
+timeEngine.process({ ...base, eventId: 'short', type: 'CANVAS_METRICS', category: 'drawing', payload: { width: 800, height: 600, totalPixels: 480000, whitePixels: 480000, nonWhitePixels: 0, whiteRatio: 1, validStrokeCount: 0, trigger: 'continuous-white-duration', whiteDurationMs: 49999 } } as TelemetryEvent);
+assert(timeEngine.getInstance('time')?.progress.current === 0, '49.999 seconds must not complete Time Waste.');
+timeEngine.process({ ...base, eventId: 'enough', type: 'CANVAS_METRICS', category: 'drawing', payload: { width: 800, height: 600, totalPixels: 480000, whitePixels: 480000, nonWhitePixels: 0, whiteRatio: 1, validStrokeCount: 0, trigger: 'continuous-white-duration', whiteDurationMs: 50000 } } as TelemetryEvent);
+assert(timeEngine.getInstance('time')?.status === 'completion-pending', '50 seconds should complete Time Waste.');
 
 function hydration(players: any[]): TelemetryEvent {
   return { ...base, eventId: 'hydrate', type: 'LOBBY_HYDRATED', category: 'lobby', payload: { lobbyId: 'Lobby123', playerCount: players.length, stateName: 'DRAWING', lobbyGeneration: 1, languageId: 1, languageName: 'German', meId: 21, ownerId: -1, roundIndex: 0, roundNumber: 1, players } } as TelemetryEvent;

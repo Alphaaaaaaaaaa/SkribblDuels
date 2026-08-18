@@ -15,29 +15,10 @@ export type SkribblColorFamily =
   | 'peach'
   | 'brown';
 
-export interface ColorPickerParameters {
-  families: number;
-}
-
-export interface ColorPickerState {
-  currentRoundSessionId: string | null;
-  ownDrawingActive: boolean;
-  usedFamilies: SkribblColorFamily[];
-  evidenceEventIdsByFamily: Partial<Record<SkribblColorFamily, string>>;
-}
-
 export const SKRIBBL_COLOR_IDS_BY_FAMILY: Readonly<Record<SkribblColorFamily, readonly number[]>> = {
-  monochrome: [1, 2, 3],
-  red: [4, 5],
-  orange: [6, 7],
-  yellow: [8, 9],
-  green: [10, 11, 12],
-  cyan: [13, 14, 15],
-  blue: [16, 17],
-  magenta: [18, 19],
-  pink: [20, 21],
-  peach: [22, 23],
-  brown: [24, 25]
+  monochrome: [1, 2, 3], red: [4, 5], orange: [6, 7], yellow: [8, 9],
+  green: [10, 11, 12], cyan: [13, 14, 15], blue: [16, 17],
+  magenta: [18, 19], pink: [20, 21], peach: [22, 23], brown: [24, 25]
 };
 
 export function colorIdsForFamily(family: SkribblColorFamily): readonly number[] {
@@ -45,59 +26,82 @@ export function colorIdsForFamily(family: SkribblColorFamily): readonly number[]
 }
 
 export function colorFamilyForId(colorId: number): SkribblColorFamily | null {
-  if (colorId >= 1 && colorId <= 3) return 'monochrome';
-  if (colorId === 4 || colorId === 5) return 'red';
-  if (colorId === 6 || colorId === 7) return 'orange';
-  if (colorId === 8 || colorId === 9) return 'yellow';
-  if (colorId >= 10 && colorId <= 12) return 'green';
-  if (colorId >= 13 && colorId <= 15) return 'cyan';
-  if (colorId === 16 || colorId === 17) return 'blue';
-  if (colorId === 18 || colorId === 19) return 'magenta';
-  if (colorId === 20 || colorId === 21) return 'pink';
-  if (colorId === 22 || colorId === 23) return 'peach';
-  if (colorId === 24 || colorId === 25) return 'brown';
-  return null;
+  return (Object.entries(SKRIBBL_COLOR_IDS_BY_FAMILY) as Array<[SkribblColorFamily, readonly number[]]>)
+    .find(([, colorIds]) => colorIds.includes(colorId))?.[0] ?? null;
 }
 
-function submittedFamilies(event: TelemetryEventOf<'DRAW_COMMAND_BATCH_SUBMITTED'>): SkribblColorFamily[] {
-  return Array.from(new Set(event.payload.commands.flatMap(command => {
-    if (command.kind !== 'PENCIL' && command.kind !== 'FILL') return [];
-    const family = colorFamilyForId(command.color);
-    return family === null ? [] : [family];
-  })));
+export interface ColorPickerParameters {
+  colors: number;
+}
+
+export interface ColorPickerState {
+  currentRoundSessionId: string | null;
+  roundStartedEventId: string | null;
+  ownDrawingActive: boolean;
+  usedColorIds: number[];
+  colorEventIdsById: Record<string, string>;
+  eligibleGuesserIds: number[];
+  correctGuesserIds: number[];
+  correctGuessEventIdsByPlayer: Record<string, string>;
+}
+
+function submittedColorIds(event: TelemetryEventOf<'DRAW_COMMAND_BATCH_SUBMITTED'>): number[] {
+  return Array.from(new Set(event.payload.commands.flatMap(command =>
+    (command.kind === 'PENCIL' || command.kind === 'FILL')
+      && Number.isInteger(command.color)
+      && command.color >= 0
+      && command.color <= 25
+      ? [command.color]
+      : []
+  ))).sort((left, right) => left - right);
+}
+
+function progress(state: ColorPickerState, requiredColors: number): number {
+  return Math.min(requiredColors, state.usedColorIds.length);
 }
 
 export const colorPickerDefinition: ChallengeDefinition<ColorPickerState, ColorPickerParameters> = {
   id: 'color-picker',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'drawing',
     localization: localization(
       'Color Picker',
-      'Use at least 5 different color families during one of your drawings in a public lobby. White does not count.',
+      'Use all 26 Skribbl colors in one of your drawings and have every eligible player guess it.',
       'Color Picker',
-      'Benutze während einer deiner Zeichnungen in einer öffentlichen Lobby mindestens 5 verschiedene Farbfamilien. Weiß zählt nicht.'
+      'Benutze alle 26 Skribbl-Farben in einer Zeichnung und lasse sie von allen berechtigten Spielern erraten.'
     ),
     icon: 'color-picker-palette',
     rankedEligible: true,
-    difficulty: 3
+    difficulty: 5
   },
   defaultParameters: {
-    families: 5
+    colors: 26
   },
-  target: parameters => parameters.families,
+  // The final step represents the all-players-guessed condition.
+  target: parameters => parameters.colors + 1,
   createInitialState: () => ({
     currentRoundSessionId: null,
+    roundStartedEventId: null,
     ownDrawingActive: false,
-    usedFamilies: [],
-    evidenceEventIdsByFamily: {}
+    usedColorIds: [],
+    colorEventIdsById: {},
+    eligibleGuesserIds: [],
+    correctGuesserIds: [],
+    correctGuessEventIdsByPlayer: {}
   }),
   validateParameters(value): value is ColorPickerParameters {
     if (typeof value !== 'object' || value === null) return false;
-    const families = (value as Partial<ColorPickerParameters>).families;
-    return isPositiveInteger(families) && families <= 11;
+    const colors = (value as Partial<ColorPickerParameters>).colors;
+    return isPositiveInteger(colors) && colors <= 26;
   },
-  relevantEvents: ['ROUND_STARTED', 'DRAW_COMMAND_BATCH_SUBMITTED'],
+  relevantEvents: [
+    'ROUND_STARTED',
+    'DRAW_COMMAND_BATCH_SUBMITTED',
+    'CORRECT_GUESS',
+    'PLAYER_LEFT',
+    'ROUND_ENDED'
+  ],
   allowedLobbyTypes: [0],
   resetOn: ['lobby-change'],
   reduce({ event, runtime, parameters }) {
@@ -105,13 +109,21 @@ export const colorPickerDefinition: ChallengeDefinition<ColorPickerState, ColorP
       const roundSessionId = event.context.roundSessionId;
       if (roundSessionId === null) return null;
       const ownDrawingActive = event.context.meId !== null && event.context.drawerId === event.context.meId;
-
+      const eligibleGuesserIds = ownDrawingActive && Array.isArray(event.payload.players)
+        ? event.payload.players
+            .map(player => player.id)
+            .filter(playerId => playerId !== event.context.drawerId)
+        : [];
       return {
         internalState: {
           currentRoundSessionId: roundSessionId,
+          roundStartedEventId: event.eventId,
           ownDrawingActive,
-          usedFamilies: [],
-          evidenceEventIdsByFamily: {}
+          usedColorIds: [],
+          colorEventIdsById: {},
+          eligibleGuesserIds,
+          correctGuesserIds: [],
+          correctGuessEventIdsByPlayer: {}
         },
         progress: 0,
         reason: ownDrawingActive
@@ -120,42 +132,87 @@ export const colorPickerDefinition: ChallengeDefinition<ColorPickerState, ColorP
       };
     }
 
-    if (event.type !== 'DRAW_COMMAND_BATCH_SUBMITTED') return null;
-    if (!runtime.internalState.ownDrawingActive) return null;
-    if (event.context.roundSessionId === null ||
-        event.context.roundSessionId !== runtime.internalState.currentRoundSessionId) return null;
-    if (event.context.meId === null || event.context.drawerId !== event.context.meId) return null;
+    const state = runtime.internalState;
+    if (!state.ownDrawingActive
+        || event.context.roundSessionId === null
+        || event.context.roundSessionId !== state.currentRoundSessionId) return null;
 
-    const observed = submittedFamilies(event);
-    if (observed.length === 0) return null;
-
-    const usedFamilies = [...runtime.internalState.usedFamilies];
-    const evidenceEventIdsByFamily = {
-      ...runtime.internalState.evidenceEventIdsByFamily
-    };
-    let changed = false;
-
-    for (const family of observed) {
-      if (usedFamilies.includes(family)) continue;
-      usedFamilies.push(family);
-      evidenceEventIdsByFamily[family] = event.eventId;
-      changed = true;
+    if (event.type === 'PLAYER_LEFT') {
+      const playerId = event.payload.playerId;
+      if (playerId === null || !state.eligibleGuesserIds.includes(playerId)) return null;
+      const eligibleGuesserIds = state.eligibleGuesserIds.filter(id => id !== playerId);
+      const correctGuesserIds = state.correctGuesserIds.filter(id => id !== playerId);
+      const correctGuessEventIdsByPlayer = { ...state.correctGuessEventIdsByPlayer };
+      delete correctGuessEventIdsByPlayer[String(playerId)];
+      return {
+        internalState: {
+          ...state,
+          eligibleGuesserIds,
+          correctGuesserIds,
+          correctGuessEventIdsByPlayer
+        },
+        progress: progress(state, parameters.colors),
+        reason: 'color-picker-departed-player-removed-from-eligible-guessers'
+      };
     }
 
-    if (!changed) return null;
-    const evidenceEventIds = usedFamilies
-      .map(family => evidenceEventIdsByFamily[family])
-      .filter((id): id is string => typeof id === 'string');
+    if (event.type === 'DRAW_COMMAND_BATCH_SUBMITTED') {
+      if (event.context.meId === null || event.context.drawerId !== event.context.meId) return null;
+      const observed = submittedColorIds(event);
+      if (observed.length === 0) return null;
+      const usedColorIds = [...state.usedColorIds];
+      const colorEventIdsById = { ...state.colorEventIdsById };
+      for (const colorId of observed) {
+        if (usedColorIds.includes(colorId)) continue;
+        usedColorIds.push(colorId);
+        colorEventIdsById[String(colorId)] = event.eventId;
+      }
+      usedColorIds.sort((left, right) => left - right);
+      if (usedColorIds.length === state.usedColorIds.length) return null;
+      const nextState = { ...state, usedColorIds, colorEventIdsById };
+      return {
+        internalState: nextState,
+        progress: progress(nextState, parameters.colors),
+        reason: 'color-picker-new-palette-color-used'
+      };
+    }
 
+    if (event.type === 'CORRECT_GUESS') {
+      const playerId = event.payload.playerId;
+      if (!state.eligibleGuesserIds.includes(playerId)
+          || state.correctGuesserIds.includes(playerId)) return null;
+      const correctGuesserIds = [...state.correctGuesserIds, playerId];
+      const correctGuessEventIdsByPlayer = {
+        ...state.correctGuessEventIdsByPlayer,
+        [String(playerId)]: event.eventId
+      };
+      return {
+        internalState: { ...state, correctGuesserIds, correctGuessEventIdsByPlayer },
+        progress: progress(state, parameters.colors),
+        reason: 'color-picker-eligible-player-guessed-own-drawing'
+      };
+    }
+
+    if (event.type !== 'ROUND_ENDED') return null;
+    const allColorsUsed = state.usedColorIds.length >= parameters.colors;
+    const everyoneGuessed = state.eligibleGuesserIds.length > 0
+      && state.eligibleGuesserIds.every(playerId => state.correctGuesserIds.includes(playerId));
+    const complete = allColorsUsed && everyoneGuessed;
+    const evidenceEventIds = complete
+      ? [
+          ...(state.roundStartedEventId ? [state.roundStartedEventId] : []),
+          ...state.usedColorIds.map(colorId => state.colorEventIdsById[String(colorId)]),
+          ...state.eligibleGuesserIds.map(playerId => state.correctGuessEventIdsByPlayer[String(playerId)]),
+          event.eventId
+        ].filter((eventId): eventId is string => typeof eventId === 'string')
+      : [];
     return {
-      internalState: {
-        ...runtime.internalState,
-        usedFamilies,
-        evidenceEventIdsByFamily
-      },
-      progress: usedFamilies.length,
-      complete: usedFamilies.length >= parameters.families,
-      reason: 'color-picker-new-color-family-used',
+      internalState: state,
+      progress: complete ? parameters.colors + 1 : progress(state, parameters.colors),
+      complete,
+      reason: complete
+        ? 'all-colors-used-and-every-eligible-player-guessed'
+        : 'color-picker-round-ended-before-both-conditions',
       evidenceEventIds
     };
   }

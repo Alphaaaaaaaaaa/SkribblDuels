@@ -232,6 +232,11 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
         return;
       }
+      if (message.type === 'MATCH_REMATCH') {
+        const decision = matchmaker.requestRematch(socket.data.account.identity.accountId, message);
+        if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));
+        return;
+      }
       if (message.type === 'DRAW_PROPOSE') {
         const decision = matchmaker.proposeDraw(socket.data.account.identity.accountId, message);
         if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true));

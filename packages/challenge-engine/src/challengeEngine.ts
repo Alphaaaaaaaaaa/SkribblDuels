@@ -444,6 +444,11 @@ export class ChallengeEngine {
     }
 
     const previousProgress = runtime.progress.current;
+    if (update.target !== undefined) {
+      this.assertProgressValue(update.target, `runtime target for ${definition.id}`);
+      if (update.target <= 0) throw new RangeError(`Challenge ${definition.id} target must be greater than zero.`);
+      runtime.progress.target = update.target;
+    }
     if (update.internalState !== undefined) runtime.internalState = clone(update.internalState);
     if (update.progress !== undefined) runtime.progress.current = update.progress;
     if (update.progressDelta !== undefined) runtime.progress.current += update.progressDelta;

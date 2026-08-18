@@ -16,20 +16,20 @@ export const coolNumberDetectedDefinition: ChallengeDefinition<
   CoolNumberDetectedParameters
 > = {
   id: 'cool-number-detected',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'progress',
     localization: localization(
       'Cool Number Detected',
-      "A player's score in your lobby reaches a positive multiple of 250.",
+      "A player's score in your lobby reaches a positive multiple of 500.",
       'Cool Number Detected',
-      'Der Score eines Spielers in deiner Lobby erreicht ein positives Vielfaches von 250.'
+      'Der Score eines Spielers in deiner Lobby erreicht ein positives Vielfaches von 500.'
     ),
     rankedEligible: true,
     difficulty: 1
   },
   defaultParameters: {
-    divisor: 250,
+    divisor: 500,
     amount: 1
   },
   target: parameters => parameters.amount,

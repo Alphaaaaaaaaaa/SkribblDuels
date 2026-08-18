@@ -1,62 +1,106 @@
 import type { ChallengeDefinition } from '@skribbl-duels/challenge-engine';
 import {
-  isPositiveInteger,
-  localization,
-  nextCounter,
-  type CounterState
-} from '../shared';
+  getOfficialWordComponentCount,
+  getOfficialWordLengthMetrics,
+  getOfficialWordListStatus,
+  hasOfficialWord,
+  type OfficialWordListState
+} from '../officialWordLists';
+import { isPositiveInteger, localization } from '../shared';
 
 export interface NeedSomeSpaceParameters {
-  amount: number;
+  fallbackComponents: number;
 }
 
-function hasInternalWhitespace(word: string): boolean {
-  return /\S\s+\S/u.test(word.trim());
+export interface NeedSomeSpaceState {
+  qualifyingEvents: number;
+  wordListState: OfficialWordListState;
+  wordListWarning: string | null;
+  requiredComponents: number | null;
+  matchedComponents: number | null;
+  matchedWord: string | null;
 }
 
 export const needSomeSpaceDefinition: ChallengeDefinition<
-  CounterState,
+  NeedSomeSpaceState,
   NeedSomeSpaceParameters
 > = {
   id: 'need-some-space',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Need some space?',
-      'Correctly guess a word that contains at least one space.',
+      'Correctly guess an official multi-word entry whose required component count is derived from the active lobby language.',
       'Need some space?',
-      'Errate ein Wort richtig, das mindestens ein Leerzeichen enthält.'
+      'Errate einen offiziellen mehrteiligen Begriff; die nötige Wortanzahl wird aus der aktiven Lobby-Sprache abgeleitet.'
     ),
     rankedEligible: true,
     difficulty: 2
   },
   defaultParameters: {
-    amount: 1
+    fallbackComponents: 2
   },
-  target: parameters => parameters.amount,
-  createInitialState: () => ({ qualifyingEvents: 0 }),
+  target: () => 1,
+  createInitialState: () => ({
+    qualifyingEvents: 0,
+    wordListState: 'idle',
+    wordListWarning: null,
+    requiredComponents: null,
+    matchedComponents: null,
+    matchedWord: null
+  }),
   validateParameters(value): value is NeedSomeSpaceParameters {
-    if (typeof value !== 'object' || value === null) return false;
-    const parameters = value as Partial<NeedSomeSpaceParameters>;
-    return isPositiveInteger(parameters.amount);
+    return typeof value === 'object' && value !== null
+      && isPositiveInteger((value as Partial<NeedSomeSpaceParameters>).fallbackComponents);
   },
   relevantEvents: ['CORRECT_GUESS'],
   allowedLobbyTypes: [0],
   reduce({ event, runtime, parameters }) {
-    if (event.type !== 'CORRECT_GUESS') return null;
-    if (!event.actor?.isSelf) return null;
+    if (event.type !== 'CORRECT_GUESS' || event.actor?.isSelf !== true) return null;
+    const languageId = event.context.languageId;
+    const status = languageId === null
+      ? null
+      : getOfficialWordListStatus(languageId, event.context.languageName);
+    const word = event.payload.includesWord ? event.payload.word?.trim() ?? null : null;
+    if (languageId === null || !status || status.state !== 'ready') {
+      return {
+        internalState: {
+          ...runtime.internalState,
+          wordListState: status?.state ?? 'unsupported',
+          wordListWarning: status?.warning ?? 'No official word list is available for the current lobby language.',
+          requiredComponents: null,
+          matchedComponents: null,
+          matchedWord: null
+        },
+        reason: 'need-some-space-official-word-list-not-ready'
+      };
+    }
 
-    const word = event.payload.word?.trim();
-    if (!word || !event.payload.includesWord || !hasInternalWhitespace(word)) return null;
-
-    const next = nextCounter(runtime.internalState);
+    const requiredComponents = getOfficialWordLengthMetrics(languageId).spacedWordThreshold
+      ?? parameters.fallbackComponents;
+    const matchedComponents = word ? getOfficialWordComponentCount(word) : null;
+    const qualifies = Boolean(
+      word
+      && hasOfficialWord(languageId, word)
+      && matchedComponents !== null
+      && matchedComponents >= requiredComponents
+    );
     return {
-      internalState: next,
-      progress: next.qualifyingEvents,
-      complete: next.qualifyingEvents >= parameters.amount,
-      reason: 'self-correctly-guessed-word-containing-space',
-      evidenceEventIds: [event.eventId]
+      internalState: {
+        qualifyingEvents: qualifies ? 1 : 0,
+        wordListState: status.state,
+        wordListWarning: null,
+        requiredComponents,
+        matchedComponents,
+        matchedWord: word
+      },
+      progress: qualifies ? 1 : 0,
+      complete: qualifies,
+      reason: qualifies
+        ? 'self-guessed-language-qualified-multi-word-entry'
+        : 'word-below-language-specific-component-threshold',
+      evidenceEventIds: qualifies ? [event.eventId] : []
     };
   }
 };

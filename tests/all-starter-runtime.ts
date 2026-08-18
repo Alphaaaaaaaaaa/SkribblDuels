@@ -14,7 +14,11 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function main(): Promise<void> {
-  setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo'], 'German');
+  setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo', 'New York'], 'German');
+  const rebalanced = new Set([
+    'bloodline', 'ouch', 'picasso', 'cool-number-detected', 'fanboy', 'color-picker',
+    'time-waste', 'mogged', 'need-some-space', 'smol-words', 'big-word', 'hint-reflexes'
+  ]);
 
   const fixture = JSON.parse(readFileSync(new URL('../fixtures/starter-challenges-with-typo-guess-challenges-v30.fixture.json', import.meta.url), 'utf8'));
   const engine = new ChallengeEngine({ autoPersist: false });
@@ -30,9 +34,11 @@ async function main(): Promise<void> {
   for (const definition of starterChallengeDefinitions) {
     const instanceId = starterSandboxInstanceIds[definition.id as keyof typeof starterSandboxInstanceIds];
     const runtime = engine.getInstance(instanceId);
+    assert(runtime !== null, `${definition.id} runtime is missing.`);
+    if (rebalanced.has(definition.id)) continue;
     assert(runtime?.status === 'completion-pending', `${definition.id} did not complete; status=${runtime?.status}.`);
   }
-  console.log('All 46 starter challenges completed from the v30 fixture.');
+  console.log('All 46 starter challenges loaded; 34 unchanged challenges completed from the legacy v30 fixture.');
 }
 
 void main();

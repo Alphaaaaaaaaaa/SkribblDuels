@@ -19,24 +19,25 @@ export interface SmolWordsState {
   threshold: number | null;
   matchedWord: string | null;
   matchedLength: number | null;
+  requiredCount: number | null;
 }
 
 export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsParameters> = {
   id: 'smol-words',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Smol words',
-      'Correctly guess an official word from the shortest five percent of the active lobby language list.',
+      'Be the first guesser on language-qualified short words. The required count is derived from the active official word list.',
       'Smol words',
-      'Errate ein offizielles Wort aus den kürzesten fünf Prozent der aktiven Lobby-Wortliste.'
+      'Errate sprachabhängig kurze Wörter als Erster; die nötige Anzahl wird aus der aktiven offiziellen Wortliste abgeleitet.'
     ),
     icon: 'smol-word',
     rankedEligible: true,
     difficulty: 3
   },
-  defaultParameters: { amount: 1 },
+  defaultParameters: { amount: 3 },
   target: parameters => parameters.amount,
   createInitialState: () => ({
     qualifyingEvents: 0,
@@ -44,7 +45,8 @@ export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsP
     wordListWarning: null,
     threshold: null,
     matchedWord: null,
-    matchedLength: null
+    matchedLength: null,
+    requiredCount: null
   }),
   validateParameters(value): value is SmolWordsParameters {
     return typeof value === 'object' && value !== null &&
@@ -54,6 +56,7 @@ export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsP
   allowedLobbyTypes: [0],
   reduce({ event, runtime, parameters }) {
     if (event.type !== 'CORRECT_GUESS' || event.actor?.isSelf !== true) return null;
+    if (!event.payload.isFirstGuesser && event.payload.position !== 1) return null;
 
     const languageId = event.context.languageId;
     const status = languageId === null
@@ -69,14 +72,17 @@ export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsP
           wordListWarning: status?.warning ?? 'No official word list is available for the current lobby language.',
           threshold: null,
           matchedWord: null,
-          matchedLength: null
+          matchedLength: null,
+          requiredCount: null
         },
         reason: 'smol-words-official-word-list-not-ready',
         evidenceEventIds: [event.eventId]
       };
     }
 
-    const threshold = getOfficialWordLengthMetrics(languageId).shortThreshold;
+    const metrics = getOfficialWordLengthMetrics(languageId);
+    const threshold = metrics.shortThreshold;
+    const requiredCount = Math.min(parameters.amount, metrics.shortRequiredCount);
     if (!word || threshold === null || !hasOfficialWord(languageId, word)) {
       return {
         internalState: {
@@ -85,8 +91,10 @@ export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsP
           wordListWarning: null,
           threshold,
           matchedWord: null,
-          matchedLength: word ? getOfficialWordLetterLength(word) : null
+          matchedLength: word ? getOfficialWordLetterLength(word) : null,
+          requiredCount
         },
+        target: requiredCount,
         reason: 'smol-words-guess-not-in-ready-official-list'
       };
     }
@@ -100,8 +108,10 @@ export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsP
           wordListWarning: null,
           threshold,
           matchedWord: word,
-          matchedLength: length
+          matchedLength: length,
+          requiredCount
         },
+        target: requiredCount,
         reason: 'smol-words-official-word-above-short-threshold'
       };
     }
@@ -114,10 +124,12 @@ export const smolWordsDefinition: ChallengeDefinition<SmolWordsState, SmolWordsP
         wordListWarning: null,
         threshold,
         matchedWord: word,
-        matchedLength: length
+        matchedLength: length,
+        requiredCount
       },
+      target: requiredCount,
       progress: qualifyingEvents,
-      complete: qualifyingEvents >= parameters.amount,
+      complete: qualifyingEvents >= requiredCount,
       reason: 'smol-words-official-word-at-or-below-fifth-percentile',
       evidenceEventIds: [event.eventId]
     };

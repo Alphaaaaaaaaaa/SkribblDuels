@@ -1,14 +1,14 @@
 {
   "name": "@skribbl-duels/gateway",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "../../dist/gateway/index.js",
   "dependencies": {
-    "@skribbl-duels/challenge-definitions": "2.7.0",
-    "@skribbl-duels/challenge-engine": "0.1.1",
-    "@skribbl-duels/gateway-contracts": "0.2.0",
-    "@skribbl-duels/product-core": "0.4.0",
+    "@skribbl-duels/challenge-definitions": "2.8.0",
+    "@skribbl-duels/challenge-engine": "0.2.0",
+    "@skribbl-duels/gateway-contracts": "0.3.0",
+    "@skribbl-duels/product-core": "0.5.0",
     "@skribbl-duels/telemetry-contracts": "file:../../packages/telemetry-contracts",
     "@supabase/supabase-js": "2.110.8",
     "socket.io": "4.8.3"

@@ -12,6 +12,7 @@ export interface HintReflexesState {
   hintEventId: string | null;
   hintAtMonotonicMs: number | null;
   hintPositions: number[];
+  guessedBeforeFirstHint: boolean;
 }
 
 function clearedState(qualifyingEvents: number, roundSessionId: string | null): HintReflexesState {
@@ -20,7 +21,8 @@ function clearedState(qualifyingEvents: number, roundSessionId: string | null): 
     roundSessionId,
     hintEventId: null,
     hintAtMonotonicMs: null,
-    hintPositions: []
+    hintPositions: [],
+    guessedBeforeFirstHint: false
   };
 }
 
@@ -29,14 +31,14 @@ export const hintReflexesDefinition: ChallengeDefinition<
   HintReflexesParameters
 > = {
   id: 'hint-reflexes',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Hint Reflexes',
-      'Guess the word within two seconds after a hint is revealed.',
+      'Guess within two seconds after the first hint, provided nobody guessed before that hint.',
       'Hint Reflexes',
-      'Errate das Wort innerhalb von zwei Sekunden, nachdem ein Hint aufgedeckt wurde.'
+      'Errate das Wort innerhalb von zwei Sekunden nach dem ersten Hint, sofern zuvor niemand richtig geraten hat.'
     ),
     icon: 'hint-reflexes-lightning',
     rankedEligible: true,
@@ -68,6 +70,7 @@ export const hintReflexesDefinition: ChallengeDefinition<
     if (roundSessionId === null) return null;
 
     if (event.type === 'HINT_REVEALED') {
+      if (runtime.internalState.hintEventId !== null) return null;
       const positions = Array.isArray(event.payload.hints)
         ? event.payload.hints
             .map(hint => hint.position)
@@ -80,16 +83,29 @@ export const hintReflexesDefinition: ChallengeDefinition<
           roundSessionId,
           hintEventId: event.eventId,
           hintAtMonotonicMs: event.monotonicMs,
-          hintPositions: positions
+          hintPositions: positions,
+          guessedBeforeFirstHint: runtime.internalState.guessedBeforeFirstHint
         },
-        reason: 'latest-hint-recorded'
+        reason: runtime.internalState.guessedBeforeFirstHint
+          ? 'first-hint-ineligible-because-player-already-guessed'
+          : 'eligible-first-hint-recorded'
       };
     }
 
     if (event.type !== 'CORRECT_GUESS') return null;
+    if (runtime.internalState.hintEventId === null) {
+      return {
+        internalState: {
+          ...runtime.internalState,
+          roundSessionId,
+          guessedBeforeFirstHint: true
+        },
+        reason: 'correct-guess-observed-before-first-hint'
+      };
+    }
     if (!event.actor?.isSelf) return null;
     if (runtime.internalState.roundSessionId !== roundSessionId) return null;
-    if (runtime.internalState.hintEventId === null) return null;
+    if (runtime.internalState.guessedBeforeFirstHint) return null;
     if (runtime.internalState.hintAtMonotonicMs === null) return null;
 
     const delayMs = event.monotonicMs - runtime.internalState.hintAtMonotonicMs;

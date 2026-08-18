@@ -33,21 +33,21 @@ function voterId(event: {
 
 export const picassoDefinition: ChallengeDefinition<PicassoState, PicassoParameters> = {
   id: 'picasso',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'drawing',
     localization: localization(
       'Picasso',
-      'Receive at least 3 simultaneous likes on one of your drawings in a public lobby.',
+      'Receive at least 4 simultaneous likes on one of your drawings in a public lobby.',
       'Picasso',
-      'Erhalte mindestens 3 gleichzeitige Likes auf eine deiner Zeichnungen in einer öffentlichen Lobby.'
+      'Erhalte mindestens 4 gleichzeitige Likes auf eine deiner Zeichnungen in einer öffentlichen Lobby.'
     ),
     icon: 'picasso-palette',
     rankedEligible: true,
     difficulty: 3
   },
   defaultParameters: {
-    likes: 3
+    likes: 4
   },
   target: parameters => parameters.likes,
   createInitialState: () => ({

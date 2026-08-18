@@ -6,6 +6,11 @@ export interface OfficialWordLengthMetrics {
   maximumLength: number | null;
   shortThreshold: number | null;
   longThreshold: number | null;
+  shortQualifyingRate: number;
+  longQualifyingRate: number;
+  shortRequiredCount: number;
+  longRequiredCount: number;
+  spacedWordThreshold: number | null;
 }
 
 export interface OfficialWordListStatus {
@@ -75,13 +80,23 @@ export function getOfficialWordLetterLength(value: string): number {
   return Array.from(normalizeOfficialWord(value).replace(/[\s-]+/gu, '')).length;
 }
 
+export function getOfficialWordComponentCount(value: string): number {
+  const normalized = normalizeOfficialWord(value);
+  return normalized ? normalized.split(/\s+/u).filter(Boolean).length : 0;
+}
+
 function emptyMetrics(): OfficialWordLengthMetrics {
   return {
     wordCount: 0,
     minimumLength: null,
     maximumLength: null,
     shortThreshold: null,
-    longThreshold: null
+    longThreshold: null,
+    shortQualifyingRate: 0,
+    longQualifyingRate: 0,
+    shortRequiredCount: 1,
+    longRequiredCount: 1,
+    spacedWordThreshold: null
   };
 }
 
@@ -96,12 +111,33 @@ function calculateMetrics(words: readonly string[]): OfficialWordLengthMetrics {
     .map(getOfficialWordLetterLength)
     .filter(length => length > 0)
     .sort((a, b) => a - b);
+  const shortThreshold = quantile(lengths, 0.05);
+  const longThreshold = quantile(lengths, 0.9);
+  const shortQualifyingRate = shortThreshold === null || lengths.length === 0
+    ? 0
+    : lengths.filter(length => length <= shortThreshold).length / lengths.length;
+  const longQualifyingRate = longThreshold === null || lengths.length === 0
+    ? 0
+    : lengths.filter(length => length >= longThreshold).length / lengths.length;
+  const spacedComponents = words
+    .map(getOfficialWordComponentCount)
+    .filter(count => count >= 2)
+    .sort((a, b) => a - b);
   return {
     wordCount: words.length,
     minimumLength: lengths[0] ?? null,
     maximumLength: lengths[lengths.length - 1] ?? null,
-    shortThreshold: quantile(lengths, 0.05),
-    longThreshold: quantile(lengths, 0.9)
+    shortThreshold,
+    longThreshold,
+    shortQualifyingRate,
+    longQualifyingRate,
+    // Ties at the percentile boundaries differ substantially between languages.
+    // Scale the number of required first guesses to the real qualifying share.
+    shortRequiredCount: Math.max(2, Math.min(3, Math.ceil(shortQualifyingRate / 0.05))),
+    longRequiredCount: Math.max(1, Math.min(3, Math.ceil(longQualifyingRate / 0.1))),
+    // A high quantile among actual multi-word entries avoids disadvantaging
+    // languages whose lists contain mostly two-part compounds.
+    spacedWordThreshold: quantile(spacedComponents, 0.75)
   };
 }
 

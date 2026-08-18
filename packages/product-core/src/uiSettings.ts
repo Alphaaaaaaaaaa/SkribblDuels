@@ -21,7 +21,8 @@ export const DEFAULT_PRODUCT_UI_SETTINGS: ProductUiSettings = {
   panelOpen: false,
   panelTab: 'duel',
   completionMessages: true,
-  winAnimation: true
+  winAnimation: true,
+  chatNotifications: true
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -79,7 +80,10 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
       : DEFAULT_PRODUCT_UI_SETTINGS.completionMessages,
     winAnimation: typeof input.winAnimation === 'boolean'
       ? input.winAnimation
-      : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation
+      : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation,
+    chatNotifications: typeof input.chatNotifications === 'boolean'
+      ? input.chatNotifications
+      : DEFAULT_PRODUCT_UI_SETTINGS.chatNotifications
   };
 }
 

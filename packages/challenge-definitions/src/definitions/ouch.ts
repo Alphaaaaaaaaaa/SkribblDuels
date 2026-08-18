@@ -19,20 +19,20 @@ export interface OuchState extends CounterState {
 
 export const ouchDefinition: ChallengeDefinition<OuchState, OuchParameters> = {
   id: 'ouch',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Ouch',
-      'Guess the word within half a second after the first guesser.',
+      'Guess the word within 200 milliseconds after the first guesser.',
       'Ouch',
-      'Errate das Wort innerhalb einer halben Sekunde nach dem First Guesser.'
+      'Errate das Wort innerhalb von 200 Millisekunden nach dem First Guesser.'
     ),
     rankedEligible: true,
     difficulty: 3
   },
   defaultParameters: {
-    milliseconds: 500,
+    milliseconds: 200,
     amount: 1
   },
   target: parameters => parameters.amount,

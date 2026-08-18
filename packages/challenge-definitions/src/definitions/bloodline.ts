@@ -13,7 +13,7 @@ export interface BloodlineState {
 
 export const bloodlineDefinition: ChallengeDefinition<BloodlineState, BloodlineParameters> = {
   id: 'bloodline',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'home',
     localization: localization(

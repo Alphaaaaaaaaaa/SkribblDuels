@@ -14,21 +14,21 @@ export interface TimeWasteState {
 
 export const timeWasteDefinition: ChallengeDefinition<TimeWasteState, TimeWasteParameters> = {
   id: 'time-waste',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'lucky-fun',
     localization: localization(
       'Time Waste',
-      'Witness another drawer keep the canvas completely white for 60 continuous seconds in a public lobby.',
+      'Witness another drawer keep the canvas completely white for 50 continuous seconds in a public lobby.',
       'Time Waste',
-      'Erlebe, wie ein anderer Zeichner die Leinwand in einer öffentlichen Lobby 60 Sekunden durchgehend vollständig weiß lässt.'
+      'Erlebe, wie ein anderer Zeichner die Leinwand in einer öffentlichen Lobby 50 Sekunden durchgehend vollständig weiß lässt.'
     ),
     icon: 'time-waste-hourglass',
     rankedEligible: true,
     difficulty: 4
   },
   defaultParameters: {
-    seconds: 60
+    seconds: 50
   },
   target: () => 1,
   createInitialState: () => ({

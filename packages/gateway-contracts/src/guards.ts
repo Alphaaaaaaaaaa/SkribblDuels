@@ -220,12 +220,15 @@ function matchmakingState(value: unknown): boolean {
       || !finiteNumber(state.createdAt)
       || !Array.isArray(state.claims)
       || !state.claims.every(authoritativeClaim)
+      || !stringArray(state.rematchReadyAccountIds, 2)
       || (state.drawProposal !== null && !drawProposal(state.drawProposal))
       || (state.conclusion !== null && !matchConclusion(state.conclusion))) return false;
   const participantIds = new Set((state.participants as Array<Record<string, unknown>>)
     .map(participant => participant.accountId));
   if ((state.claims as Array<Record<string, unknown>>).some(claim =>
     !participantIds.has(claim.ownerAccountId))) return false;
+  if ((state.rematchReadyAccountIds as string[]).some(accountId => !participantIds.has(accountId))
+      || new Set(state.rematchReadyAccountIds as string[]).size !== state.rematchReadyAccountIds.length) return false;
   if (state.drawProposal !== null) {
     const proposal = state.drawProposal as Record<string, unknown>;
     if (!participantIds.has(proposal.proposerAccountId)) return false;
@@ -250,6 +253,7 @@ function matchmakingState(value: unknown): boolean {
       && state.startedAt === null
       && state.drawProposal === null
       && state.conclusion === null
+      && state.rematchReadyAccountIds.length === 0
       && state.claims.length === 0
       && (state.draft === undefined || draftState(state.draft));
   }
@@ -260,6 +264,7 @@ function matchmakingState(value: unknown): boolean {
       && state.startedAt === null
       && state.drawProposal === null
       && state.conclusion === null
+      && state.rematchReadyAccountIds.length === 0
       && state.claims.length === 0
       && draftState(state.draft)
       && state.draft.status === 'complete';
@@ -270,6 +275,7 @@ function matchmakingState(value: unknown): boolean {
       && finiteNumber(state.startedAt)
       && state.startedAt >= state.createdAt
       && state.conclusion === null
+      && state.rematchReadyAccountIds.length === 0
       && (state.drawProposal === null
         || Number((state.drawProposal as Record<string, unknown>).createdAt) >= Number(state.startedAt))
       && draftState(state.draft)
@@ -290,6 +296,7 @@ function matchmakingState(value: unknown): boolean {
     && state.startedAt === null
     && state.drawProposal === null
     && state.conclusion === null
+    && state.rematchReadyAccountIds.length === 0
     && state.claims.length === 0
     && (state.draft === undefined || state.draft === null);
 }
@@ -314,7 +321,9 @@ function matchmakingEvent(value: unknown): boolean {
       || event.type === 'DRAW_REJECTED'
       || event.type === 'DRAW_EXPIRED'
       || event.type === 'MATCH_FORFEITED'
-      || event.type === 'MATCH_FINISHED')
+      || event.type === 'MATCH_FINISHED'
+      || event.type === 'REMATCH_READY_CHANGED'
+      || event.type === 'REMATCH_STARTED')
     && (event.accountId === null || nonEmptyString(event.accountId))
     && (event.reason === null || nonEmptyString(event.reason, 128))
     && (event.challengeId === undefined || nonEmptyString(event.challengeId))
@@ -379,6 +388,7 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
         && nonEmptyString(message.clientMessageId)
         && nonEmptyCodePointString(message.message, 300);
     case 'MATCH_FORFEIT':
+    case 'MATCH_REMATCH':
     case 'DRAW_PROPOSE':
       return nonEmptyString(message.matchId) && nonEmptyString(message.actionId);
     case 'DRAW_RESPOND':

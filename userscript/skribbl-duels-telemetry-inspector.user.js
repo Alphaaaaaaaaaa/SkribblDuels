@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.48.0
+// @version      0.49.0
 // @author       Alpha
-// @description  Gateway-backed Skribbl Duels with authoritative matches, Forfeit and mutual Draw.
+// @description  Gateway-backed Skribbl Duels with authoritative Challenges, results and Rematches.
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -3787,7 +3787,7 @@ function mapLobbyChangeToTelemetry(change, state) {
 					totalScore,
 					roundScore,
 					delta: previousScore === null || totalScore === null ? null : totalScore - previousScore,
-					coolNumber: totalScore !== null && totalScore > 0 && totalScore % 250 === 0
+					coolNumber: totalScore !== null && totalScore > 0 && totalScore % 500 === 0
 				}
 			}];
 		}
@@ -5885,7 +5885,7 @@ var TelemetryReplayProvider = class {
 		};
 	}
 };
-var CHALLENGE_ENGINE_VERSION = "0.1.1";
+var CHALLENGE_ENGINE_VERSION = "0.2.0";
 function runtimeContextFromTelemetry(context) {
 	return {
 		lobbySessionId: context.lobbySessionId,
@@ -6231,6 +6231,11 @@ var ChallengeEngine = class {
 		if (update.reset) return [this.resetRuntime(runtime, definition, event, update.reason ?? "definition-reset")];
 		if (update.progress !== void 0 && update.progressDelta !== void 0) throw new Error(`Challenge ${definition.id} reducer cannot set progress and progressDelta together.`);
 		const previousProgress = runtime.progress.current;
+		if (update.target !== void 0) {
+			this.assertProgressValue(update.target, `runtime target for ${definition.id}`);
+			if (update.target <= 0) throw new RangeError(`Challenge ${definition.id} target must be greater than zero.`);
+			runtime.progress.target = update.target;
+		}
 		if (update.internalState !== void 0) runtime.internalState = clone(update.internalState);
 		if (update.progress !== void 0) runtime.progress.current = update.progress;
 		if (update.progressDelta !== void 0) runtime.progress.current += update.progressDelta;
@@ -6480,15 +6485,15 @@ var betterLateThanNeverDefinition = {
 };
 var coolNumberDetectedDefinition = {
 	id: "cool-number-detected",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "progress",
-		localization: localization("Cool Number Detected", "A player's score in your lobby reaches a positive multiple of 250.", "Cool Number Detected", "Der Score eines Spielers in deiner Lobby erreicht ein positives Vielfaches von 250."),
+		localization: localization("Cool Number Detected", "A player's score in your lobby reaches a positive multiple of 500.", "Cool Number Detected", "Der Score eines Spielers in deiner Lobby erreicht ein positives Vielfaches von 500."),
 		rankedEligible: true,
 		difficulty: 1
 	},
 	defaultParameters: {
-		divisor: 250,
+		divisor: 500,
 		amount: 1
 	},
 	target: (parameters) => parameters.amount,
@@ -6570,15 +6575,15 @@ var tldrDefinition = {
 };
 var ouchDefinition = {
 	id: "ouch",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "guessing",
-		localization: localization("Ouch", "Guess the word within half a second after the first guesser.", "Ouch", "Errate das Wort innerhalb einer halben Sekunde nach dem First Guesser."),
+		localization: localization("Ouch", "Guess the word within 200 milliseconds after the first guesser.", "Ouch", "Errate das Wort innerhalb von 200 Millisekunden nach dem First Guesser."),
 		rankedEligible: true,
 		difficulty: 3
 	},
 	defaultParameters: {
-		milliseconds: 500,
+		milliseconds: 200,
 		amount: 1
 	},
 	target: (parameters) => parameters.amount,
@@ -6913,51 +6918,191 @@ var omgHackerDefinition = {
 function voteValue$2(payload) {
 	return typeof payload.vote === "number" && Number.isFinite(payload.vote) ? payload.vote : null;
 }
+function initialState$2(gameSessionId = null) {
+	return {
+		qualifyingEvents: 0,
+		gameSessionId,
+		gameStartObserved: gameSessionId !== null,
+		roundNumber: null,
+		currentRoundSessionId: null,
+		expectedDrawerIds: [],
+		observedDrawerIds: [],
+		eligibleRoundSessionIds: [],
+		likedRoundSessionIds: [],
+		roundEventIds: {},
+		likeEventIds: {},
+		missedDrawing: false
+	};
+}
+function cycleTarget(state, parameters) {
+	return Math.max(parameters.drawings, state.expectedDrawerIds.length, state.eligibleRoundSessionIds.length) + 1;
+}
+function cycleComplete(state, parameters) {
+	return (state.expectedDrawerIds.length > 0 ? state.expectedDrawerIds.every((playerId) => state.observedDrawerIds.includes(playerId)) : state.eligibleRoundSessionIds.length >= parameters.drawings) && !state.missedDrawing && state.eligibleRoundSessionIds.length >= parameters.drawings && state.eligibleRoundSessionIds.every((roundSessionId) => state.likedRoundSessionIds.includes(roundSessionId));
+}
+function completionEvidence(state, boundaryEventId) {
+	return [
+		...state.eligibleRoundSessionIds.map((id) => state.roundEventIds[id]),
+		...state.eligibleRoundSessionIds.map((id) => state.likeEventIds[id]),
+		boundaryEventId
+	].filter((eventId) => typeof eventId === "string");
+}
 var fanboyDefinition = {
 	id: "fanboy",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "drawing",
-		localization: localization("Fanboy", "Like 3 different drawings in public lobbies. Each drawing turn can count only once.", "Fanboy", "Like 3 verschiedene Zeichnungen in \u00F6ffentlichen Lobbys. Jeder Zeichen-Turn kann nur einmal z\u00E4hlen."),
+		localization: localization("Fanboy", "Like every eligible drawing in one fully observed Skribbl round.", "Fanboy", "Like jedes berechtigte Bild in einer vollst\u00E4ndig beobachteten Skribbl-Runde."),
 		icon: "fanboy-like",
 		rankedEligible: true,
-		difficulty: 2
+		difficulty: 4
 	},
-	defaultParameters: { drawings: 3 },
-	target: (parameters) => parameters.drawings,
-	createInitialState: () => ({
-		qualifyingEvents: 0,
-		likedRoundSessionIds: [],
-		evidenceEventIds: []
-	}),
+	defaultParameters: { drawings: 1 },
+	target: (parameters) => parameters.drawings + 1,
+	createInitialState: () => initialState$2(),
 	validateParameters(value) {
-		if (typeof value !== "object" || value === null) return false;
-		return isPositiveInteger(value.drawings);
+		return typeof value === "object" && value !== null && isPositiveInteger(value.drawings);
 	},
-	relevantEvents: ["VOTE_SUBMITTED"],
+	relevantEvents: [
+		"GAME_STARTING",
+		"ROUND_STARTED",
+		"VOTE_SUBMITTED",
+		"ROUND_ENDED",
+		"PLAYER_LEFT",
+		"GAME_ENDED"
+	],
 	allowedLobbyTypes: [0],
+	resetOn: ["lobby-change"],
 	reduce({ event, runtime, parameters }) {
-		if (event.type !== "VOTE_SUBMITTED") return null;
-		if (!event.actor?.isSelf) return null;
-		if (voteValue$2(event.payload) !== 1) return null;
-		const roundSessionId = event.context.roundSessionId;
-		if (roundSessionId === null) return null;
-		if (event.context.gameStateName !== "DRAWING" || event.context.gameStateId !== 4) return null;
-		if (event.context.meId !== null && event.context.drawerId === event.context.meId) return null;
-		if (runtime.internalState.likedRoundSessionIds.includes(roundSessionId)) return null;
-		const likedRoundSessionIds = [...runtime.internalState.likedRoundSessionIds, roundSessionId];
-		const evidenceEventIds = [...runtime.internalState.evidenceEventIds, event.eventId];
-		const progress = likedRoundSessionIds.length;
+		if (event.type === "GAME_STARTING") return {
+			internalState: initialState$2(event.context.gameSessionId),
+			progress: 0,
+			target: parameters.drawings + 1,
+			reason: "fanboy-round-observation-started"
+		};
+		const state = runtime.internalState;
+		if (!state.gameStartObserved || state.gameSessionId === null || event.context.gameSessionId !== state.gameSessionId) return null;
+		if (event.type === "ROUND_STARTED") {
+			const roundSessionId = event.context.roundSessionId;
+			if (roundSessionId === null) return null;
+			const nextRoundNumber = event.context.roundNumber;
+			const newRoundBoundary = state.roundNumber !== null && nextRoundNumber !== null && nextRoundNumber !== state.roundNumber;
+			if (newRoundBoundary && cycleComplete(state, parameters)) {
+				const target = cycleTarget(state, parameters);
+				return {
+					internalState: {
+						...state,
+						qualifyingEvents: state.eligibleRoundSessionIds.length
+					},
+					progress: target,
+					target,
+					complete: true,
+					reason: "fanboy-liked-every-drawing-before-next-round",
+					evidenceEventIds: completionEvidence(state, event.eventId)
+				};
+			}
+			const base = state.roundNumber === null || newRoundBoundary ? {
+				...initialState$2(state.gameSessionId),
+				roundNumber: nextRoundNumber
+			} : state;
+			const players = Array.isArray(event.payload.players) ? event.payload.players : [];
+			const expectedDrawerIds = Array.from(/* @__PURE__ */ new Set([...base.expectedDrawerIds, ...players.map((player) => player.id).filter((playerId) => playerId !== event.context.meId)]));
+			if (event.context.meId !== null && event.context.drawerId === event.context.meId) {
+				const nextState = {
+					...base,
+					expectedDrawerIds,
+					currentRoundSessionId: null
+				};
+				return {
+					internalState: nextState,
+					progress: nextState.likedRoundSessionIds.length,
+					target: cycleTarget(nextState, parameters),
+					reason: "fanboy-own-drawing-does-not-require-a-like"
+				};
+			}
+			if (base.eligibleRoundSessionIds.includes(roundSessionId)) return null;
+			const eligibleRoundSessionIds = [...base.eligibleRoundSessionIds, roundSessionId];
+			const observedDrawerIds = event.context.drawerId === null ? base.observedDrawerIds : Array.from(/* @__PURE__ */ new Set([...base.observedDrawerIds, event.context.drawerId]));
+			const nextState = {
+				...base,
+				roundNumber: nextRoundNumber,
+				currentRoundSessionId: roundSessionId,
+				expectedDrawerIds,
+				observedDrawerIds,
+				eligibleRoundSessionIds,
+				roundEventIds: {
+					...base.roundEventIds,
+					[roundSessionId]: event.eventId
+				}
+			};
+			return {
+				internalState: nextState,
+				progress: nextState.likedRoundSessionIds.length,
+				target: cycleTarget(nextState, parameters),
+				reason: "fanboy-eligible-drawing-started"
+			};
+		}
+		if (event.type === "PLAYER_LEFT") {
+			const playerId = event.payload.playerId;
+			if (playerId === null || state.observedDrawerIds.includes(playerId) || !state.expectedDrawerIds.includes(playerId)) return null;
+			const nextState = {
+				...state,
+				expectedDrawerIds: state.expectedDrawerIds.filter((id) => id !== playerId)
+			};
+			return {
+				internalState: nextState,
+				target: cycleTarget(nextState, parameters),
+				reason: "fanboy-undrawn-departed-player-removed"
+			};
+		}
+		if (event.type === "VOTE_SUBMITTED") {
+			const roundSessionId = event.context.roundSessionId;
+			if (!event.actor?.isSelf || roundSessionId === null || state.currentRoundSessionId !== roundSessionId || !state.eligibleRoundSessionIds.includes(roundSessionId)) return null;
+			const liked = voteValue$2(event.payload) === 1;
+			const likedRoundSessionIds = liked ? Array.from(/* @__PURE__ */ new Set([...state.likedRoundSessionIds, roundSessionId])) : state.likedRoundSessionIds.filter((id) => id !== roundSessionId);
+			const likeEventIds = { ...state.likeEventIds };
+			if (liked) likeEventIds[roundSessionId] = event.eventId;
+			else delete likeEventIds[roundSessionId];
+			const nextState = {
+				...state,
+				likedRoundSessionIds,
+				likeEventIds
+			};
+			return {
+				internalState: nextState,
+				progress: likedRoundSessionIds.length,
+				target: cycleTarget(nextState, parameters),
+				reason: liked ? "fanboy-current-drawing-liked" : "fanboy-current-drawing-like-removed"
+			};
+		}
+		if (event.type === "ROUND_ENDED") {
+			const roundSessionId = state.currentRoundSessionId;
+			if (roundSessionId === null) return null;
+			const missedDrawing = state.missedDrawing || !state.likedRoundSessionIds.includes(roundSessionId);
+			return {
+				internalState: {
+					...state,
+					currentRoundSessionId: null,
+					missedDrawing
+				},
+				progress: state.likedRoundSessionIds.length,
+				target: cycleTarget(state, parameters),
+				reason: missedDrawing ? "fanboy-drawing-ended-without-like" : "fanboy-liked-drawing-finished"
+			};
+		}
+		if (event.type !== "GAME_ENDED") return null;
+		const target = cycleTarget(state, parameters);
+		const complete = cycleComplete(state, parameters);
 		return {
 			internalState: {
-				qualifyingEvents: progress,
-				likedRoundSessionIds,
-				evidenceEventIds
+				...state,
+				qualifyingEvents: complete ? state.eligibleRoundSessionIds.length : 0
 			},
-			progress,
-			complete: progress >= parameters.drawings,
-			reason: "fanboy-liked-distinct-drawing-turn",
-			evidenceEventIds
+			progress: complete ? target : state.likedRoundSessionIds.length,
+			target,
+			complete,
+			reason: complete ? "fanboy-liked-every-drawing-in-observed-round" : "fanboy-observed-round-contained-unliked-or-missing-drawing",
+			evidenceEventIds: complete ? completionEvidence(state, event.eventId) : []
 		};
 	}
 };
@@ -7055,15 +7200,15 @@ function voterId(event) {
 }
 var picassoDefinition = {
 	id: "picasso",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "drawing",
-		localization: localization("Picasso", "Receive at least 3 simultaneous likes on one of your drawings in a public lobby.", "Picasso", "Erhalte mindestens 3 gleichzeitige Likes auf eine deiner Zeichnungen in einer \u00F6ffentlichen Lobby."),
+		localization: localization("Picasso", "Receive at least 4 simultaneous likes on one of your drawings in a public lobby.", "Picasso", "Erhalte mindestens 4 gleichzeitige Likes auf eine deiner Zeichnungen in einer \u00F6ffentlichen Lobby."),
 		icon: "picasso-palette",
 		rankedEligible: true,
 		difficulty: 3
 	},
-	defaultParameters: { likes: 3 },
+	defaultParameters: { likes: 4 },
 	target: (parameters) => parameters.likes,
 	createInitialState: () => ({
 		qualifyingEvents: 0,
@@ -7737,50 +7882,48 @@ function colorIdsForFamily(family) {
 	return SKRIBBL_COLOR_IDS_BY_FAMILY[family];
 }
 function colorFamilyForId(colorId) {
-	if (colorId >= 1 && colorId <= 3) return "monochrome";
-	if (colorId === 4 || colorId === 5) return "red";
-	if (colorId === 6 || colorId === 7) return "orange";
-	if (colorId === 8 || colorId === 9) return "yellow";
-	if (colorId >= 10 && colorId <= 12) return "green";
-	if (colorId >= 13 && colorId <= 15) return "cyan";
-	if (colorId === 16 || colorId === 17) return "blue";
-	if (colorId === 18 || colorId === 19) return "magenta";
-	if (colorId === 20 || colorId === 21) return "pink";
-	if (colorId === 22 || colorId === 23) return "peach";
-	if (colorId === 24 || colorId === 25) return "brown";
-	return null;
+	return Object.entries(SKRIBBL_COLOR_IDS_BY_FAMILY).find(([, colorIds]) => colorIds.includes(colorId))?.[0] ?? null;
 }
-function submittedFamilies(event) {
-	return Array.from(new Set(event.payload.commands.flatMap((command) => {
-		if (command.kind !== "PENCIL" && command.kind !== "FILL") return [];
-		const family = colorFamilyForId(command.color);
-		return family === null ? [] : [family];
-	})));
+function submittedColorIds(event) {
+	return Array.from(new Set(event.payload.commands.flatMap((command) => (command.kind === "PENCIL" || command.kind === "FILL") && Number.isInteger(command.color) && command.color >= 0 && command.color <= 25 ? [command.color] : []))).sort((left, right) => left - right);
+}
+function progress(state, requiredColors) {
+	return Math.min(requiredColors, state.usedColorIds.length);
 }
 var colorPickerDefinition = {
 	id: "color-picker",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "drawing",
-		localization: localization("Color Picker", "Use at least 5 different color families during one of your drawings in a public lobby. White does not count.", "Color Picker", "Benutze w\u00E4hrend einer deiner Zeichnungen in einer \u00F6ffentlichen Lobby mindestens 5 verschiedene Farbfamilien. Wei\u00DF z\u00E4hlt nicht."),
+		localization: localization("Color Picker", "Use all 26 Skribbl colors in one of your drawings and have every eligible player guess it.", "Color Picker", "Benutze alle 26 Skribbl-Farben in einer Zeichnung und lasse sie von allen berechtigten Spielern erraten."),
 		icon: "color-picker-palette",
 		rankedEligible: true,
-		difficulty: 3
+		difficulty: 5
 	},
-	defaultParameters: { families: 5 },
-	target: (parameters) => parameters.families,
+	defaultParameters: { colors: 26 },
+	target: (parameters) => parameters.colors + 1,
 	createInitialState: () => ({
 		currentRoundSessionId: null,
+		roundStartedEventId: null,
 		ownDrawingActive: false,
-		usedFamilies: [],
-		evidenceEventIdsByFamily: {}
+		usedColorIds: [],
+		colorEventIdsById: {},
+		eligibleGuesserIds: [],
+		correctGuesserIds: [],
+		correctGuessEventIdsByPlayer: {}
 	}),
 	validateParameters(value) {
 		if (typeof value !== "object" || value === null) return false;
-		const families = value.families;
-		return isPositiveInteger(families) && families <= 11;
+		const colors = value.colors;
+		return isPositiveInteger(colors) && colors <= 26;
 	},
-	relevantEvents: ["ROUND_STARTED", "DRAW_COMMAND_BATCH_SUBMITTED"],
+	relevantEvents: [
+		"ROUND_STARTED",
+		"DRAW_COMMAND_BATCH_SUBMITTED",
+		"CORRECT_GUESS",
+		"PLAYER_LEFT",
+		"ROUND_ENDED"
+	],
 	allowedLobbyTypes: [0],
 	resetOn: ["lobby-change"],
 	reduce({ event, runtime, parameters }) {
@@ -7788,80 +7931,415 @@ var colorPickerDefinition = {
 			const roundSessionId = event.context.roundSessionId;
 			if (roundSessionId === null) return null;
 			const ownDrawingActive = event.context.meId !== null && event.context.drawerId === event.context.meId;
+			const eligibleGuesserIds = ownDrawingActive && Array.isArray(event.payload.players) ? event.payload.players.map((player) => player.id).filter((playerId) => playerId !== event.context.drawerId) : [];
 			return {
 				internalState: {
 					currentRoundSessionId: roundSessionId,
+					roundStartedEventId: event.eventId,
 					ownDrawingActive,
-					usedFamilies: [],
-					evidenceEventIdsByFamily: {}
+					usedColorIds: [],
+					colorEventIdsById: {},
+					eligibleGuesserIds,
+					correctGuesserIds: [],
+					correctGuessEventIdsByPlayer: {}
 				},
 				progress: 0,
 				reason: ownDrawingActive ? "color-picker-own-drawing-started" : "color-picker-foreign-drawing-started"
 			};
 		}
-		if (event.type !== "DRAW_COMMAND_BATCH_SUBMITTED") return null;
-		if (!runtime.internalState.ownDrawingActive) return null;
-		if (event.context.roundSessionId === null || event.context.roundSessionId !== runtime.internalState.currentRoundSessionId) return null;
-		if (event.context.meId === null || event.context.drawerId !== event.context.meId) return null;
-		const observed = submittedFamilies(event);
-		if (observed.length === 0) return null;
-		const usedFamilies = [...runtime.internalState.usedFamilies];
-		const evidenceEventIdsByFamily = { ...runtime.internalState.evidenceEventIdsByFamily };
-		let changed = false;
-		for (const family of observed) {
-			if (usedFamilies.includes(family)) continue;
-			usedFamilies.push(family);
-			evidenceEventIdsByFamily[family] = event.eventId;
-			changed = true;
+		const state = runtime.internalState;
+		if (!state.ownDrawingActive || event.context.roundSessionId === null || event.context.roundSessionId !== state.currentRoundSessionId) return null;
+		if (event.type === "PLAYER_LEFT") {
+			const playerId = event.payload.playerId;
+			if (playerId === null || !state.eligibleGuesserIds.includes(playerId)) return null;
+			const eligibleGuesserIds = state.eligibleGuesserIds.filter((id) => id !== playerId);
+			const correctGuesserIds = state.correctGuesserIds.filter((id) => id !== playerId);
+			const correctGuessEventIdsByPlayer = { ...state.correctGuessEventIdsByPlayer };
+			delete correctGuessEventIdsByPlayer[String(playerId)];
+			return {
+				internalState: {
+					...state,
+					eligibleGuesserIds,
+					correctGuesserIds,
+					correctGuessEventIdsByPlayer
+				},
+				progress: progress(state, parameters.colors),
+				reason: "color-picker-departed-player-removed-from-eligible-guessers"
+			};
 		}
-		if (!changed) return null;
-		const evidenceEventIds = usedFamilies.map((family) => evidenceEventIdsByFamily[family]).filter((id) => typeof id === "string");
+		if (event.type === "DRAW_COMMAND_BATCH_SUBMITTED") {
+			if (event.context.meId === null || event.context.drawerId !== event.context.meId) return null;
+			const observed = submittedColorIds(event);
+			if (observed.length === 0) return null;
+			const usedColorIds = [...state.usedColorIds];
+			const colorEventIdsById = { ...state.colorEventIdsById };
+			for (const colorId of observed) {
+				if (usedColorIds.includes(colorId)) continue;
+				usedColorIds.push(colorId);
+				colorEventIdsById[String(colorId)] = event.eventId;
+			}
+			usedColorIds.sort((left, right) => left - right);
+			if (usedColorIds.length === state.usedColorIds.length) return null;
+			const nextState = {
+				...state,
+				usedColorIds,
+				colorEventIdsById
+			};
+			return {
+				internalState: nextState,
+				progress: progress(nextState, parameters.colors),
+				reason: "color-picker-new-palette-color-used"
+			};
+		}
+		if (event.type === "CORRECT_GUESS") {
+			const playerId = event.payload.playerId;
+			if (!state.eligibleGuesserIds.includes(playerId) || state.correctGuesserIds.includes(playerId)) return null;
+			const correctGuesserIds = [...state.correctGuesserIds, playerId];
+			const correctGuessEventIdsByPlayer = {
+				...state.correctGuessEventIdsByPlayer,
+				[String(playerId)]: event.eventId
+			};
+			return {
+				internalState: {
+					...state,
+					correctGuesserIds,
+					correctGuessEventIdsByPlayer
+				},
+				progress: progress(state, parameters.colors),
+				reason: "color-picker-eligible-player-guessed-own-drawing"
+			};
+		}
+		if (event.type !== "ROUND_ENDED") return null;
+		const allColorsUsed = state.usedColorIds.length >= parameters.colors;
+		const everyoneGuessed = state.eligibleGuesserIds.length > 0 && state.eligibleGuesserIds.every((playerId) => state.correctGuesserIds.includes(playerId));
+		const complete = allColorsUsed && everyoneGuessed;
+		const evidenceEventIds = complete ? [
+			...state.roundStartedEventId ? [state.roundStartedEventId] : [],
+			...state.usedColorIds.map((colorId) => state.colorEventIdsById[String(colorId)]),
+			...state.eligibleGuesserIds.map((playerId) => state.correctGuessEventIdsByPlayer[String(playerId)]),
+			event.eventId
+		].filter((eventId) => typeof eventId === "string") : [];
 		return {
-			internalState: {
-				...runtime.internalState,
-				usedFamilies,
-				evidenceEventIdsByFamily
-			},
-			progress: usedFamilies.length,
-			complete: usedFamilies.length >= parameters.families,
-			reason: "color-picker-new-color-family-used",
+			internalState: state,
+			progress: complete ? parameters.colors + 1 : progress(state, parameters.colors),
+			complete,
+			reason: complete ? "all-colors-used-and-every-eligible-player-guessed" : "color-picker-round-ended-before-both-conditions",
 			evidenceEventIds
 		};
 	}
 };
-function hasInternalWhitespace(word) {
-	return /\S\s+\S/u.test(word.trim());
+var LIST_BASE = "https://raw.githubusercontent.com/pospos21/words/main/lists/";
+var CACHE_PREFIX = "skribblDuelsOfficialWordListV2:";
+var LANGUAGE_NAME_BY_ID = {
+	0: "English",
+	1: "German",
+	7: "French",
+	14: "Korean",
+	24: "Spanish"
+};
+var lists = /* @__PURE__ */ new Map();
+var originalWords = /* @__PURE__ */ new Map();
+var statuses = /* @__PURE__ */ new Map();
+var pending = /* @__PURE__ */ new Map();
+var statusListeners = /* @__PURE__ */ new Set();
+function normalizeOfficialWord(value) {
+	return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+}
+function getOfficialWordLetterLength(value) {
+	return Array.from(normalizeOfficialWord(value).replace(/[\s-]+/gu, "")).length;
+}
+function getOfficialWordComponentCount(value) {
+	const normalized = normalizeOfficialWord(value);
+	return normalized ? normalized.split(/\s+/u).filter(Boolean).length : 0;
+}
+function emptyMetrics() {
+	return {
+		wordCount: 0,
+		minimumLength: null,
+		maximumLength: null,
+		shortThreshold: null,
+		longThreshold: null,
+		shortQualifyingRate: 0,
+		longQualifyingRate: 0,
+		shortRequiredCount: 1,
+		longRequiredCount: 1,
+		spacedWordThreshold: null
+	};
+}
+function quantile(sorted, fraction) {
+	if (sorted.length === 0) return null;
+	return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction)))] ?? null;
+}
+function calculateMetrics(words) {
+	const lengths = words.map(getOfficialWordLetterLength).filter((length) => length > 0).sort((a, b) => a - b);
+	const shortThreshold = quantile(lengths, .05);
+	const longThreshold = quantile(lengths, .9);
+	const shortQualifyingRate = shortThreshold === null || lengths.length === 0 ? 0 : lengths.filter((length) => length <= shortThreshold).length / lengths.length;
+	const longQualifyingRate = longThreshold === null || lengths.length === 0 ? 0 : lengths.filter((length) => length >= longThreshold).length / lengths.length;
+	const spacedComponents = words.map(getOfficialWordComponentCount).filter((count) => count >= 2).sort((a, b) => a - b);
+	return {
+		wordCount: words.length,
+		minimumLength: lengths[0] ?? null,
+		maximumLength: lengths[lengths.length - 1] ?? null,
+		shortThreshold,
+		longThreshold,
+		shortQualifyingRate,
+		longQualifyingRate,
+		shortRequiredCount: Math.max(2, Math.min(3, Math.ceil(shortQualifyingRate / .05))),
+		longRequiredCount: Math.max(1, Math.min(3, Math.ceil(longQualifyingRate / .1))),
+		spacedWordThreshold: quantile(spacedComponents, .75)
+	};
+}
+function statusKey(languageName) {
+	return `${CACHE_PREFIX}${languageName}`;
+}
+function sourceUrl(languageName) {
+	return `${LIST_BASE}${encodeURIComponent(languageName)}_List_Final.json`;
+}
+function notify(status) {
+	statuses.set(status.languageId, status);
+	for (const listener of statusListeners) listener(structuredClone(status));
+}
+function parseWords(value) {
+	const entries = Array.isArray(value) ? value : typeof value === "object" && value !== null ? Object.values(value) : [];
+	const words = [];
+	for (const entry of entries) {
+		if (typeof entry === "string") {
+			words.push(entry);
+			continue;
+		}
+		if (typeof entry !== "object" || entry === null) continue;
+		const record = entry;
+		const word = typeof record.Word === "string" ? record.Word : typeof record.word === "string" ? record.word : null;
+		if (word) words.push(word);
+	}
+	return words;
+}
+function install(languageId, languageName, words, source, fromCache) {
+	const canonical = [...new Set(words.map((word) => word.trim()).filter(Boolean))];
+	const normalized = new Set(canonical.map(normalizeOfficialWord).filter(Boolean));
+	lists.set(languageId, normalized);
+	originalWords.set(languageId, canonical);
+	const status = {
+		languageId,
+		languageName,
+		state: "ready",
+		wordCount: normalized.size,
+		source,
+		error: null,
+		warning: null,
+		fromCache,
+		loadedAt: Date.now(),
+		metrics: calculateMetrics(canonical)
+	};
+	notify(status);
+	return status;
+}
+function resolveLanguageName(languageId, languageName) {
+	return languageName?.trim() || statuses.get(languageId)?.languageName || LANGUAGE_NAME_BY_ID[languageId] || null;
+}
+function gmRequester() {
+	try {
+		if (typeof GM !== "undefined" && typeof GM.xmlHttpRequest === "function") return GM.xmlHttpRequest.bind(GM);
+	} catch {}
+	try {
+		if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest;
+	} catch {}
+	return null;
+}
+async function requestJson(url) {
+	const request = gmRequester();
+	if (request) {
+		const responseText = await new Promise((resolve, reject) => {
+			request({
+				method: "GET",
+				url,
+				onload(response) {
+					if (response.status < 200 || response.status >= 300) {
+						reject(/* @__PURE__ */ new Error(`HTTP ${response.status}`));
+						return;
+					}
+					resolve(response.responseText);
+				},
+				onerror: reject,
+				ontimeout: reject
+			});
+		});
+		return JSON.parse(responseText);
+	}
+	const response = await fetch(url, { cache: "force-cache" });
+	if (!response.ok) throw new Error(`HTTP ${response.status}`);
+	return response.json();
+}
+function hasOfficialWord(languageId, value) {
+	if (languageId === null || value === null) return false;
+	return lists.get(languageId)?.has(normalizeOfficialWord(value)) ?? false;
+}
+function getOfficialWords(languageId) {
+	return [...originalWords.get(languageId) ?? []];
+}
+function getOfficialWordLengthMetrics(languageId) {
+	return structuredClone(statuses.get(languageId)?.metrics ?? emptyMetrics());
+}
+function getOfficialWordListStatus(languageId, languageName) {
+	const existing = statuses.get(languageId);
+	if (existing) return structuredClone(existing);
+	const resolvedName = resolveLanguageName(languageId, languageName);
+	return {
+		languageId,
+		languageName: resolvedName,
+		state: resolvedName ? "idle" : "unsupported",
+		wordCount: 0,
+		source: resolvedName ? sourceUrl(resolvedName) : null,
+		error: null,
+		warning: resolvedName ? null : "No selectable Skribbl language name is available for this lobby. Word-list challenges must be disabled.",
+		fromCache: false,
+		loadedAt: null,
+		metrics: emptyMetrics()
+	};
+}
+function subscribeOfficialWordListStatus(listener) {
+	statusListeners.add(listener);
+	return () => statusListeners.delete(listener);
+}
+async function loadOfficialWordList(languageId, languageName, force = false) {
+	const resolvedName = resolveLanguageName(languageId, languageName);
+	if (!resolvedName) {
+		const unsupported = {
+			languageId,
+			languageName: null,
+			state: "unsupported",
+			wordCount: 0,
+			source: null,
+			error: null,
+			warning: "This lobby language is not selectable or has no known name. Mogged, Smol words and Big word are unavailable.",
+			fromCache: false,
+			loadedAt: null,
+			metrics: emptyMetrics()
+		};
+		notify(unsupported);
+		return structuredClone(unsupported);
+	}
+	const current = statuses.get(languageId);
+	if (!force && current?.state === "ready" && current.languageName === resolvedName) return structuredClone(current);
+	const existing = pending.get(languageId);
+	if (existing) return existing;
+	const url = sourceUrl(resolvedName);
+	const task = (async () => {
+		notify({
+			languageId,
+			languageName: resolvedName,
+			state: "loading",
+			wordCount: 0,
+			source: url,
+			error: null,
+			warning: null,
+			fromCache: false,
+			loadedAt: null,
+			metrics: emptyMetrics()
+		});
+		if (!force) try {
+			const cached = localStorage.getItem(statusKey(resolvedName));
+			if (cached) {
+				const parsed = JSON.parse(cached);
+				if (parsed.version === 2 && parsed.languageName === resolvedName && Array.isArray(parsed.words)) {
+					const cachedWords = parsed.words.filter((word) => typeof word === "string");
+					if (cachedWords.length > 0) return install(languageId, resolvedName, cachedWords, parsed.source ?? url, true);
+				}
+			}
+		} catch {}
+		try {
+			const words = parseWords(await requestJson(url));
+			if (words.length === 0) throw new Error("The downloaded language file contained no Word entries.");
+			const status = install(languageId, resolvedName, words, url, false);
+			try {
+				const cached = {
+					version: 2,
+					languageName: resolvedName,
+					words,
+					source: url,
+					savedAt: Date.now()
+				};
+				localStorage.setItem(statusKey(resolvedName), JSON.stringify(cached));
+			} catch {}
+			return status;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const failed = {
+				languageId,
+				languageName: resolvedName,
+				state: message.includes("HTTP 404") ? "unsupported" : "error",
+				wordCount: 0,
+				source: url,
+				error: message,
+				warning: message.includes("HTTP 404") ? `No official word-list file is available for ${resolvedName}. Word-list challenges must not be placed on the board.` : `The ${resolvedName} word list could not be loaded. Word-list challenges are temporarily unavailable.`,
+				fromCache: false,
+				loadedAt: null,
+				metrics: emptyMetrics()
+			};
+			notify(failed);
+			return failed;
+		}
+	})().finally(() => pending.delete(languageId));
+	pending.set(languageId, task);
+	return task;
 }
 var needSomeSpaceDefinition = {
 	id: "need-some-space",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "guessing",
-		localization: localization("Need some space?", "Correctly guess a word that contains at least one space.", "Need some space?", "Errate ein Wort richtig, das mindestens ein Leerzeichen enth\u00E4lt."),
+		localization: localization("Need some space?", "Correctly guess an official multi-word entry whose required component count is derived from the active lobby language.", "Need some space?", "Errate einen offiziellen mehrteiligen Begriff; die n\u00F6tige Wortanzahl wird aus der aktiven Lobby-Sprache abgeleitet."),
 		rankedEligible: true,
 		difficulty: 2
 	},
-	defaultParameters: { amount: 1 },
-	target: (parameters) => parameters.amount,
-	createInitialState: () => ({ qualifyingEvents: 0 }),
+	defaultParameters: { fallbackComponents: 2 },
+	target: () => 1,
+	createInitialState: () => ({
+		qualifyingEvents: 0,
+		wordListState: "idle",
+		wordListWarning: null,
+		requiredComponents: null,
+		matchedComponents: null,
+		matchedWord: null
+	}),
 	validateParameters(value) {
-		if (typeof value !== "object" || value === null) return false;
-		return isPositiveInteger(value.amount);
+		return typeof value === "object" && value !== null && isPositiveInteger(value.fallbackComponents);
 	},
 	relevantEvents: ["CORRECT_GUESS"],
 	allowedLobbyTypes: [0],
 	reduce({ event, runtime, parameters }) {
-		if (event.type !== "CORRECT_GUESS") return null;
-		if (!event.actor?.isSelf) return null;
-		const word = event.payload.word?.trim();
-		if (!word || !event.payload.includesWord || !hasInternalWhitespace(word)) return null;
-		const next = nextCounter(runtime.internalState);
+		if (event.type !== "CORRECT_GUESS" || event.actor?.isSelf !== true) return null;
+		const languageId = event.context.languageId;
+		const status = languageId === null ? null : getOfficialWordListStatus(languageId, event.context.languageName);
+		const word = event.payload.includesWord ? event.payload.word?.trim() ?? null : null;
+		if (languageId === null || !status || status.state !== "ready") return {
+			internalState: {
+				...runtime.internalState,
+				wordListState: status?.state ?? "unsupported",
+				wordListWarning: status?.warning ?? "No official word list is available for the current lobby language.",
+				requiredComponents: null,
+				matchedComponents: null,
+				matchedWord: null
+			},
+			reason: "need-some-space-official-word-list-not-ready"
+		};
+		const requiredComponents = getOfficialWordLengthMetrics(languageId).spacedWordThreshold ?? parameters.fallbackComponents;
+		const matchedComponents = word ? getOfficialWordComponentCount(word) : null;
+		const qualifies = Boolean(word && hasOfficialWord(languageId, word) && matchedComponents !== null && matchedComponents >= requiredComponents);
 		return {
-			internalState: next,
-			progress: next.qualifyingEvents,
-			complete: next.qualifyingEvents >= parameters.amount,
-			reason: "self-correctly-guessed-word-containing-space",
-			evidenceEventIds: [event.eventId]
+			internalState: {
+				qualifyingEvents: qualifies ? 1 : 0,
+				wordListState: status.state,
+				wordListWarning: null,
+				requiredComponents,
+				matchedComponents,
+				matchedWord: word
+			},
+			progress: qualifies ? 1 : 0,
+			complete: qualifies,
+			reason: qualifies ? "self-guessed-language-qualified-multi-word-entry" : "word-below-language-specific-component-threshold",
+			evidenceEventIds: qualifies ? [event.eventId] : []
 		};
 	}
 };
@@ -7970,7 +8448,7 @@ var isThatAModDefinition = {
 };
 var bloodlineDefinition = {
 	id: "bloodline",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "home",
 		localization: localization("Bloodline", "Open the Credits link from the homepage and let the Credits page finish loading.", "Bloodline", "\u00D6ffne \u00FCber den Link auf der Homepage die Credits und lasse die Credits-Seite vollst\u00E4ndig laden."),
@@ -8007,15 +8485,15 @@ var bloodlineDefinition = {
 };
 var timeWasteDefinition = {
 	id: "time-waste",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "lucky-fun",
-		localization: localization("Time Waste", "Witness another drawer keep the canvas completely white for 60 continuous seconds in a public lobby.", "Time Waste", "Erlebe, wie ein anderer Zeichner die Leinwand in einer \u00F6ffentlichen Lobby 60 Sekunden durchgehend vollst\u00E4ndig wei\u00DF l\u00E4sst."),
+		localization: localization("Time Waste", "Witness another drawer keep the canvas completely white for 50 continuous seconds in a public lobby.", "Time Waste", "Erlebe, wie ein anderer Zeichner die Leinwand in einer \u00F6ffentlichen Lobby 50 Sekunden durchgehend vollst\u00E4ndig wei\u00DF l\u00E4sst."),
 		icon: "time-waste-hourglass",
 		rankedEligible: true,
 		difficulty: 4
 	},
-	defaultParameters: { seconds: 60 },
+	defaultParameters: { seconds: 50 },
 	target: () => 1,
 	createInitialState: () => ({
 		qualifyingEvents: 0,
@@ -8297,243 +8775,6 @@ var ultimateComebackDefinition = {
 		};
 	}
 };
-var LIST_BASE = "https://raw.githubusercontent.com/pospos21/words/main/lists/";
-var CACHE_PREFIX = "skribblDuelsOfficialWordListV2:";
-var LANGUAGE_NAME_BY_ID = {
-	0: "English",
-	1: "German",
-	7: "French",
-	14: "Korean",
-	24: "Spanish"
-};
-var lists = /* @__PURE__ */ new Map();
-var originalWords = /* @__PURE__ */ new Map();
-var statuses = /* @__PURE__ */ new Map();
-var pending = /* @__PURE__ */ new Map();
-var statusListeners = /* @__PURE__ */ new Set();
-function normalizeOfficialWord(value) {
-	return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
-}
-function getOfficialWordLetterLength(value) {
-	return Array.from(normalizeOfficialWord(value).replace(/[\s-]+/gu, "")).length;
-}
-function emptyMetrics() {
-	return {
-		wordCount: 0,
-		minimumLength: null,
-		maximumLength: null,
-		shortThreshold: null,
-		longThreshold: null
-	};
-}
-function quantile(sorted, fraction) {
-	if (sorted.length === 0) return null;
-	return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction)))] ?? null;
-}
-function calculateMetrics(words) {
-	const lengths = words.map(getOfficialWordLetterLength).filter((length) => length > 0).sort((a, b) => a - b);
-	return {
-		wordCount: words.length,
-		minimumLength: lengths[0] ?? null,
-		maximumLength: lengths[lengths.length - 1] ?? null,
-		shortThreshold: quantile(lengths, .05),
-		longThreshold: quantile(lengths, .9)
-	};
-}
-function statusKey(languageName) {
-	return `${CACHE_PREFIX}${languageName}`;
-}
-function sourceUrl(languageName) {
-	return `${LIST_BASE}${encodeURIComponent(languageName)}_List_Final.json`;
-}
-function notify(status) {
-	statuses.set(status.languageId, status);
-	for (const listener of statusListeners) listener(structuredClone(status));
-}
-function parseWords(value) {
-	const entries = Array.isArray(value) ? value : typeof value === "object" && value !== null ? Object.values(value) : [];
-	const words = [];
-	for (const entry of entries) {
-		if (typeof entry === "string") {
-			words.push(entry);
-			continue;
-		}
-		if (typeof entry !== "object" || entry === null) continue;
-		const record = entry;
-		const word = typeof record.Word === "string" ? record.Word : typeof record.word === "string" ? record.word : null;
-		if (word) words.push(word);
-	}
-	return words;
-}
-function install(languageId, languageName, words, source, fromCache) {
-	const canonical = [...new Set(words.map((word) => word.trim()).filter(Boolean))];
-	const normalized = new Set(canonical.map(normalizeOfficialWord).filter(Boolean));
-	lists.set(languageId, normalized);
-	originalWords.set(languageId, canonical);
-	const status = {
-		languageId,
-		languageName,
-		state: "ready",
-		wordCount: normalized.size,
-		source,
-		error: null,
-		warning: null,
-		fromCache,
-		loadedAt: Date.now(),
-		metrics: calculateMetrics(canonical)
-	};
-	notify(status);
-	return status;
-}
-function resolveLanguageName(languageId, languageName) {
-	return languageName?.trim() || statuses.get(languageId)?.languageName || LANGUAGE_NAME_BY_ID[languageId] || null;
-}
-function gmRequester() {
-	try {
-		if (typeof GM !== "undefined" && typeof GM.xmlHttpRequest === "function") return GM.xmlHttpRequest.bind(GM);
-	} catch {}
-	try {
-		if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest;
-	} catch {}
-	return null;
-}
-async function requestJson(url) {
-	const request = gmRequester();
-	if (request) {
-		const responseText = await new Promise((resolve, reject) => {
-			request({
-				method: "GET",
-				url,
-				onload(response) {
-					if (response.status < 200 || response.status >= 300) {
-						reject(/* @__PURE__ */ new Error(`HTTP ${response.status}`));
-						return;
-					}
-					resolve(response.responseText);
-				},
-				onerror: reject,
-				ontimeout: reject
-			});
-		});
-		return JSON.parse(responseText);
-	}
-	const response = await fetch(url, { cache: "force-cache" });
-	if (!response.ok) throw new Error(`HTTP ${response.status}`);
-	return response.json();
-}
-function hasOfficialWord(languageId, value) {
-	if (languageId === null || value === null) return false;
-	return lists.get(languageId)?.has(normalizeOfficialWord(value)) ?? false;
-}
-function getOfficialWords(languageId) {
-	return [...originalWords.get(languageId) ?? []];
-}
-function getOfficialWordLengthMetrics(languageId) {
-	return structuredClone(statuses.get(languageId)?.metrics ?? emptyMetrics());
-}
-function getOfficialWordListStatus(languageId, languageName) {
-	const existing = statuses.get(languageId);
-	if (existing) return structuredClone(existing);
-	const resolvedName = resolveLanguageName(languageId, languageName);
-	return {
-		languageId,
-		languageName: resolvedName,
-		state: resolvedName ? "idle" : "unsupported",
-		wordCount: 0,
-		source: resolvedName ? sourceUrl(resolvedName) : null,
-		error: null,
-		warning: resolvedName ? null : "No selectable Skribbl language name is available for this lobby. Word-list challenges must be disabled.",
-		fromCache: false,
-		loadedAt: null,
-		metrics: emptyMetrics()
-	};
-}
-function subscribeOfficialWordListStatus(listener) {
-	statusListeners.add(listener);
-	return () => statusListeners.delete(listener);
-}
-async function loadOfficialWordList(languageId, languageName, force = false) {
-	const resolvedName = resolveLanguageName(languageId, languageName);
-	if (!resolvedName) {
-		const unsupported = {
-			languageId,
-			languageName: null,
-			state: "unsupported",
-			wordCount: 0,
-			source: null,
-			error: null,
-			warning: "This lobby language is not selectable or has no known name. Mogged, Smol words and Big word are unavailable.",
-			fromCache: false,
-			loadedAt: null,
-			metrics: emptyMetrics()
-		};
-		notify(unsupported);
-		return structuredClone(unsupported);
-	}
-	const current = statuses.get(languageId);
-	if (!force && current?.state === "ready" && current.languageName === resolvedName) return structuredClone(current);
-	const existing = pending.get(languageId);
-	if (existing) return existing;
-	const url = sourceUrl(resolvedName);
-	const task = (async () => {
-		notify({
-			languageId,
-			languageName: resolvedName,
-			state: "loading",
-			wordCount: 0,
-			source: url,
-			error: null,
-			warning: null,
-			fromCache: false,
-			loadedAt: null,
-			metrics: emptyMetrics()
-		});
-		if (!force) try {
-			const cached = localStorage.getItem(statusKey(resolvedName));
-			if (cached) {
-				const parsed = JSON.parse(cached);
-				if (parsed.version === 2 && parsed.languageName === resolvedName && Array.isArray(parsed.words)) {
-					const cachedWords = parsed.words.filter((word) => typeof word === "string");
-					if (cachedWords.length > 0) return install(languageId, resolvedName, cachedWords, parsed.source ?? url, true);
-				}
-			}
-		} catch {}
-		try {
-			const words = parseWords(await requestJson(url));
-			if (words.length === 0) throw new Error("The downloaded language file contained no Word entries.");
-			const status = install(languageId, resolvedName, words, url, false);
-			try {
-				const cached = {
-					version: 2,
-					languageName: resolvedName,
-					words,
-					source: url,
-					savedAt: Date.now()
-				};
-				localStorage.setItem(statusKey(resolvedName), JSON.stringify(cached));
-			} catch {}
-			return status;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			const failed = {
-				languageId,
-				languageName: resolvedName,
-				state: message.includes("HTTP 404") ? "unsupported" : "error",
-				wordCount: 0,
-				source: url,
-				error: message,
-				warning: message.includes("HTTP 404") ? `No official word-list file is available for ${resolvedName}. Word-list challenges must not be placed on the board.` : `The ${resolvedName} word list could not be loaded. Word-list challenges are temporarily unavailable.`,
-				fromCache: false,
-				loadedAt: null,
-				metrics: emptyMetrics()
-			};
-			notify(failed);
-			return failed;
-		}
-	})().finally(() => pending.delete(languageId));
-	pending.set(languageId, task);
-	return task;
-}
 function addAttempt(attempts, playerId, message, eventId) {
 	const normalized = normalizeOfficialWord(message);
 	const existing = attempts.find((attempt) => attempt.playerId === playerId);
@@ -8551,10 +8792,10 @@ function addAttempt(attempts, playerId, message, eventId) {
 }
 var moggedDefinition = {
 	id: "mogged",
-	version: 3,
+	version: 4,
 	metadata: {
 		category: "guessing",
-		localization: localization("Mogged", "Guess the word after at least three different players submitted a wrong word from the official lobby word list.", "Mogged", "Errate das Wort, nachdem mindestens drei verschiedene Spieler zuvor ein falsches Wort aus der offiziellen Wortliste der Lobby eingegeben haben."),
+		localization: localization("Mogged", "Be the first guesser after at least three different players submitted a wrong word from the official lobby word list.", "Mogged", "Errate das Wort als Erster, nachdem mindestens drei verschiedene Spieler zuvor ein falsches Wort aus der offiziellen Wortliste der Lobby eingegeben haben."),
 		icon: "mogged-crowd",
 		rankedEligible: true,
 		difficulty: 5
@@ -8612,6 +8853,7 @@ var moggedDefinition = {
 			};
 		}
 		if (event.type !== "CORRECT_GUESS" || event.actor?.isSelf !== true) return null;
+		if (!event.payload.isFirstGuesser && event.payload.position !== 1) return null;
 		const status = event.context.languageId === null ? null : getOfficialWordListStatus(event.context.languageId, event.context.languageName);
 		if (!status || status.state !== "ready") return {
 			internalState: {
@@ -8646,15 +8888,15 @@ var moggedDefinition = {
 };
 var smolWordsDefinition = {
 	id: "smol-words",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "guessing",
-		localization: localization("Smol words", "Correctly guess an official word from the shortest five percent of the active lobby language list.", "Smol words", "Errate ein offizielles Wort aus den k\u00FCrzesten f\u00FCnf Prozent der aktiven Lobby-Wortliste."),
+		localization: localization("Smol words", "Be the first guesser on language-qualified short words. The required count is derived from the active official word list.", "Smol words", "Errate sprachabh\u00E4ngig kurze W\u00F6rter als Erster; die n\u00F6tige Anzahl wird aus der aktiven offiziellen Wortliste abgeleitet."),
 		icon: "smol-word",
 		rankedEligible: true,
 		difficulty: 3
 	},
-	defaultParameters: { amount: 1 },
+	defaultParameters: { amount: 3 },
 	target: (parameters) => parameters.amount,
 	createInitialState: () => ({
 		qualifyingEvents: 0,
@@ -8662,7 +8904,8 @@ var smolWordsDefinition = {
 		wordListWarning: null,
 		threshold: null,
 		matchedWord: null,
-		matchedLength: null
+		matchedLength: null,
+		requiredCount: null
 	}),
 	validateParameters(value) {
 		return typeof value === "object" && value !== null && isPositiveInteger(value.amount);
@@ -8671,6 +8914,7 @@ var smolWordsDefinition = {
 	allowedLobbyTypes: [0],
 	reduce({ event, runtime, parameters }) {
 		if (event.type !== "CORRECT_GUESS" || event.actor?.isSelf !== true) return null;
+		if (!event.payload.isFirstGuesser && event.payload.position !== 1) return null;
 		const languageId = event.context.languageId;
 		const status = languageId === null ? null : getOfficialWordListStatus(languageId, event.context.languageName);
 		const word = event.payload.includesWord ? event.payload.word?.trim() ?? null : null;
@@ -8681,12 +8925,15 @@ var smolWordsDefinition = {
 				wordListWarning: status?.warning ?? "No official word list is available for the current lobby language.",
 				threshold: null,
 				matchedWord: null,
-				matchedLength: null
+				matchedLength: null,
+				requiredCount: null
 			},
 			reason: "smol-words-official-word-list-not-ready",
 			evidenceEventIds: [event.eventId]
 		};
-		const threshold = getOfficialWordLengthMetrics(languageId).shortThreshold;
+		const metrics = getOfficialWordLengthMetrics(languageId);
+		const threshold = metrics.shortThreshold;
+		const requiredCount = Math.min(parameters.amount, metrics.shortRequiredCount);
 		if (!word || threshold === null || !hasOfficialWord(languageId, word)) return {
 			internalState: {
 				...runtime.internalState,
@@ -8694,8 +8941,10 @@ var smolWordsDefinition = {
 				wordListWarning: null,
 				threshold,
 				matchedWord: null,
-				matchedLength: word ? getOfficialWordLetterLength(word) : null
+				matchedLength: word ? getOfficialWordLetterLength(word) : null,
+				requiredCount
 			},
+			target: requiredCount,
 			reason: "smol-words-guess-not-in-ready-official-list"
 		};
 		const length = getOfficialWordLetterLength(word);
@@ -8706,8 +8955,10 @@ var smolWordsDefinition = {
 				wordListWarning: null,
 				threshold,
 				matchedWord: word,
-				matchedLength: length
+				matchedLength: length,
+				requiredCount
 			},
+			target: requiredCount,
 			reason: "smol-words-official-word-above-short-threshold"
 		};
 		const qualifyingEvents = runtime.internalState.qualifyingEvents + 1;
@@ -8718,10 +8969,12 @@ var smolWordsDefinition = {
 				wordListWarning: null,
 				threshold,
 				matchedWord: word,
-				matchedLength: length
+				matchedLength: length,
+				requiredCount
 			},
+			target: requiredCount,
 			progress: qualifyingEvents,
-			complete: qualifyingEvents >= parameters.amount,
+			complete: qualifyingEvents >= requiredCount,
 			reason: "smol-words-official-word-at-or-below-fifth-percentile",
 			evidenceEventIds: [event.eventId]
 		};
@@ -8729,15 +8982,15 @@ var smolWordsDefinition = {
 };
 var bigWordDefinition = {
 	id: "big-word",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "guessing",
-		localization: localization("Big word", "Correctly guess an official word from the longest ten percent of the active lobby language list.", "Big word", "Errate ein offizielles Wort aus den l\u00E4ngsten zehn Prozent der aktiven Lobby-Wortliste."),
+		localization: localization("Big word", "Be the first guesser on language-qualified long words. The required count is derived from the active official word list.", "Big word", "Errate sprachabh\u00E4ngig lange W\u00F6rter als Erster; die n\u00F6tige Anzahl wird aus der aktiven offiziellen Wortliste abgeleitet."),
 		icon: "big-word",
 		rankedEligible: true,
 		difficulty: 3
 	},
-	defaultParameters: { amount: 1 },
+	defaultParameters: { amount: 3 },
 	target: (parameters) => parameters.amount,
 	createInitialState: () => ({
 		qualifyingEvents: 0,
@@ -8745,7 +8998,8 @@ var bigWordDefinition = {
 		wordListWarning: null,
 		threshold: null,
 		matchedWord: null,
-		matchedLength: null
+		matchedLength: null,
+		requiredCount: null
 	}),
 	validateParameters(value) {
 		return typeof value === "object" && value !== null && isPositiveInteger(value.amount);
@@ -8754,6 +9008,7 @@ var bigWordDefinition = {
 	allowedLobbyTypes: [0],
 	reduce({ event, runtime, parameters }) {
 		if (event.type !== "CORRECT_GUESS" || event.actor?.isSelf !== true) return null;
+		if (!event.payload.isFirstGuesser && event.payload.position !== 1) return null;
 		const languageId = event.context.languageId;
 		const status = languageId === null ? null : getOfficialWordListStatus(languageId, event.context.languageName);
 		const word = event.payload.includesWord ? event.payload.word?.trim() ?? null : null;
@@ -8764,12 +9019,15 @@ var bigWordDefinition = {
 				wordListWarning: status?.warning ?? "No official word list is available for the current lobby language.",
 				threshold: null,
 				matchedWord: null,
-				matchedLength: null
+				matchedLength: null,
+				requiredCount: null
 			},
 			reason: "big-word-official-word-list-not-ready",
 			evidenceEventIds: [event.eventId]
 		};
-		const threshold = getOfficialWordLengthMetrics(languageId).longThreshold;
+		const metrics = getOfficialWordLengthMetrics(languageId);
+		const threshold = metrics.longThreshold;
+		const requiredCount = Math.min(parameters.amount, metrics.longRequiredCount);
 		if (!word || threshold === null || !hasOfficialWord(languageId, word)) return {
 			internalState: {
 				...runtime.internalState,
@@ -8777,8 +9035,10 @@ var bigWordDefinition = {
 				wordListWarning: null,
 				threshold,
 				matchedWord: null,
-				matchedLength: word ? getOfficialWordLetterLength(word) : null
+				matchedLength: word ? getOfficialWordLetterLength(word) : null,
+				requiredCount
 			},
+			target: requiredCount,
 			reason: "big-word-guess-not-in-ready-official-list"
 		};
 		const length = getOfficialWordLetterLength(word);
@@ -8789,8 +9049,10 @@ var bigWordDefinition = {
 				wordListWarning: null,
 				threshold,
 				matchedWord: word,
-				matchedLength: length
+				matchedLength: length,
+				requiredCount
 			},
+			target: requiredCount,
 			reason: "big-word-official-word-below-long-threshold"
 		};
 		const qualifyingEvents = runtime.internalState.qualifyingEvents + 1;
@@ -8801,10 +9063,12 @@ var bigWordDefinition = {
 				wordListWarning: null,
 				threshold,
 				matchedWord: word,
-				matchedLength: length
+				matchedLength: length,
+				requiredCount
 			},
+			target: requiredCount,
 			progress: qualifyingEvents,
-			complete: qualifyingEvents >= parameters.amount,
+			complete: qualifyingEvents >= requiredCount,
 			reason: "big-word-official-word-at-or-above-ninetieth-percentile",
 			evidenceEventIds: [event.eventId]
 		};
@@ -9567,15 +9831,16 @@ function clearedState(qualifyingEvents, roundSessionId) {
 		roundSessionId,
 		hintEventId: null,
 		hintAtMonotonicMs: null,
-		hintPositions: []
+		hintPositions: [],
+		guessedBeforeFirstHint: false
 	};
 }
 var hintReflexesDefinition = {
 	id: "hint-reflexes",
-	version: 1,
+	version: 2,
 	metadata: {
 		category: "guessing",
-		localization: localization("Hint Reflexes", "Guess the word within two seconds after a hint is revealed.", "Hint Reflexes", "Errate das Wort innerhalb von zwei Sekunden, nachdem ein Hint aufgedeckt wurde."),
+		localization: localization("Hint Reflexes", "Guess within two seconds after the first hint, provided nobody guessed before that hint.", "Hint Reflexes", "Errate das Wort innerhalb von zwei Sekunden nach dem ersten Hint, sofern zuvor niemand richtig geraten hat."),
 		icon: "hint-reflexes-lightning",
 		rankedEligible: true,
 		difficulty: 3
@@ -9606,6 +9871,7 @@ var hintReflexesDefinition = {
 		const roundSessionId = event.context.roundSessionId;
 		if (roundSessionId === null) return null;
 		if (event.type === "HINT_REVEALED") {
+			if (runtime.internalState.hintEventId !== null) return null;
 			const positions = Array.isArray(event.payload.hints) ? event.payload.hints.map((hint) => hint.position).filter((position) => Number.isInteger(position)) : [];
 			return {
 				internalState: {
@@ -9613,15 +9879,24 @@ var hintReflexesDefinition = {
 					roundSessionId,
 					hintEventId: event.eventId,
 					hintAtMonotonicMs: event.monotonicMs,
-					hintPositions: positions
+					hintPositions: positions,
+					guessedBeforeFirstHint: runtime.internalState.guessedBeforeFirstHint
 				},
-				reason: "latest-hint-recorded"
+				reason: runtime.internalState.guessedBeforeFirstHint ? "first-hint-ineligible-because-player-already-guessed" : "eligible-first-hint-recorded"
 			};
 		}
 		if (event.type !== "CORRECT_GUESS") return null;
+		if (runtime.internalState.hintEventId === null) return {
+			internalState: {
+				...runtime.internalState,
+				roundSessionId,
+				guessedBeforeFirstHint: true
+			},
+			reason: "correct-guess-observed-before-first-hint"
+		};
 		if (!event.actor?.isSelf) return null;
 		if (runtime.internalState.roundSessionId !== roundSessionId) return null;
-		if (runtime.internalState.hintEventId === null) return null;
+		if (runtime.internalState.guessedBeforeFirstHint) return null;
 		if (runtime.internalState.hintAtMonotonicMs === null) return null;
 		const delayMs = event.monotonicMs - runtime.internalState.hintAtMonotonicMs;
 		if (delayMs < 0 || delayMs > parameters.milliseconds) return {
@@ -10775,7 +11050,7 @@ var deafGuessDefinition = createTypoActiveGuessDefinition({
 	icon: "typo-deaf-guess",
 	difficulty: 3
 });
-var CHALLENGE_DEFINITIONS_VERSION = "2.7.0";
+var CHALLENGE_DEFINITIONS_VERSION = "2.8.0";
 var starterChallengeDefinitions = [
 	quickscopeDefinition,
 	bulletSkribblIoDefinition,
@@ -11198,7 +11473,7 @@ var DebugPanel = class {
 		].join("\n");
 	}
 };
-var PRODUCT_CORE_VERSION = "0.4.0";
+var PRODUCT_CORE_VERSION = "0.5.0";
 var WORD_LIST_IDS = /* @__PURE__ */ new Set([
 	"mogged",
 	"smol-words",
@@ -11950,7 +12225,7 @@ var MatchTelemetryGateway = class {
 	}
 };
 var DEFAULT_PRODUCT_UI_SETTINGS = {
-	version: 2,
+	version: 3,
 	board: {
 		visible: true,
 		mode: "anchor",
@@ -11967,7 +12242,8 @@ var DEFAULT_PRODUCT_UI_SETTINGS = {
 	panelOpen: false,
 	panelTab: "duel",
 	completionMessages: true,
-	winAnimation: true
+	winAnimation: true,
+	chatNotifications: true
 };
 function clamp(value, min, max) {
 	return Math.min(max, Math.max(min, value));
@@ -11993,7 +12269,7 @@ function normalizeProductUiSettings(value) {
 		"bottom-right"
 	]);
 	return {
-		version: 2,
+		version: 3,
 		board: {
 			visible: typeof boardInput.visible === "boolean" ? boardInput.visible : DEFAULT_PRODUCT_UI_SETTINGS.board.visible,
 			mode: boardInput.mode === "custom" ? "custom" : "anchor",
@@ -12010,7 +12286,8 @@ function normalizeProductUiSettings(value) {
 		panelOpen: typeof input.panelOpen === "boolean" ? input.panelOpen : DEFAULT_PRODUCT_UI_SETTINGS.panelOpen,
 		panelTab: validTabs.has(String(input.panelTab)) ? input.panelTab : DEFAULT_PRODUCT_UI_SETTINGS.panelTab,
 		completionMessages: typeof input.completionMessages === "boolean" ? input.completionMessages : DEFAULT_PRODUCT_UI_SETTINGS.completionMessages,
-		winAnimation: typeof input.winAnimation === "boolean" ? input.winAnimation : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation
+		winAnimation: typeof input.winAnimation === "boolean" ? input.winAnimation : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation,
+		chatNotifications: typeof input.chatNotifications === "boolean" ? input.chatNotifications : DEFAULT_PRODUCT_UI_SETTINGS.chatNotifications
 	};
 }
 var LocalStorageProductUiSettingsStore = class {
@@ -12147,9 +12424,10 @@ function authoritativeClaim(value) {
 }
 function matchmakingState(value) {
 	const state = record(value);
-	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || state.drawProposal !== null && !drawProposal(state.drawProposal) || state.conclusion !== null && !matchConclusion(state.conclusion)) return false;
+	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || !stringArray(state.rematchReadyAccountIds, 2) || state.drawProposal !== null && !drawProposal(state.drawProposal) || state.conclusion !== null && !matchConclusion(state.conclusion)) return false;
 	const participantIds = new Set(state.participants.map((participant) => participant.accountId));
 	if (state.claims.some((claim) => !participantIds.has(claim.ownerAccountId))) return false;
+	if (state.rematchReadyAccountIds.some((accountId) => !participantIds.has(accountId)) || new Set(state.rematchReadyAccountIds).size !== state.rematchReadyAccountIds.length) return false;
 	if (state.drawProposal !== null) {
 		const proposal = state.drawProposal;
 		if (!participantIds.has(proposal.proposerAccountId)) return false;
@@ -12161,15 +12439,15 @@ function matchmakingState(value) {
 			if (!nonEmptyString(conclusion.winnerAccountId) || !nonEmptyString(conclusion.loserAccountId) || conclusion.winnerAccountId === conclusion.loserAccountId || !participantIds.has(conclusion.winnerAccountId) || !participantIds.has(conclusion.loserAccountId)) return false;
 		} else if (conclusion.winnerAccountId !== null || conclusion.loserAccountId !== null) return false;
 	}
-	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.claims.length === 0 && (state.draft === void 0 || draftState(state.draft));
-	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.claims.length === 0 && draftState(state.draft) && state.draft.status === "complete";
-	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.conclusion === null && (state.drawProposal === null || Number(state.drawProposal.createdAt) >= Number(state.startedAt)) && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "draft") return state.readyDeadlineAt === null && state.countdownEndsAt === null && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.rematchReadyAccountIds.length === 0 && state.claims.length === 0 && (state.draft === void 0 || draftState(state.draft));
+	if (state.phase === "countdown") return state.readyDeadlineAt === null && finiteNumber(state.countdownEndsAt) && state.countdownEndsAt > state.createdAt && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.rematchReadyAccountIds.length === 0 && state.claims.length === 0 && draftState(state.draft) && state.draft.status === "complete";
+	if (state.phase === "running") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.conclusion === null && state.rematchReadyAccountIds.length === 0 && (state.drawProposal === null || Number(state.drawProposal.createdAt) >= Number(state.startedAt)) && draftState(state.draft) && state.draft.status === "complete";
 	if (state.phase === "finished") return state.readyDeadlineAt === null && state.countdownEndsAt === null && finiteNumber(state.startedAt) && state.startedAt >= state.createdAt && state.drawProposal === null && state.conclusion !== null && Number(state.conclusion.occurredAt) >= Number(state.startedAt) && draftState(state.draft) && state.draft.status === "complete";
-	return state.countdownEndsAt === null && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.claims.length === 0 && (state.draft === void 0 || state.draft === null);
+	return state.countdownEndsAt === null && state.startedAt === null && state.drawProposal === null && state.conclusion === null && state.rematchReadyAccountIds.length === 0 && state.claims.length === 0 && (state.draft === void 0 || state.draft === null);
 }
 function matchmakingEvent(value) {
 	const event = record(value);
-	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_FINAL_RANDOM_STARTED" || event.type === "DRAFT_FINAL_RANDOM_SELECTED" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED" || event.type === "DRAW_PROPOSED" || event.type === "DRAW_WITHDRAWN" || event.type === "DRAW_REJECTED" || event.type === "DRAW_EXPIRED" || event.type === "MATCH_FORFEITED" || event.type === "MATCH_FINISHED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean") && (event.proposalId === void 0 || nonEmptyString(event.proposalId)));
+	return Boolean(event && (event.type === "MATCH_ABORTED" || event.type === "READY_CHANGED" || event.type === "READY_CHECK_COMPLETED" || event.type === "READY_CHECK_EXPIRED" || event.type === "DRAFT_STARTED" || event.type === "DRAFT_PICKED" || event.type === "DRAFT_PICK_TIMED_OUT" || event.type === "DRAFT_FINAL_RANDOM_STARTED" || event.type === "DRAFT_FINAL_RANDOM_SELECTED" || event.type === "DRAFT_COMPLETED" || event.type === "MATCH_COUNTDOWN_STARTED" || event.type === "MATCH_STARTED" || event.type === "DRAW_PROPOSED" || event.type === "DRAW_WITHDRAWN" || event.type === "DRAW_REJECTED" || event.type === "DRAW_EXPIRED" || event.type === "MATCH_FORFEITED" || event.type === "MATCH_FINISHED" || event.type === "REMATCH_READY_CHANGED" || event.type === "REMATCH_STARTED") && (event.accountId === null || nonEmptyString(event.accountId)) && (event.reason === null || nonEmptyString(event.reason, 128)) && (event.challengeId === void 0 || nonEmptyString(event.challengeId)) && (event.pickNumber === void 0 || nonNegativeInteger(event.pickNumber)) && (event.automatic === void 0 || typeof event.automatic === "boolean") && (event.proposalId === void 0 || nonEmptyString(event.proposalId)));
 }
 function isGatewayServerMessage(value) {
 	const message = record(value);
@@ -12177,7 +12455,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 6 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 7 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -12200,7 +12478,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.48.0";
+var GATEWAY_CLIENT_VERSION = "0.49.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15580,6 +15858,15 @@ var SocketIoGatewayClient = class {
 		});
 		return actionId;
 	}
+	requestRematch(matchId) {
+		const actionId = this.createRequestId("rematch");
+		this.emit({
+			type: "MATCH_REMATCH",
+			matchId,
+			actionId
+		});
+		return actionId;
+	}
 	proposeDraw(matchId) {
 		const actionId = this.createRequestId("draw-propose");
 		this.emit({
@@ -15653,7 +15940,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 6,
+				contractVersion: 7,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -15692,7 +15979,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v6 message.`
+				error: `Gateway sent an invalid Contract v7 message.`
 			});
 			return;
 		}
@@ -36926,13 +37213,16 @@ function formatTime(timestamp) {
 		minute: "2-digit"
 	});
 }
-function formatDurationHms(elapsedMs) {
+function formatDurationWords(elapsedMs) {
 	const seconds = Math.max(0, Math.floor(elapsedMs / 1e3));
-	return [
-		Math.floor(seconds / 3600),
-		Math.floor(seconds % 3600 / 60),
-		seconds % 60
-	].map((value) => String(value).padStart(2, "0")).join(":");
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor(seconds % 3600 / 60);
+	const remainder = seconds % 60;
+	const parts = [];
+	if (hours > 0) parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+	if (minutes > 0) parts.push(`${minutes} ${minutes === 1 ? "minute" : "minutes"}`);
+	if (remainder > 0 || parts.length === 0) parts.push(`${remainder} ${remainder === 1 ? "second" : "seconds"}`);
+	return parts.length <= 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
 }
 function profileLanguage(value) {
 	return value === "de" ? "de" : "en";
@@ -37106,6 +37396,9 @@ var CompletionChatAdapter = class {
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
 #skribbl-duels-panel [data-role='body'],.scd-stage-shell,.scd-chat-log { overscroll-behavior:contain; }
+#skribbl-duels-panel ::-webkit-scrollbar,#skribbl-duels-stage ::-webkit-scrollbar,#skribbl-duels-board ::-webkit-scrollbar { width:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
+#skribbl-duels-panel ::-webkit-scrollbar-thumb,#skribbl-duels-stage ::-webkit-scrollbar-thumb,#skribbl-duels-board ::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
+#skribbl-duels-panel *,#skribbl-duels-stage *,#skribbl-duels-board * { scrollbar-color:var(--COLOR_PANEL_HI) var(--COLOR_PANEL_LO);scrollbar-width:auto; }
 .scd-modal-header { display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:10px;padding:8px 10px 4px; }
 .scd-modal-title { font-size:1.8em;font-weight:700;text-align:center;white-space:nowrap; }
 .scd-modal-account { min-width:0;display:flex;align-items:center;gap:7px;font-size:11px; }
@@ -37171,7 +37464,7 @@ var CompletionChatAdapter = class {
 .scd-field.pending { outline:2px solid #ffd95f;outline-offset:-2px; }
 .scd-field.self { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#56ce27); }
 .scd-field.opponent { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#ce4f0a); }
-.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
+.scd-field-icon { display:grid;place-items:center;width:60%;height:56%;min-height:0;flex:0 1 56%;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
 .scd-field-icon .scd-icon-image { image-rendering:pixelated; }
 .scd-field-name { display:block;width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:10px;line-height:1.15;font-weight:700; }
 .scd-final-slot-name { animation:scd-slot-flicker .18s linear infinite; }
@@ -37215,18 +37508,36 @@ var CompletionChatAdapter = class {
 .scd-draft-option { min-width:0;min-height:76px;text-align:center;font-size:13px;line-height:1.2; }
 .scd-draft-option-key { display:block;margin-top:5px;color:rgba(255,255,255,.62);font-size:10px;font-weight:400; }
 .scd-draft-board { display:grid;gap:4px; }
-.scd-chat-log { max-height:330px;overflow:auto;min-width:0; }
+.scd-chat-log { max-height:330px;overflow:auto;min-width:0;transition:mask-image .12s;-webkit-transition:-webkit-mask-image .12s; }
+.scd-chat-log.has-overflow:not(.at-top) { mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%); }
 .scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
 .scd-chat-line.system { padding:6px 8px;border-left:3px solid var(--SCD_ACCENT);background:rgba(255,255,255,.055); }
-.scd-chat-form { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end; }
-.scd-chat-input-shell { min-width:0;display:flex;flex-direction:column;gap:2px; }
-.scd-chat-count { text-align:right;font-size:10px;color:rgba(255,255,255,.6); }
+.scd-chat-form { position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:0 .2em; }
+.scd-chat-input-shell { position:relative;min-width:0;display:flex; }
+.scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
+.scd-chat-characters.visible { top:.5em;opacity:1; }
+.scd-chat-form input { height:2.2em;width:100%;padding:.2em;padding-right:3.8em; }
 .scd-match-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .scd-draw-proposal { border-left:3px solid var(--SCD_ACCENT); }
+.scd-result-card { display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px;row-gap:8px;overflow:hidden; }
+.scd-result-visual { position:relative;grid-row:1/3;width:92px;height:92px;display:grid;place-items:center;isolation:isolate; }
+.scd-result-avatar { position:relative;z-index:1;width:78px;height:78px;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:32px;font-weight:900; }
+.avatar .owner { position:absolute;width:50%;height:50%;left:-5%;top:-22%;z-index:2;background-image:url('/img/crown.gif');background-position:center;background-size:contain;background-repeat:no-repeat; }
+.scd-result-trophy,.scd-win-trophy { z-index:-1;position:absolute;width:100%;height:100%;left:50%;background-image:url('/img/trophy.gif');background-size:cover;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
+.scd-result-title { color:var(--COLOR_CHAT_TEXT_OWNER,#ffa844);font-size:1.15em; }
+.scd-result-score { font-weight:700; }
+.scd-result-actions { grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
+.scd-result-actions .scd-button { background:var(--COLOR_PANEL_BUTTON,#2a51d1);border-color:transparent;color:#fff;font-weight:700; }
+.scd-result-actions .scd-button:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
+.scd-result-actions .scd-button:active:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_ACTIVE,#1d40b4); }
 .scd-win-animation { position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none;overflow:hidden;background:radial-gradient(circle,rgba(42,81,209,.28),rgba(0,0,0,.7));animation:scd-win-fade 3.4s both; }
-.scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35);animation:scd-win-pop .65s cubic-bezier(.16,1,.3,1) both; }
-.scd-win-card .scd-icon { width:clamp(150px,30vw,310px);height:clamp(150px,30vw,310px);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
-.scd-confetti { position:absolute;left:var(--x);top:-12%;width:10px;height:22px;background:var(--color);transform:rotate(var(--rotate));animation:scd-confetti-fall var(--duration) var(--delay) linear both; }
+.scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35); }
+.scd-win-visual { position:relative;width:clamp(150px,30vw,310px);height:clamp(150px,30vw,310px);display:grid;place-items:center;isolation:isolate; }
+.scd-win-player { position:relative;z-index:1;width:72%;height:72%;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;font-size:clamp(42px,9vw,94px);animation:player_winner 3.2s both;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
+.typo-toast-container { position:fixed;left:0;right:0;top:0;height:0;overflow:visible;z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:1rem;padding-top:1rem; }
+.scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
+.scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
+.scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 #skribbl-duels-panel input::placeholder,#skribbl-duels-panel textarea::placeholder,#skribbl-duels-stage input::placeholder,#skribbl-duels-stage textarea::placeholder { color:var(--COLOR_PANEL_TEXT_PLACEHOLDER); }
 #skribbl-duels-panel input,#skribbl-duels-panel select,#skribbl-duels-panel textarea,#skribbl-duels-stage input,#skribbl-duels-stage select,#skribbl-duels-stage textarea { font:inherit;flex:0 0 auto;height:32px;width:100%;min-width:0;color:var(--COLOR_INPUT_TEXT);background-color:var(--COLOR_INPUT_BG);border:1px solid var(--COLOR_INPUT_BORDER);border-radius:var(--BORDER_RADIUS);padding:.2em .5em;transition:background-color .12s ease,border-color .12s ease;box-sizing:border-box; }
 #skribbl-duels-panel input:focus,#skribbl-duels-panel select:focus,#skribbl-duels-panel textarea:focus,#skribbl-duels-stage input:focus,#skribbl-duels-stage select:focus,#skribbl-duels-stage textarea:focus { outline:0;background-color:var(--COLOR_INPUT_HOVER);border-color:var(--COLOR_INPUT_BORDER_FOCUS);box-shadow:0 0 10px -4px var(--COLOR_INPUT_BORDER_FOCUS); }
@@ -37239,9 +37550,10 @@ var CompletionChatAdapter = class {
 #skribbl-duels-panel input[type='checkbox']:checked::before,#skribbl-duels-stage input[type='checkbox']:checked::before { width:1em;height:1em; }
 @keyframes scd-field-reveal { from { opacity:0;transform:scale(.72) rotate(-4deg); } to { opacity:1;transform:scale(1) rotate(0); } }
 @keyframes scd-slot-flicker { 0% { opacity:.45;transform:translateY(-2px); } 50% { opacity:1;transform:translateY(2px); } 100% { opacity:.45;transform:translateY(-2px); } }
-@keyframes scd-win-pop { from { opacity:0;transform:scale(.45) rotate(-6deg); } to { opacity:1;transform:scale(1) rotate(0); } }
 @keyframes scd-win-fade { 0%,78% { opacity:1; } 100% { opacity:0; } }
-@keyframes scd-confetti-fall { from { transform:translateY(-10vh) rotate(var(--rotate)); } to { transform:translateY(125vh) rotate(calc(var(--rotate) + 720deg)); } }
+@keyframes player_winner { 0% { transform:rotate(0) scale(1,1) translate(0,0); } 5%,8% { transform:rotate(0) scale(1.2,.8) translate(0,0); } 14%,16% { transform:rotate(20deg) scale(.8,1.2) translate(10%,-50%); } 24%,26% { transform:rotate(0) scale(1.4,.7) translate(0,0); } 28%,38% { transform:rotate(0) scale(1,1) translate(0,0); } 42% { transform:rotate(0) scale(1.2,.8) translate(0,0); } 48%,50% { transform:rotate(-20deg) scale(.8,1.2) translate(-10%,-50%); } 58%,60% { transform:rotate(0) scale(1.4,.7) translate(0,0); } 62%,100% { transform:rotate(0) scale(1,1) translate(0,0); } }
+@keyframes scd-toast-in { from { transform:translateY(-50vh);opacity:0; } to { transform:translateY(0);opacity:1; } }
+@keyframes scd-toast-out { from { transform:translateY(0);opacity:1; } to { transform:translateY(-50vh);opacity:0; } }
 @media (max-width:620px) {
   .scd-modal-header { grid-template-columns:1fr auto; }
   .scd-modal-title { display:none; }
@@ -37251,7 +37563,7 @@ var CompletionChatAdapter = class {
   .scd-label input[type='checkbox'] { justify-self:start; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-card,.scd-confetti { animation:none !important; }
+  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-player,.scd-duel-toast { animation:none !important; }
 }
 `;
 		(document.head ?? document.documentElement).appendChild(style);
@@ -37285,7 +37597,7 @@ var CompletionChatAdapter = class {
 			paragraph.className = `skribbl-duels-completion win ${parity}`;
 			paragraph.dataset.scdRuntimeId = this.runtimeId;
 			paragraph.dataset.skribblDuelsClaimId = messageId;
-			paragraph.appendChild(element("b", "", `${message.playerName} won the Skribbl Duel after ${formatDurationHms(message.elapsedMs)}!`));
+			paragraph.appendChild(element("b", "", `${message.playerName} won after ${formatDurationWords(message.elapsedMs)}!`));
 			target.appendChild(paragraph);
 			target.scrollTop = target.scrollHeight;
 		}
@@ -37444,10 +37756,14 @@ var DuelProductFoundation = class {
 	lastWinAnimationMatchId = null;
 	processedGatewayChatIds = /* @__PURE__ */ new Set();
 	processedClaimResolutionIds = /* @__PURE__ */ new Set();
+	submittedClaimCandidateIds = /* @__PURE__ */ new Set();
+	deferredTelemetryEvents = [];
+	awaitingTelemetryResumeCursor = false;
 	restoreDuelChatFocus = false;
 	duelChatScrollTop = 0;
 	duelChatStickToBottom = true;
 	matchActionError = null;
+	chatNotificationStartedAt = Date.now();
 	draftKeydown = (event) => this.handleDraftKeydown(event);
 	duelChatKeydown = (event) => this.handleDuelChatKeydown(event);
 	destroyed = false;
@@ -37461,6 +37777,7 @@ var DuelProductFoundation = class {
 		const persisted = this.loadPersistedMatch();
 		this.currentBoard = persisted?.board ?? null;
 		this.matchStore = new MatchStateStore(persisted?.state);
+		this.awaitingTelemetryResumeCursor = persisted?.state.phase === "running" && persisted.state.matchId !== null;
 		this.telemetryGateway = new MatchTelemetryGateway(this.matchStore);
 		const restoredSettings = this.settingsStore.get();
 		this.settings = restoredSettings.panelOpen ? this.settingsStore.update({ panelOpen: false }) : restoredSettings;
@@ -37532,9 +37849,10 @@ var DuelProductFoundation = class {
 					playerName: winner?.displayName ?? "Opponent",
 					elapsedMs
 				});
-				if (event.state.winner === "self" && this.settings.winAnimation && this.lastWinAnimationMatchId !== event.state.matchId) {
+				if (this.settings.winAnimation && this.lastWinAnimationMatchId !== event.state.matchId) {
 					this.lastWinAnimationMatchId = event.state.matchId;
-					this.showWinAnimation(winner?.displayName ?? this.duelDisplayName("self"));
+					const gatewayWinner = this.gatewayState.match?.state.participants.find((participant) => participant.accountId === (event.state.winner === "self" ? this.gatewayState.identity?.accountId : this.gatewayState.match?.state.participants.find((item) => item.accountId !== this.gatewayState.identity?.accountId)?.accountId));
+					this.showWinAnimation(winner?.displayName ?? this.duelDisplayName(event.state.winner), gatewayWinner ?? null);
 				}
 			}
 		}));
@@ -37547,9 +37865,7 @@ var DuelProductFoundation = class {
 			if (this.settings.panelOpen) this.renderPanel();
 		}));
 		this.unsubscribers.push(this.options.challengeEngine.subscribe((event) => this.handleChallengeEngineEvent(event)));
-		this.unsubscribers.push(this.options.subscribeTelemetry((event) => {
-			this.telemetryGateway.observe(event);
-		}));
+		this.unsubscribers.push(this.options.subscribeTelemetry((event) => this.observeDuelTelemetry(event)));
 		this.ensureMounted();
 		this.draftSlotTimer = window.setInterval(() => this.tickDraftSlotAnimation(), 90);
 		this.mountGuard = window.setInterval(() => {
@@ -37559,9 +37875,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.48.0",
+			version: "0.49.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 6,
+			gatewayContractVersion: 7,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -37581,6 +37897,7 @@ var DuelProductFoundation = class {
 				pickDraftChallenge: (matchId, challengeId, clientRevision) => this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
 				sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message),
 				forfeitMatch: (matchId) => this.gatewayClient.forfeitMatch(matchId),
+				requestRematch: (matchId) => this.gatewayClient.requestRematch(matchId),
 				proposeDraw: (matchId) => this.gatewayClient.proposeDraw(matchId),
 				respondToDraw: (matchId, proposalId, accept) => this.gatewayClient.respondToDraw(matchId, proposalId, accept),
 				withdrawDraw: (matchId, proposalId) => this.gatewayClient.withdrawDraw(matchId, proposalId)
@@ -37669,7 +37986,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.48.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.49.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38215,7 +38532,14 @@ var DuelProductFoundation = class {
 	}
 	createVersusPlayer(displayName, ready, participant) {
 		const player = element("div", "scd-versus-player");
-		const avatar = element("div", "scd-versus-avatar", displayName.slice(0, 1).toUpperCase());
+		const avatar = this.createParticipantAvatar(displayName, participant, "scd-versus-avatar");
+		const status = element("div", "scd-ready-state");
+		status.append(this.createIconAsset(ready ? "challenge-icons/checkmark.gif" : "challenge-icons/crossmark.gif", ready ? "\u2713" : "\u00D7", ready ? "Ready" : "Not ready"), element("span", "", ready ? "Ready" : "Not ready"));
+		player.append(avatar, element("div", "scd-versus-name", displayName), status);
+		return player;
+	}
+	createParticipantAvatar(displayName, participant, className = "scd-result-avatar") {
+		const avatar = element("div", `avatar fit ${className}`, displayName.slice(0, 1).toUpperCase());
 		const avatarUrl = participant?.avatarSource === "discord" ? participant.avatarUrl : null;
 		if (avatarUrl) {
 			const image = element("img");
@@ -38234,10 +38558,7 @@ var DuelProductFoundation = class {
 			avatar.textContent = "";
 			avatar.appendChild(this.createSkribblAvatar(participant.skribblAvatar, `${displayName} Skribbl avatar`));
 		}
-		const status = element("div", "scd-ready-state");
-		status.append(this.createIconAsset(ready ? "challenge-icons/checkmark.gif" : "challenge-icons/crossmark.gif", ready ? "\u2713" : "\u00D7", ready ? "Ready" : "Not ready"), element("span", "", ready ? "Ready" : "Not ready"));
-		player.append(avatar, element("div", "scd-versus-name", displayName), status);
-		return player;
+		return avatar;
 	}
 	renderDraftStage(match) {
 		if (!this.stageBody) return;
@@ -38628,12 +38949,15 @@ var DuelProductFoundation = class {
 		const self = this.matchState.participants.find((participant) => participant.side === "self");
 		const opponent = this.matchState.participants.find((participant) => participant.side === "opponent");
 		const stack = element("div", "scd-stack");
+		if (this.matchState.phase === "finished") {
+			stack.appendChild(this.createFinishedMatchSummary());
+			this.panelBody.appendChild(stack);
+			this.renderChatTab();
+			return;
+		}
 		const status = element("div", "scd-card scd-stack");
-		status.append(element("strong", "", this.matchState.outcome === "draw" ? "Status: agreed Draw" : this.matchState.outcome === "win" ? `Status: ${this.duelDisplayName(this.matchState.winner ?? "opponent")} won` : `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", this.matchState.freeze.frozen ? "Match frozen. Skribbl continues normally; Duel telemetry is no longer forwarded." : "Duel telemetry forwarding is available while the match is running."));
-		const telemetry = this.telemetryGateway.getStats();
-		const gateway = element("div", "scd-card scd-stack");
-		gateway.append(element("strong", "", "Telemetry gateway"), element("div", "scd-muted", `Connection: ${this.gatewayState.status} \u00B7 Local: ${telemetry.locallyObserved} \u00B7 Forwarded: ${telemetry.forwarded} \u00B7 Suppressed after freeze: ${telemetry.suppressedAfterFreeze}`));
-		stack.append(status, gateway);
+		status.append(element("strong", "", this.matchState.outcome === "draw" ? "Status: agreed Draw" : this.matchState.outcome === "win" ? `Status: ${this.duelDisplayName(this.matchState.winner ?? "opponent")} won` : `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", "Challenge claims are confirmed by the authoritative Gateway."));
+		stack.append(status);
 		const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId ? this.gatewayState.match : null;
 		if (gatewayMatch?.state.phase === "running") {
 			const proposal = gatewayMatch.state.drawProposal;
@@ -38696,6 +39020,52 @@ var DuelProductFoundation = class {
 		this.panelBody.appendChild(stack);
 		this.renderChatTab();
 	}
+	createFinishedMatchSummary() {
+		const card = element("div", "scd-card scd-result-card");
+		const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId ? this.gatewayState.match : null;
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		const winnerSide = this.matchState.winner;
+		const winnerName = winnerSide ? this.duelDisplayName(winnerSide) : null;
+		const winnerParticipant = winnerSide && gatewayMatch ? gatewayMatch.state.participants.find((participant) => winnerSide === "self" ? participant.accountId === selfAccountId : participant.accountId !== selfAccountId) ?? null : null;
+		const visual = element("div", "scd-result-visual");
+		if (winnerName) {
+			const avatar = this.createParticipantAvatar(winnerName, winnerParticipant);
+			avatar.appendChild(element("span", "owner"));
+			visual.append(avatar, element("span", "scd-result-trophy"));
+		} else visual.appendChild(this.createIconAsset("challenge-icons/skribbl-duels-logo.gif", "SD", "Agreed Draw"));
+		const elapsedMs = Math.max(0, (this.matchState.finishedAt ?? Date.now()) - (this.matchState.startedAt ?? this.matchState.finishedAt ?? Date.now()));
+		const title = element("strong", "scd-result-title", winnerName ? `${winnerName} won after ${formatDurationWords(elapsedMs)}` : `Agreed Draw after ${formatDurationWords(elapsedMs)}`);
+		const self = this.matchState.participants.find((participant) => participant.side === "self");
+		const opponent = this.matchState.participants.find((participant) => participant.side === "opponent");
+		const score = element("div", "scd-result-score", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`);
+		const actions = element("div", "scd-result-actions");
+		const returnButton = element("button", "scd-button primary", "Return");
+		returnButton.type = "button";
+		returnButton.addEventListener("click", () => {
+			this.resetMatch();
+			this.openPanel("duel");
+		});
+		const newMatch = element("button", "scd-button primary", "New Match");
+		newMatch.type = "button";
+		newMatch.addEventListener("click", () => {
+			const format = this.matchState.format;
+			if (format) this.beginMatchmaking(format);
+		});
+		const rematch = element("button", "scd-button primary", "Rematch");
+		rematch.type = "button";
+		const ownRematchReady = Boolean(selfAccountId && gatewayMatch?.state.rematchReadyAccountIds.includes(selfAccountId));
+		rematch.disabled = !gatewayMatch || gatewayMatch.state.phase !== "finished" || ownRematchReady;
+		if (ownRematchReady) rematch.textContent = "Rematch requested";
+		rematch.addEventListener("click", () => {
+			if (!gatewayMatch) return;
+			this.runMatchAction(() => this.gatewayClient.requestRematch(gatewayMatch.matchId), rematch);
+		});
+		actions.append(returnButton, newMatch, rematch);
+		card.append(visual, title, score, actions);
+		const error = this.matchActionError ?? this.gatewayState.error;
+		if (error) card.appendChild(element("div", "scd-auth-error", error));
+		return card;
+	}
 	runMatchAction(action, button) {
 		this.matchActionError = null;
 		button.disabled = true;
@@ -38714,15 +39084,18 @@ var DuelProductFoundation = class {
 		log.dataset.scdChatLog = "true";
 		if (this.duelChatMessages.length === 0) log.appendChild(element("div", "scd-muted", "Private Duel channel. Messages are visible only to both matched players."));
 		else for (const message of this.duelChatMessages) {
-			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}`);
+			const winnerMessage = message.side === "system" && message.id.startsWith("conclusion-") && this.matchState.outcome === "win";
+			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}${winnerMessage ? " winner" : ""}`);
 			const author = element("strong", "", `${message.author} `);
-			author.style.color = message.side === "self" ? "var(--SCD_SELF)" : message.side === "opponent" ? "var(--SCD_OPPONENT)" : "var(--SCD_ACCENT)";
+			author.style.color = winnerMessage ? "var(--COLOR_CHAT_TEXT_OWNER,#ffa844)" : message.side === "self" ? "var(--SCD_SELF)" : message.side === "opponent" ? "var(--SCD_OPPONENT)" : "var(--SCD_ACCENT)";
 			line.append(author, document.createTextNode(message.message), element("small", "scd-muted", ` \u00B7 ${formatTime(message.occurredAt)}`));
 			log.appendChild(line);
 		}
 		log.addEventListener("scroll", () => {
 			this.duelChatScrollTop = log.scrollTop;
 			this.duelChatStickToBottom = log.scrollHeight - log.scrollTop <= log.clientHeight + 24;
+			log.classList.toggle("has-overflow", log.scrollHeight > log.clientHeight + 1);
+			log.classList.toggle("at-top", log.scrollTop <= 1);
 		}, { passive: true });
 		const form = element("form", "scd-chat-form");
 		const inputShell = element("div", "scd-chat-input-shell");
@@ -38732,13 +39105,16 @@ var DuelProductFoundation = class {
 		input.placeholder = gatewayChatActive ? "Private Duel message\u2026" : "Duel chat requires an active Gateway match";
 		input.disabled = !gatewayChatActive;
 		input.maxLength = 600;
-		const count = element("div", "scd-chat-count", "0/300");
+		const count = element("span", "scd-chat-characters", "0/300");
 		const updateCount = () => {
 			const codePoints = Array.from(input.value);
 			if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join("");
 			count.textContent = `${Array.from(input.value).length}/300`;
+			count.classList.toggle("visible", document.activeElement === input || input.value.length > 0);
 		};
 		input.addEventListener("input", updateCount);
+		input.addEventListener("focus", updateCount);
+		input.addEventListener("blur", updateCount);
 		inputShell.append(input, count);
 		const send = element("button", "scd-button primary", "Send");
 		send.type = "submit";
@@ -38752,9 +39128,11 @@ var DuelProductFoundation = class {
 			if (!message || !gatewayChatActive || !matchId) return;
 			this.restoreDuelChatFocus = document.activeElement === input;
 			try {
+				this.duelChatStickToBottom = true;
 				this.gatewayClient.sendDuelChat(matchId, message);
 				input.value = "";
 				updateCount();
+				log.scrollTop = log.scrollHeight;
 			} catch (error) {
 				this.restoreDuelChatFocus = false;
 				this.matchmakingError = error instanceof Error ? error.message : String(error);
@@ -38766,6 +39144,8 @@ var DuelProductFoundation = class {
 		queueMicrotask(() => {
 			if (!log.isConnected) return;
 			log.scrollTop = this.duelChatStickToBottom ? log.scrollHeight : this.duelChatScrollTop;
+			log.classList.toggle("has-overflow", log.scrollHeight > log.clientHeight + 1);
+			log.classList.toggle("at-top", log.scrollTop <= 1);
 		});
 		if (this.restoreDuelChatFocus) {
 			this.restoreDuelChatFocus = false;
@@ -38940,7 +39320,7 @@ var DuelProductFoundation = class {
 		this.tooltips.register(resetBoard, "Restore the default panel and board settings");
 		board.appendChild(resetBoard);
 		const chat = element("div", "scd-card scd-stack");
-		chat.append(element("strong", "", "Game-chat integration"), this.checkbox("Show confirmed completion messages", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })), this.checkbox("Play Win animation", this.settings.winAnimation, (checked) => this.settingsStore.update({ winAnimation: checked })));
+		chat.append(element("strong", "", "Game-chat integration"), this.checkbox("Show confirmed completion messages", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })), this.checkbox("Show Match Chat toast notifications", this.settings.chatNotifications, (checked) => this.settingsStore.update({ chatNotifications: checked })), this.checkbox("Play Win animation", this.settings.winAnimation, (checked) => this.settingsStore.update({ winAnimation: checked })));
 		stack.append(board, chat);
 		this.panelBody.appendChild(stack);
 	}
@@ -38954,7 +39334,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v6`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
+		gateway.append(element("strong", "", `Gateway Contract v7`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -39065,7 +39445,7 @@ var DuelProductFoundation = class {
 			return;
 		}
 		if (snapshot.matchId !== this.lastGatewayMatchId) {
-			this.abortLocalMatch("gateway-match-superseded-local-state");
+			if (!(snapshot.matchId === this.matchState.matchId && this.currentBoard?.boardId === snapshot.state.draft?.board?.boardId)) this.abortLocalMatch("gateway-match-superseded-local-state");
 			this.lastGatewayMatchId = snapshot.matchId;
 		}
 		if (snapshot.state.phase !== "ready-check") this.readySubmissionMatchId = null;
@@ -39099,25 +39479,54 @@ var DuelProductFoundation = class {
 			this.clearMatchStartTimer();
 			this.startGatewayMatchLocally(snapshot, board, snapshot.state.startedAt);
 			this.synchronizeGatewayClaims(snapshot);
+			this.resumeDeferredTelemetry(snapshot.matchId);
+			this.flushPendingClaimCandidates();
 		}
 	}
 	handleGatewayRealtimeState(state) {
 		const ack = state.telemetryAck;
-		if (ack) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+		if (ack) {
+			this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+			this.resumeDeferredTelemetry(ack.matchId);
+			this.flushPendingClaimCandidates();
+		}
 		for (const message of state.duelChatMessages) {
 			if (this.processedGatewayChatIds.has(message.messageId)) continue;
 			if (message.matchId !== this.matchState.matchId) continue;
 			this.processedGatewayChatIds.add(message.messageId);
+			const ownMessage = message.authorAccountId === state.identity?.accountId;
 			this.duelChatMessages.push({
 				id: message.messageId,
-				side: message.authorAccountId === state.identity?.accountId ? "self" : "opponent",
+				side: ownMessage ? "self" : "opponent",
 				author: message.authorDisplayName,
 				message: message.message,
 				occurredAt: message.occurredAt
 			});
+			if (ownMessage) this.duelChatStickToBottom = true;
+			if (!ownMessage && this.settings.chatNotifications && message.occurredAt >= this.chatNotificationStartedAt - 5e3 && (!this.settings.panelOpen || this.mainPanelTab() !== "match" || document.hidden)) this.showChatToast(message.authorDisplayName, message.message);
 		}
 		const resolution = state.lastClaimResolution;
 		if (resolution) this.handleGatewayClaimResolution(resolution);
+	}
+	showChatToast(author, message) {
+		let container = document.querySelector(".typo-toast-container");
+		if (!container) {
+			container = element("div", "typo-toast-container");
+			container.dataset.scdRuntimeId = this.options.runtimeId;
+			(document.body ?? document.documentElement).prepend(container);
+		}
+		const toast = element("div", "typo-toast scd-duel-toast");
+		toast.dataset.scdRuntimeId = this.options.runtimeId;
+		const close = () => {
+			if (!toast.isConnected || toast.classList.contains("closing")) return;
+			toast.classList.add("closing");
+			window.setTimeout(() => toast.remove(), 150);
+		};
+		const closeButton = element("span", "close-toast", "\u00D7");
+		closeButton.addEventListener("click", close);
+		toast.append(element("h3", "", `Match Chat \u00B7 ${author}`), closeButton, element("span", "", message));
+		container.appendChild(toast);
+		window.setTimeout(close, 3500);
 	}
 	handleGatewayClaimResolution(resolution) {
 		const key = `${resolution.matchId}:${resolution.ownerAccountId}:${resolution.candidateId}:${resolution.revision}:${resolution.accepted}`;
@@ -39203,14 +39612,19 @@ var DuelProductFoundation = class {
 	}
 	startGatewayMatchLocally(snapshot, board, startedAt) {
 		if (this.matchState.matchId === snapshot.matchId && (this.matchState.phase === "running" || this.matchState.phase === "finished")) {
+			this.reconcileBoardChallenges(snapshot.matchId, board, startedAt);
 			const ack = this.gatewayState.telemetryAck;
 			if (ack?.matchId === snapshot.matchId) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
+			this.resumeDeferredTelemetry(snapshot.matchId);
+			this.flushPendingClaimCandidates();
 			return;
 		}
 		const participants = this.gatewayParticipants(snapshot);
 		if (this.matchState.matchId === snapshot.matchId && this.matchState.phase === "countdown") this.matchStore.startPreparedMatch(snapshot.matchId, startedAt);
 		else this.matchStore.startMatch(snapshot.matchId, board, participants, startedAt);
 		this.activateBoardChallenges(snapshot.matchId, board, startedAt, "gateway-match-started");
+		this.awaitingTelemetryResumeCursor = false;
+		this.deferredTelemetryEvents = [];
 		const ack = this.gatewayState.telemetryAck;
 		if (ack?.matchId === snapshot.matchId) this.telemetryGateway.synchronizeSequence(ack.matchId, ack.lastSequence);
 		this.settingsStore.updateBoard({ visible: true });
@@ -39277,6 +39691,66 @@ var DuelProductFoundation = class {
 			activatedAt: startedAt
 		});
 	}
+	reconcileBoardChallenges(matchId, board, startedAt) {
+		const expected = new Map(board.fields.map((field) => [`duel-${matchId}-field-${field.fieldIndex}`, field]));
+		for (const runtime of this.options.challengeEngine.getInstances()) {
+			if (!runtime.instanceId.startsWith(`duel-${matchId}-field-`)) continue;
+			const field = expected.get(runtime.instanceId);
+			if (field && runtime.challengeId === field.challengeId && runtime.definitionVersion === field.definitionVersion) {
+				expected.delete(runtime.instanceId);
+				continue;
+			}
+			this.options.challengeEngine.deactivate(runtime.instanceId, "gateway-reconnect-board-reconciled");
+		}
+		for (const [instanceId, field] of expected) this.options.challengeEngine.activate({
+			instanceId,
+			challengeId: field.challengeId,
+			activatedAt: startedAt
+		});
+	}
+	observeDuelTelemetry(event) {
+		const state = this.matchStore.getState();
+		if (this.awaitingTelemetryResumeCursor && state.phase === "running" && state.matchId !== null) {
+			this.deferredTelemetryEvents.push(structuredClone(event));
+			if (this.deferredTelemetryEvents.length > 512) this.deferredTelemetryEvents.shift();
+			return;
+		}
+		this.telemetryGateway.observe(event);
+	}
+	resumeDeferredTelemetry(matchId) {
+		if (!this.awaitingTelemetryResumeCursor || this.matchState.matchId !== matchId) return;
+		const ack = this.gatewayState.telemetryAck;
+		const snapshot = this.gatewayState.match;
+		if (!ack || ack.matchId !== matchId || !snapshot || snapshot.matchId !== matchId || snapshot.state.phase !== "running") return;
+		this.telemetryGateway.synchronizeSequence(matchId, ack.lastSequence);
+		this.awaitingTelemetryResumeCursor = false;
+		const deferred = this.deferredTelemetryEvents.splice(0);
+		for (const event of deferred) this.telemetryGateway.observe(event);
+	}
+	flushPendingClaimCandidates() {
+		const match = this.gatewayState.match;
+		if (!match || match.matchId !== this.matchState.matchId || match.state.phase !== "running") return;
+		for (const runtime of this.options.challengeEngine.getInstances()) {
+			const candidate = runtime.completionCandidate;
+			if (runtime.status !== "completion-pending" || !candidate) continue;
+			if (!this.matchState.fields.some((field) => field.challengeId === runtime.challengeId)) continue;
+			if (this.submittedClaimCandidateIds.has(candidate.candidateId)) continue;
+			this.submittedClaimCandidateIds.add(candidate.candidateId);
+			try {
+				this.gatewayClient.submitClaimCandidate({
+					matchId: match.matchId,
+					candidateId: candidate.candidateId,
+					challengeId: runtime.challengeId,
+					definitionVersion: runtime.definitionVersion,
+					evidenceEventIds: candidate.evidenceEventIds,
+					occurredAt: candidate.completedAt,
+					throughSequence: this.telemetryGateway.getLastSequence()
+				});
+			} catch {
+				this.submittedClaimCandidateIds.delete(candidate.candidateId);
+			}
+		}
+	}
 	serverNow() {
 		return Date.now() + (this.gatewayState.serverTimeOffsetMs ?? 0);
 	}
@@ -39309,6 +39783,9 @@ var DuelProductFoundation = class {
 		this.duelChatMessages = [];
 		this.processedGatewayChatIds.clear();
 		this.processedClaimResolutionIds.clear();
+		this.submittedClaimCandidateIds.clear();
+		this.deferredTelemetryEvents = [];
+		this.awaitingTelemetryResumeCursor = false;
 		this.restoreDuelChatFocus = false;
 		this.duelChatScrollTop = 0;
 		this.duelChatStickToBottom = true;
@@ -39420,20 +39897,7 @@ var DuelProductFoundation = class {
 		if (event.type === "CHALLENGE_COMPLETION_CANDIDATE" && runtime.completionCandidate) {
 			const candidate = structuredClone(runtime.completionCandidate);
 			this.matchStore.markPending(runtime.challengeId, candidate.candidateId, "self", event.occurredAt);
-			const gatewayMatch = this.gatewayState.match;
-			if (gatewayMatch?.matchId === this.matchState.matchId && gatewayMatch.state.phase === "running") queueMicrotask(() => {
-				const current = this.gatewayState.match;
-				if (!current || current.matchId !== gatewayMatch.matchId || current.state.phase !== "running") return;
-				this.gatewayClient.submitClaimCandidate({
-					matchId: gatewayMatch.matchId,
-					candidateId: candidate.candidateId,
-					challengeId: runtime.challengeId,
-					definitionVersion: runtime.definitionVersion,
-					evidenceEventIds: candidate.evidenceEventIds,
-					occurredAt: candidate.completedAt,
-					throughSequence: this.telemetryGateway.getLastSequence()
-				});
-			});
+			queueMicrotask(() => this.flushPendingClaimCandidates());
 			return;
 		}
 		if (event.type === "CHALLENGE_CLAIMED" && runtime.claimId) {
@@ -39453,49 +39917,38 @@ var DuelProductFoundation = class {
 	insertConclusionMessage(state, elapsedMs, occurredAt) {
 		if (!state.matchId) return;
 		let message;
-		if (state.outcome === "draw") message = `Both players agreed to a Draw after ${formatDurationHms(elapsedMs)}.`;
+		let author = "Skribbl Duels";
+		if (state.outcome === "draw") message = `Both players agreed to a Draw after ${formatDurationWords(elapsedMs)}.`;
 		else {
 			const winner = state.participants.find((participant) => participant.side === state.winner);
 			const loser = state.participants.find((participant) => participant.side !== state.winner);
-			message = state.finishReason === "player-forfeit" ? `${loser?.displayName ?? "A player"} forfeited. ${winner?.displayName ?? "The opponent"} won after ${formatDurationHms(elapsedMs)}.` : `${winner?.displayName ?? "A player"} won the Duel after ${formatDurationHms(elapsedMs)}.`;
+			author = winner?.displayName ?? "A player";
+			message = state.finishReason === "player-forfeit" ? `won after ${formatDurationWords(elapsedMs)} \u00B7 ${loser?.displayName ?? "The opponent"} forfeited.` : `won after ${formatDurationWords(elapsedMs)}.`;
 		}
 		const id = `conclusion-${state.matchId}`;
 		if (this.duelChatMessages.some((item) => item.id === id)) return;
 		this.duelChatMessages.push({
 			id,
 			side: "system",
-			author: "Skribbl Duels",
+			author,
 			message,
 			occurredAt
 		});
 		this.duelChatStickToBottom = true;
 		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
 	}
-	showWinAnimation(playerName) {
+	showWinAnimation(playerName, participant) {
 		if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 		this.winAnimation?.remove();
 		if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
 		const overlay = element("div", "scd-win-animation");
 		overlay.dataset.scdRuntimeId = this.options.runtimeId;
 		const card = element("div", "scd-win-card");
-		card.append(this.createIconAsset("challenge-icons/skribbl-duels-logo.gif", "SD", "Skribbl Duels victory"), element("div", "", `${playerName} wins!`));
-		const colors = [
-			"#2a51d1",
-			"#53e237",
-			"#ffe45c",
-			"#e74c3c",
-			"#ff6fd8",
-			"#ffffff"
-		];
-		for (let index = 0; index < 36; index += 1) {
-			const piece = element("span", "scd-confetti");
-			piece.style.setProperty("--x", `${index * 37 % 101}%`);
-			piece.style.setProperty("--color", colors[index % colors.length]);
-			piece.style.setProperty("--rotate", `${index * 53 % 360}deg`);
-			piece.style.setProperty("--duration", `${1.9 + index % 7 * .18}s`);
-			piece.style.setProperty("--delay", `${index % 9 * .08}s`);
-			overlay.appendChild(piece);
-		}
+		const visual = element("div", "scd-win-visual");
+		const avatar = this.createParticipantAvatar(playerName, participant, "scd-win-player");
+		avatar.appendChild(element("span", "owner"));
+		visual.append(avatar, element("span", "scd-win-trophy"));
+		card.append(visual, element("div", "", `${playerName} wins!`));
 		overlay.appendChild(card);
 		(document.body ?? document.documentElement).appendChild(overlay);
 		this.winAnimation = overlay;
@@ -39521,7 +39974,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message);
 	}
 };
-var BUILD_VERSION = "0.48.0";
+var BUILD_VERSION = "0.49.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

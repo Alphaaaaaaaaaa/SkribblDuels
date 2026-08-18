@@ -47,7 +47,12 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
 }
 
 async function main(): Promise<void> {
-setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo'], 'German');
+setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo', 'New York'], 'German');
+
+const rebalancedChallengeIds = new Set([
+  'bloodline', 'ouch', 'picasso', 'cool-number-detected', 'fanboy', 'color-picker',
+  'time-waste', 'mogged', 'need-some-space', 'smol-words', 'big-word', 'hint-reflexes'
+]);
 
 const validation = validateTelemetryFixture(fixtureJson);
 assert(validation.valid && validation.fixture, 'Starter fixture must be valid.');
@@ -68,6 +73,7 @@ await replay.play({ mode: 'instant' });
 detach();
 
 for (const definition of starterChallengeDefinitions) {
+  if (rebalancedChallengeIds.has(definition.id)) continue;
   const instanceId = starterSandboxInstanceIds[definition.id as keyof typeof starterSandboxInstanceIds];
   const runtime = engine.getInstance(instanceId);
   assert(runtime, `Runtime ${instanceId} must exist.`);
@@ -88,13 +94,9 @@ assert(
 
 const ouch = engine.getInstance(starterSandboxInstanceIds.ouch);
 assertEqual(
-  ouch?.completionCandidate?.triggerEventId,
-  'starter-ouch-self',
-  'Ouch should use the self guess as its completion trigger.'
-);
-assert(
-  ouch?.completionCandidate?.evidenceEventIds.includes('starter-ouch-first'),
-  'Ouch evidence should include the first-guesser event.'
+  ouch?.status,
+  'active',
+  'The former 449 ms fixture must no longer complete the 200 ms Ouch challenge.'
 );
 
 const sniper = engine.getInstance(starterSandboxInstanceIds.sniper);
@@ -145,26 +147,7 @@ for (let index = 1; index <= 5; index += 1) {
 
 
 const fanboy = engine.getInstance(starterSandboxInstanceIds.fanboy);
-assertEqual(fanboy?.progress.current, 3, 'Fanboy should count three distinct liked drawing turns.');
-assertEqual(
-  (fanboy?.internalState as { likedRoundSessionIds?: string[] }).likedRoundSessionIds?.length,
-  3,
-  'Fanboy should retain three distinct drawing-turn IDs.'
-);
-assert(
-  !(fanboy?.completionCandidate?.evidenceEventIds.includes('fanboy-like-turn-1-duplicate') ?? true),
-  'A duplicate like in the same drawing turn must not be Fanboy evidence.'
-);
-assert(
-  !(fanboy?.completionCandidate?.evidenceEventIds.includes('fanboy-dislike-turn-2') ?? true),
-  'A dislike must not be Fanboy evidence.'
-);
-for (const evidenceId of ['fanboy-like-turn-1', 'fanboy-like-turn-2', 'fanboy-like-turn-3']) {
-  assert(
-    fanboy?.completionCandidate?.evidenceEventIds.includes(evidenceId),
-    `Fanboy evidence should include ${evidenceId}.`
-  );
-}
+assertEqual(fanboy?.status, 'active', 'Fanboy must not complete without a fully observed game and GAME_ENDED boundary.');
 
 
 const inAndOut = engine.getInstance(starterSandboxInstanceIds['in-and-out']);
@@ -193,26 +176,7 @@ for (const playerId of [391, 392, 393]) {
 }
 
 const picasso = engine.getInstance(starterSandboxInstanceIds.picasso);
-assertEqual(picasso?.progress.current, 3, 'Picasso should reach three simultaneous unique likes.');
-assertEqual(
-  (picasso?.internalState as { likedPlayerIds?: number[] }).likedPlayerIds?.join(','),
-  '402,403,404',
-  'Picasso should retain only the three currently liking players.'
-);
-assert(
-  !(picasso?.completionCandidate?.evidenceEventIds.includes('picasso-like-401') ?? true),
-  'A removed like must not remain Picasso completion evidence.'
-);
-assert(
-  !(picasso?.completionCandidate?.evidenceEventIds.includes('picasso-like-401-duplicate') ?? true),
-  'A duplicate like must not become Picasso completion evidence.'
-);
-for (const evidenceId of ['picasso-like-402', 'picasso-like-403', 'picasso-like-404']) {
-  assert(
-    picasso?.completionCandidate?.evidenceEventIds.includes(evidenceId),
-    `Picasso evidence should include ${evidenceId}.`
-  );
-}
+assertEqual(picasso?.status, 'active', 'Picasso now requires four simultaneous unique likes.');
 
 
 
@@ -285,23 +249,7 @@ for (const eventId of [
 }
 
 const colorPicker = engine.getInstance(starterSandboxInstanceIds['color-picker']);
-assertEqual(colorPicker?.progress.current, 5, 'Color Picker should count five distinct color families.');
-assertEqual(
-  (colorPicker?.internalState as { usedFamilies?: string[] }).usedFamilies?.join(','),
-  'red,orange,yellow,green,blue',
-  'Color Picker should group dark/light variants and ignore white.'
-);
-for (const eventId of [
-  'drawing-brush-xs-red',
-  'drawing-brush-m-orange-yellow',
-  'drawing-brush-l-green',
-  'drawing-brush-xl-blue'
-]) {
-  assert(
-    colorPicker?.completionCandidate?.evidenceEventIds.includes(eventId),
-    `Color Picker evidence should include ${eventId}.`
-  );
-}
+assertEqual(colorPicker?.status, 'active', 'Color Picker now requires all 26 palette colors and every eligible guesser.');
 
 
 const needSomeSpace = engine.getInstance(starterSandboxInstanceIds['need-some-space']);
@@ -426,7 +374,7 @@ assertEqual(
   'Second place with 4000 or more must not complete Caught in 4k.'
 );
 
-// Fanboy regression: only one like per drawing turn counts and self-drawing turns are ignored.
+// Fanboy regression: isolated likes cannot complete without a fully observed game.
 const fanboyRegression = new ChallengeEngine({ autoPersist: false });
 fanboyRegression.register(fanboyDefinition);
 fanboyRegression.activate({ instanceId: 'fanboy-regression', challengeId: 'fanboy' });
@@ -439,8 +387,8 @@ fanboyRegression.process(structuredClone(fanboyLike1));
 fanboyRegression.process(structuredClone(fanboyDuplicate));
 assertEqual(
   fanboyRegression.getInstance('fanboy-regression')?.progress.current,
-  1,
-  'Multiple likes in the same drawing turn must count once.'
+  0,
+  'Likes without GAME_STARTING and ROUND_STARTED context must not count.'
 );
 const selfDrawingLike = structuredClone(fanboyLike2) as TelemetryEvent;
 selfDrawingLike.eventId = 'fanboy-self-drawing-like';
@@ -448,15 +396,15 @@ selfDrawingLike.context.drawerId = selfDrawingLike.context.meId;
 fanboyRegression.process(selfDrawingLike);
 assertEqual(
   fanboyRegression.getInstance('fanboy-regression')?.progress.current,
-  1,
+  0,
   "A like during the user's own drawing turn must not count."
 );
 fanboyRegression.process(structuredClone(fanboyLike2));
 fanboyRegression.process(structuredClone(fanboyLike3));
 assertEqual(
   fanboyRegression.getInstance('fanboy-regression')?.status,
-  'completion-pending',
-  'Three distinct liked drawing turns should complete Fanboy.'
+  'active',
+  'Three isolated likes must not complete the complete-game Fanboy challenge.'
 );
 
 
@@ -508,8 +456,8 @@ assert(picassoLike404, 'Final Picasso like must exist.');
 picassoRegression.process(structuredClone(picassoLike404));
 assertEqual(
   picassoRegression.getInstance('picasso-regression')?.status,
-  'completion-pending',
-  'Three current unique likes on the same own drawing should complete Picasso.'
+  'active',
+  'Three current unique likes must remain below the new Picasso target of four.'
 );
 
 
@@ -602,11 +550,15 @@ assertEqual(
 ouchRegression.process(structuredClone(firstGuess));
 const secondSelfGuess = structuredClone(selfOuchGuess) as TelemetryEvent;
 secondSelfGuess.eventId = 'ouch-regression-self-after-baseline';
+secondSelfGuess.occurredAt = firstGuess.occurredAt + 200;
+secondSelfGuess.monotonicMs = firstGuess.monotonicMs + 200;
+if (secondSelfGuess.type !== 'CORRECT_GUESS' || firstGuess.type !== 'FIRST_GUESS') throw new Error('Expected Ouch guess events.');
+secondSelfGuess.payload.elapsedMs = (firstGuess.payload.elapsedMs ?? 0) + 200;
 ouchRegression.process(secondSelfGuess);
 assertEqual(
   ouchRegression.getInstance('ouch-regression')?.status,
   'completion-pending',
-  'Ouch should complete once the first guesser and the close self guess are both observed.'
+  'Ouch should complete exactly 200 ms after the observed first guesser.'
 );
 
 // Sniper regression: any dirty round erases the entire clean-round streak.
@@ -1096,7 +1048,10 @@ colorRegression.activate({ instanceId: 'color-regression', challengeId: 'color-p
 colorRegression.process(structuredClone(drawingRoundStart));
 colorRegression.process(structuredClone(brushXs));
 colorRegression.process(structuredClone(brushS));
-assertEqual(colorRegression.getInstance('color-regression')?.progress.current, 1, 'Red and dark red should count as one color family.');
+assert(
+  (colorRegression.getInstance('color-regression')?.progress.current ?? 0) >= 2,
+  'Distinct palette IDs must count independently.'
+);
 const whiteOnly = structuredClone(brushXs) as TelemetryEvent;
 whiteOnly.eventId = 'drawing-white-only';
 if (whiteOnly.type !== 'DRAW_COMMAND_BATCH_SUBMITTED') throw new Error('Expected draw batch.');
@@ -1108,43 +1063,24 @@ whiteOnly.payload = {
   commands: [{ kind: 'PENCIL', tool: 0, color: 0, brushSize: 4, startX: 0, startY: 0, endX: 1, endY: 1, raw: [0, 0, 4, 0, 0, 1, 1] }]
 };
 colorRegression.process(whiteOnly);
-assertEqual(colorRegression.getInstance('color-regression')?.progress.current, 1, 'White erasing must not count as a color family.');
+assert(
+  (colorRegression.getInstance('color-regression')?.internalState as { usedColorIds?: number[] }).usedColorIds?.includes(0),
+  'White is one of the 26 required palette colors.'
+);
 for (const source of [brushM, brushL, brushXl]) colorRegression.process(structuredClone(source));
-assertEqual(colorRegression.getInstance('color-regression')?.status, 'completion-pending', 'Five distinct non-white color families should complete Color Picker.');
+assertEqual(colorRegression.getInstance('color-regression')?.status, 'active', 'A partial palette must not complete Color Picker.');
 
 
 
 const mogged = engine.getInstance(starterSandboxInstanceIds.mogged);
-assertEqual(mogged?.progress.current, 3, 'Mogged should count three distinct official-list wrong guessers.');
-assertEqual(mogged?.status, 'completion-pending', 'Mogged should complete after the third qualifying player and the self correct guess.');
-for (const evidenceId of ['mogged-wrong-1', 'mogged-wrong-2', 'mogged-wrong-3', 'mogged-self-correct']) {
-  assert(mogged?.completionCandidate?.evidenceEventIds.includes(evidenceId), `Mogged evidence should include ${evidenceId}.`);
-}
+assertEqual(mogged?.status, 'active', 'Mogged must reject a qualifying self guess that was not the first guess.');
 
 
 const smolWords = engine.getInstance(starterSandboxInstanceIds['smol-words']);
-assertEqual(smolWords?.status, 'completion-pending', 'Hai should complete Smol words at the fifth-percentile threshold.');
-assertEqual(
-  (smolWords?.internalState as { threshold?: number }).threshold,
-  3,
-  'The deterministic German test list should produce a short threshold of three.'
-);
-assert(
-  smolWords?.completionCandidate?.evidenceEventIds.includes('mogged-self-correct'),
-  'Smol words evidence should include the qualifying Hai guess.'
-);
+assertEqual(smolWords?.status, 'active', 'One short word must remain below the language-derived Smol words target.');
 
 const bigWord = engine.getInstance(starterSandboxInstanceIds['big-word']);
-assertEqual(bigWord?.status, 'completion-pending', 'Atlantis should complete Big word at the ninetieth-percentile threshold.');
-assertEqual(
-  (bigWord?.internalState as { threshold?: number }).threshold,
-  6,
-  'The deterministic German test list should produce a long threshold of six.'
-);
-assert(
-  bigWord?.completionCandidate?.evidenceEventIds.includes('starter-late-guess'),
-  'Big word evidence should include the qualifying Atlantis guess.'
-);
+assertEqual(bigWord?.status, 'active', 'A non-first guess must not complete Big word.');
 
 
 const paparazzid = engine.getInstance(starterSandboxInstanceIds.paparazzid);
@@ -1216,14 +1152,14 @@ console.log('Challenge definitions smoke test passed.');
 
 
 const timeWaste = engine.getInstance(starterSandboxInstanceIds['time-waste']);
-assertEqual(timeWaste?.progress.current, 1, 'Time Waste should complete after 60 continuous white seconds by another drawer.');
+assertEqual(timeWaste?.progress.current, 1, 'Time Waste should complete after at least 50 continuous white seconds by another drawer.');
 assert(
-  timeWaste?.completionCandidate?.evidenceEventIds.includes('time-waste-foreign-white-60s'),
-  'Time Waste evidence should include the qualifying 60-second metric.'
+  timeWaste?.completionCandidate?.evidenceEventIds.includes('time-waste-too-short'),
+  'The former 59-second negative metric should qualify under the new 50-second threshold.'
 );
 assert(
-  !(timeWaste?.completionCandidate?.evidenceEventIds.includes('time-waste-too-short') ?? true),
-  'A 59-second white period must not become Time Waste evidence.'
+  !(timeWaste?.completionCandidate?.evidenceEventIds.includes('time-waste-foreign-white-60s') ?? false),
+  'Later canvas metrics must not replace the first valid completion evidence.'
 );
 
 const ultimateComeback = engine.getInstance(starterSandboxInstanceIds['ultimate-comeback']);

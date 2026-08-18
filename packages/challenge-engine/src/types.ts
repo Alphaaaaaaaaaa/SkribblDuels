@@ -6,7 +6,7 @@ import type {
   Unsubscribe
 } from '@skribbl-duels/telemetry-contracts';
 
-export const CHALLENGE_ENGINE_VERSION = '0.1.1' as const;
+export const CHALLENGE_ENGINE_VERSION = '0.2.0' as const;
 export const CHALLENGE_ENGINE_SNAPSHOT_VERSION = 1 as const;
 
 export type ChallengeCategory =
@@ -112,6 +112,8 @@ export interface ChallengeReducerUpdate<TInternalState> {
   internalState?: TInternalState;
   progress?: number;
   progressDelta?: number;
+  /** Allows a definition to bind its target to authoritative telemetry context (for example language metrics). */
+  target?: number;
   complete?: boolean;
   reset?: boolean;
   reason?: string;

@@ -1,6 +1,6 @@
 {
   "name": "@skribbl-duels/challenge-definitions",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",

@@ -18,6 +18,7 @@ import type {
   GatewayMatchEventMessage,
   GatewayMatchConclusion,
   GatewayMatchForfeitMessage,
+  GatewayRematchRequestMessage,
   GatewayMatchSnapshotMessage,
   GatewayMatchmakingEvent,
   GatewayMatchmakingJoinMessage,
@@ -112,6 +113,7 @@ interface ActiveMatch {
   chatByClientId: Map<string, GatewayDuelChatMessage>;
   claimResolutions: Map<string, GatewayClaimResolutionMessage>;
   processedActions: Map<string, string>;
+  rematchReadyAccountIds: Set<string>;
 }
 
 export type ReadyDecision =
@@ -418,6 +420,46 @@ export class GatewayMatchmaker {
       initiatedByAccountId: accountId,
       occurredAt: this.now()
     });
+    return { ok: true };
+  }
+
+  public requestRematch(
+    accountId: string,
+    message: GatewayRematchRequestMessage
+  ): MatchActionDecision {
+    const match = this.matches.get(message.matchId);
+    if (!match || this.accountMatches.get(accountId) !== message.matchId) {
+      return { ok: false, code: 'MATCH_NOT_FOUND', message: 'The finished Duel is no longer available for a rematch.' };
+    }
+    if (!this.realParticipant(match, accountId)) {
+      return { ok: false, code: 'MATCH_PARTICIPANT_INVALID', message: 'This account is not a real Duel participant.' };
+    }
+    const action = this.actionStatus(match, accountId, message.actionId, 'match-rematch');
+    if (action === 'duplicate') {
+      this.emitSnapshotToAccount(match, accountId);
+      return { ok: true };
+    }
+    if (action === 'conflict') {
+      return { ok: false, code: 'ACTION_ID_REUSED', message: 'This action ID was already used for a different match action.' };
+    }
+    if (match.phase !== 'finished' || !match.conclusion) {
+      return { ok: false, code: 'REMATCH_NOT_AVAILABLE', message: 'A rematch is available only after an authoritative result.' };
+    }
+    this.rememberAction(match, accountId, message.actionId, 'match-rematch');
+    match.rematchReadyAccountIds.add(accountId);
+    const simulated = match.participants.find(participant => participant.simulated);
+    if (simulated) match.rematchReadyAccountIds.add(simulated.identity.accountId);
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'REMATCH_READY_CHANGED',
+      accountId,
+      reason: 'player-requested-rematch'
+    });
+    this.emitSnapshot(match);
+    if (match.participants.every(participant =>
+      match.rematchReadyAccountIds.has(participant.identity.accountId))) {
+      this.startRematch(match);
+    }
     return { ok: true };
   }
 
@@ -786,7 +828,8 @@ export class GatewayMatchmaker {
       chatMessages: [],
       chatByClientId: new Map(),
       claimResolutions: new Map(),
-      processedActions: new Map()
+      processedActions: new Map(),
+      rematchReadyAccountIds: new Set()
     };
     this.matches.set(matchId, match);
     for (const participant of participants) {
@@ -1141,6 +1184,7 @@ export class GatewayMatchmaker {
     match.claims = [];
     match.drawProposal = null;
     match.conclusion = null;
+    match.rematchReadyAccountIds.clear();
     match.revision += 1;
     this.emitEvent(match, {
       type: 'READY_CHECK_EXPIRED',
@@ -1162,6 +1206,7 @@ export class GatewayMatchmaker {
     match.claims = [];
     match.drawProposal = null;
     match.conclusion = null;
+    match.rematchReadyAccountIds.clear();
     match.revision += 1;
     this.emitEvent(match, { type: 'MATCH_ABORTED', accountId, reason });
     this.emitSnapshot(match);
@@ -1178,6 +1223,45 @@ export class GatewayMatchmaker {
         this.accountMatches.delete(participant.identity.accountId);
       }
     }
+  }
+
+  private startRematch(match: ActiveMatch): void {
+    if (match.phase !== 'finished' || !match.conclusion) return;
+    const participants = match.participants.map(participant => ({
+      ...participant,
+      identity: { ...participant.identity },
+      capabilities: [...participant.capabilities],
+      ready: false,
+      reconnectTimer: null,
+      chatSentAt: [],
+      claimSubmittedAt: []
+    }));
+    const firstParticipant = participants[0];
+    const secondParticipant = participants[1];
+    if (!firstParticipant || !secondParticipant) return;
+    const createdAt = this.now();
+    match.revision += 1;
+    this.emitEvent(match, {
+      type: 'REMATCH_STARTED',
+      accountId: null,
+      reason: 'both-participants-requested-rematch'
+    });
+    this.deleteMatch(match);
+
+    const asQueueEntry = (participant: MatchParticipant): QueueEntry => ({
+      identity: participant.identity,
+      capabilities: participant.capabilities,
+      send: participant.send,
+      requestId: `rematch-${this.createId()}`,
+      format: match.format,
+      joinedAt: createdAt,
+      simulationTimer: null
+    });
+    const first = asQueueEntry(firstParticipant);
+    const second: QueueEntry | MatchParticipant = secondParticipant.simulated
+      ? secondParticipant
+      : asQueueEntry(secondParticipant);
+    this.createMatch(first, second);
   }
 
   private clearMatchTimers(match: ActiveMatch): void {
@@ -1277,6 +1361,7 @@ export class GatewayMatchmaker {
     const proposalId = match.drawProposal?.proposalId;
     match.drawProposal = null;
     match.conclusion = { ...conclusion };
+    match.rematchReadyAccountIds.clear();
     match.phase = 'finished';
     match.revision += 1;
     if (conclusion.reason === 'player-forfeit') {
@@ -1401,6 +1486,7 @@ export class GatewayMatchmaker {
       claims: match.claims.map(claim => ({ ...claim })),
       drawProposal: match.drawProposal ? { ...match.drawProposal } : null,
       conclusion: match.conclusion ? { ...match.conclusion } : null,
+      rematchReadyAccountIds: [...match.rematchReadyAccountIds],
       draft: match.draft ? {
         status: match.draft.status,
         requiredPickCount: match.draft.requiredPickCount,

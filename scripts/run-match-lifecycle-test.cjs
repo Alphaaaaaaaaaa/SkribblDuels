@@ -15,6 +15,12 @@ assert(product.includes("this.abortLocalMatch('gateway-match-connection-lost')")
 assert(product.includes('this.clearMatchStartTimer()'), 'match reset does not clear the synchronized start timer');
 assert(product.includes('this.options.challengeEngine.reset(reason)'), 'match reset does not clear old challenge instances');
 assert(product.includes('this.activateBoardChallenges(snapshot.matchId, board, startedAt'), 'Gateway board challenges are not activated at match start');
+assert(product.includes('const restoresPersistedMatch = snapshot.matchId === this.matchState.matchId'), 'persisted /credits match identity is not reconciled');
+assert(product.includes("this.abortLocalMatch('gateway-match-superseded-local-state')"), 'only superseded persisted matches are not reset');
+assert(product.includes('this.awaitingTelemetryResumeCursor'), 'telemetry resume cursor gate is missing');
+assert(product.includes('this.deferredTelemetryEvents.push(structuredClone(event))'), 'telemetry events are not buffered during Gateway resume');
+assert(product.includes('this.reconcileBoardChallenges(snapshot.matchId, board, startedAt)'), 'persisted challenge runtimes are not reconciled with the resumed board');
+assert(product.includes('private flushPendingClaimCandidates()'), 'pending Bloodline and reconnect claims are not flushed after resume');
 assert(product.includes("'#scd-raw-recorder-panel'"), 'foreign telemetry panels are not isolated');
 assert(product.includes("window.location.pathname !== '/'"), 'homepage-only matchmaking guard is missing');
 assert(product.includes("this.gatewayClient.setReady(match.matchId, true)"), 'ready acceptance is not a one-way one-click action');
@@ -35,6 +41,8 @@ assert(gateway.includes('public forfeitMatch('), 'server-authoritative Forfeit i
 assert(gateway.includes('public proposeDraw('), 'server-authoritative Draw proposal is missing');
 assert(gateway.includes('public respondToDraw('), 'explicit Draw response is missing');
 assert(gateway.includes('public withdrawDraw('), 'Draw withdrawal is missing');
+assert(gateway.includes('public requestRematch('), 'server-authoritative Rematch request is missing');
+assert(gateway.includes('private startRematch('), 'server Rematch lifecycle is missing');
 assert(gateway.includes("reason: 'player-forfeit'"), 'Forfeit result reason is missing');
 assert(gateway.includes("reason: 'mutual-draw'"), 'mutual Draw result reason is missing');
 assert(product.includes('this.gatewayClient.forfeitMatch('), 'Match UI does not send Forfeit');
@@ -59,4 +67,6 @@ console.log(JSON.stringify({
   draftedChallengeActivation: true
   , authoritativeForfeit: true
   , mutualDrawLifecycle: true
+  , persistedChallengeResume: true
+  , authoritativeRematch: true
 }, null, 2));

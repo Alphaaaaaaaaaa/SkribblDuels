@@ -129,6 +129,23 @@ if (!reused.ok) assert.equal(reused.code, 'ACTION_ID_REUSED');
 assert.ok(forfeit.alphaMessages.some(message =>
   message.type === 'MATCH_EVENT' && message.event.type === 'MATCH_FORFEITED'
 ));
+assert.equal(forfeit.matchmaker.requestRematch('alpha', {
+  type: 'MATCH_REMATCH', matchId: forfeit.matchId, actionId: 'rematch-alpha'
+}).ok, true);
+assert.deepEqual(latest(forfeit.alphaMessages).state.rematchReadyAccountIds, ['alpha']);
+assert.equal(forfeit.matchmaker.requestRematch('alpha', {
+  type: 'MATCH_REMATCH', matchId: forfeit.matchId, actionId: 'rematch-alpha'
+}).ok, true, 'Identical Rematch request replay must be idempotent.');
+assert.equal(forfeit.matchmaker.requestRematch('beta', {
+  type: 'MATCH_REMATCH', matchId: forfeit.matchId, actionId: 'rematch-beta'
+}).ok, true);
+const rematch = latest(forfeit.alphaMessages);
+assert.notEqual(rematch.matchId, forfeit.matchId);
+assert.equal(rematch.state.phase, 'ready-check');
+assert.deepEqual(rematch.state.rematchReadyAccountIds, []);
+assert.ok(forfeit.alphaMessages.some(message =>
+  message.type === 'MATCH_EVENT' && message.event.type === 'REMATCH_STARTED'
+));
 forfeit.matchmaker.close();
 
 const draw = await runningFixture('draw');
@@ -229,5 +246,6 @@ console.log(JSON.stringify({
   drawTimeout: true,
   reconnectProposalRestore: true,
   idempotentActions: true,
-  immutableFirstConclusion: true
+  immutableFirstConclusion: true,
+  authoritativeRematchReadyCheck: true
 }, null, 2));

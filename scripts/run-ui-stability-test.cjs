@@ -30,6 +30,7 @@ assert(source.includes("background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG))"), 
 assert(!source.includes('board fields filled · server revision'), 'draft still exposes board counts or server revision');
 assert(source.includes("this.registerDeadline(score, countdownEndsAt, 'Match starts in ', 's')"), 'countdown does not replace the board score line');
 assert(source.includes("this.panel.style.display = this.settings.panelOpen && !stagePhase"), 'Hub is not hidden during Versus/Draft/Countdown');
+assert(source.includes('if (this.currentStagePhase() && this.settings.panelOpen)'), 'an expired stale countdown can still close the running Match Hub');
 assert(source.includes("this.settingsStore.update({ panelOpen: false, panelTab: 'match' })"), 'match start still auto-opens the Hub');
 assert(source.includes("this.panelMainTab.textContent = mainTab === 'match' ? 'Match' : 'Duels'"), 'dynamic Duels/Match main tab is missing');
 assert(source.includes("restoredSettings.panelOpen\n      ? this.settingsStore.update({ panelOpen: false })"), 'Hub is not forced closed on initial load');
@@ -58,6 +59,7 @@ assert(source.includes('drop-shadow(0 0 7px rgba(255,255,255,.2)) drop-shadow(0 
 assert(!source.includes('font-family:Arial'), 'the product UI still overrides Skribbl with Arial');
 assert(source.includes("tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea'"), 'interactive product controls are not pointer-enabled centrally');
 assert(source.includes("node.addEventListener(eventName, event => event.stopPropagation())"), 'interactive product controls do not isolate pointer events from Skribbl');
+assert(source.includes('isolatePointerRoot(modal);'), 'the complete Hub surface does not isolate pointer events from Skribbl');
 assert(source.includes('.scd-profile-field input { min-width:0;max-width:100%; }'), 'Duel display-name input can still overflow its container');
 assert(source.includes('filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25))'), 'animated icons do not use the 135-degree Skribbl drop shadow');
 assert(source.includes("'challenge-icons/countdown_ExclamationMark.gif'"), 'GO countdown asset sequence is missing');
@@ -96,6 +98,7 @@ assert(source.includes('.scd-avatar-fallback,.scd-avatar-discord { background:rg
 assert(source.includes("avatar.classList.add('scd-avatar-skribbl')"), 'Skribbl avatars are not separated from fallback backgrounds');
 assert(source.includes('.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1'), 'Challenge icon sizing was not restored');
 assert(source.includes('.scd-versus-avatar { width:min(150px,23vw)'), 'Versus avatars were not reduced');
+assert(source.includes('max-height:75vh;overflow:auto'), 'Versus ready-check height is not capped at 75% of the viewport');
 assert(source.includes('.scd-avatar-skribbl { overflow:visible !important;border-radius:0; }'), 'Skribbl special layers can still be clipped');
 assert(source.includes('this.createFinishedMatchSummary('), 'finished-match result card is missing');
 assert(source.includes("element('button', 'scd-button primary', 'New Match')"), 'New Match result action is missing');

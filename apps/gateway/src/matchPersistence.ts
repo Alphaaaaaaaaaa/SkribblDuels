@@ -31,6 +31,26 @@ export interface GatewayMatchAuthorityPersistence {
   finalizeMatch(matchId: string, reason: string, occurredAt: number): Promise<void>;
 }
 
+export interface DurableIdempotencyRpcRow {
+  namespace: GatewayDurableMatchSnapshot['idempotency'][number]['namespace'];
+  account_id: string;
+  key: string;
+  fingerprint: string;
+  result: unknown;
+}
+
+export function serializeDurableIdempotency(
+  rows: GatewayDurableMatchSnapshot['idempotency']
+): DurableIdempotencyRpcRow[] {
+  return rows.map(row => ({
+    namespace: row.namespace,
+    account_id: row.accountId,
+    key: row.key,
+    fingerprint: row.fingerprint,
+    result: row.result
+  }));
+}
+
 interface StoredAuthorityRow {
   snapshot: unknown;
 }
@@ -81,7 +101,7 @@ export class SupabaseGatewayMatchAuthorityPersistence implements GatewayMatchAut
       p_phase: snapshot.phase,
       p_expires_at: new Date(snapshot.expiresAt).toISOString(),
       p_snapshot: snapshot,
-      p_idempotency: snapshot.idempotency
+      p_idempotency: serializeDurableIdempotency(snapshot.idempotency)
     });
     if (error) throw new Error(`Unable to persist Duel match ${snapshot.matchId}: ${error.message}`);
   }
@@ -95,4 +115,3 @@ export class SupabaseGatewayMatchAuthorityPersistence implements GatewayMatchAut
     if (error) throw new Error(`Unable to finalize Duel match ${matchId}: ${error.message}`);
   }
 }
-

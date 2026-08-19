@@ -11,6 +11,7 @@ import type {
   GatewayDurableMatchSnapshot,
   GatewayMatchAuthorityPersistence
 } from '../apps/gateway/src/matchPersistence';
+import { serializeDurableIdempotency } from '../apps/gateway/src/matchPersistence';
 import { GatewayMatchmaker, type MatchmakingPeer } from '../apps/gateway/src/matchmaking';
 import { GatewayPlayerTelemetryAuthority } from '../apps/gateway/src/telemetryAuthority';
 
@@ -103,6 +104,13 @@ assert.deepEqual(first.submitClaimCandidate('alpha', rejectedClaim), { ok: true 
 await first.flushPersistence();
 assert.ok(persistence.snapshots.get(matchId)?.idempotency.some(row => row.namespace === 'chat'));
 assert.ok(persistence.snapshots.get(matchId)?.idempotency.some(row => row.namespace === 'claim'));
+const rpcIdempotency = serializeDurableIdempotency(persistence.snapshots.get(matchId)!.idempotency);
+assert.ok(rpcIdempotency.every(row => row.account_id.length > 0));
+assert.equal(
+  rpcIdempotency.some(row => 'accountId' in row),
+  false,
+  'The Supabase RPC boundary must serialize account_id instead of the internal accountId key.'
+);
 await first.close();
 
 const restoredAlphaMessages: GatewayServerMessage[] = [];

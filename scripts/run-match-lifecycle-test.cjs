@@ -30,9 +30,10 @@ assert(product.includes("this.gatewayClient.setReady(matchId, true)"), 'ready ac
 assert(product.includes('bindReliableButtonAction(ready'), 'ready acceptance is not protected against a snapshot replacing the pressed button');
 assert(product.includes('bindReliableButtonAction(cancel'), 'ready-check cancellation is not protected against a snapshot replacing the pressed button');
 assert(product.includes("this.matchmakingError = 'Ready confirmation timed out. Please try again.'"), 'ready submission can remain locked without an acknowledgement');
+assert(product.includes("this.matchmakingError = 'Ready check expired. Reconnecting…'"), 'an expired ready check does not recover through an authoritative reconnect');
 assert(!product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready)"), 'ready acceptance still toggles and can require a second click');
 assert(product.includes('createDraftProgressFields'), 'draft board is not rendered incrementally');
-assert(product.includes("snapshot.state.phase === 'ready-check'"), 'match-found phase does not close the Hub for the Versus stage');
+assert(product.includes('if (this.currentStagePhase() && this.settings.panelOpen)'), 'the visible match-start phase does not close the Hub for the Versus stage');
 assert(product.includes("this.settingsStore.update({ panelOpen: false, panelTab: 'match' })"), 'running match still opens the Hub automatically');
 assert(product.includes("if (this.currentStagePhase()) return;"), 'Hub launcher can expose the Hub during a match-start stage');
 assert(gateway.includes("this.cancelAccount(peer.identity.accountId, 'superseded-by-new-matchmaking')"), 'server does not abort a superseded account match');

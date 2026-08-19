@@ -1,4 +1,5 @@
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { defaultPublicConfig } from '../apps/telemetry-inspector/vite.config';
 import { readGatewayServerConfig } from '../apps/gateway/src/config';
 
@@ -33,6 +34,10 @@ assert.throws(() => readGatewayServerConfig({
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test'
 }), /SUPABASE_SERVICE_ROLE_KEY/);
+
+const serverSource = readFileSync('apps/gateway/src/server.ts', 'utf8');
+assert.ok(serverSource.includes("response.writeHead(healthy ? 200 : 503"));
+assert.ok(serverSource.includes("status: healthy ? 'ok' : 'degraded'"));
 
 console.log(JSON.stringify({
   gatewayConfigured: true,

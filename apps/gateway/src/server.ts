@@ -84,12 +84,14 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
   const restorePromise = matchmaker.restoreFromPersistence();
   const httpServer = createServer((request, response) => {
     if (request.method === 'GET' && request.url === '/healthz') {
-      response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      const matchAuthority = matchmaker.persistenceStatus();
+      const healthy = !matchAuthority.enabled || matchAuthority.healthy;
+      response.writeHead(healthy ? 200 : 503, { 'content-type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({
-        status: 'ok',
+        status: healthy ? 'ok' : 'degraded',
         service: 'skribbl-duels-gateway',
         contractVersion: GATEWAY_CONTRACT_VERSION,
-        matchAuthority: matchmaker.persistenceStatus()
+        matchAuthority
       }));
       return;
     }

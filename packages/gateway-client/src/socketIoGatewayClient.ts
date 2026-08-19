@@ -26,6 +26,8 @@ interface ClientToServerEvents {
 
 type GatewaySocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+const TELEMETRY_FLUSH_DELAY_MS = 150;
+
 interface GatewayResumeCursor {
   matchId: string;
   revision: number;
@@ -220,7 +222,7 @@ export class SocketIoGatewayClient {
       this.telemetryFlushTimer = setTimeout(() => {
         this.telemetryFlushTimer = null;
         this.flushTelemetry();
-      }, 40);
+      }, TELEMETRY_FLUSH_DELAY_MS);
     }
   }
 

@@ -1,9 +1,24 @@
-# Skribbl Duels v0.51.1
+# Skribbl Duels v0.51.2
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v7, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.51.2
+
+v0.51.2 fixes the live durable-authority outage caused by sending the internal
+`accountId` property to a Supabase RPC that consumes `account_id`. Idempotency
+rows are now translated explicitly at the database boundary, so telemetry ACKs
+and server-validated Challenge claims are published again. No new migration is
+required; redeploying the Gateway clears the fail-closed process state.
+
+An unhealthy durable authority now makes `/healthz` return HTTP 503 with
+`status: "degraded"`. The userscript reconnects automatically after a missing
+Ready cancellation or an expired Ready deadline, caps the Versus panel at 75
+viewport-percent, isolates the full Hub surface from Skribbl pointer handlers,
+and batches routine telemetry for 150 ms while keeping Claim-triggered flushes
+immediate.
 
 ## v0.51.1
 

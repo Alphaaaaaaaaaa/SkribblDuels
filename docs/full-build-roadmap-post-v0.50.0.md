@@ -1,8 +1,9 @@
 # Full-build roadmap after v0.50.0
 
 This roadmap lists the work still required for a production-complete Skribbl
-Duels build. Invite-link generation and implementation are assumed as a
-separate, already identified workstream.
+Duels build. Invite-link generation and implementation are specified in
+`invite-link-v0.52.0-plan.md` and are the next feature release after the v0.51.2
+production-correctness hotfix.
 
 ## P0 — production correctness
 
@@ -97,8 +98,8 @@ separate, already identified workstream.
 
 ## Recommended execution order
 
-1. Multi-instance realtime infrastructure, observability and abuse controls.
-2. Invite links on top of the durable authority.
+1. Invite links on top of the durable authority for closed real-client beta.
+2. Multi-instance realtime infrastructure, observability and abuse controls.
 3. Ranked rating, history and leaderboards.
 4. Full Challenge live certification and balancing telemetry.
 5. Localization, accessibility, end-to-end/load testing and release automation.

@@ -286,6 +286,13 @@ function isolateScrollRoot(root: HTMLElement): void {
   root.addEventListener('touchmove', event => event.stopPropagation(), { passive: false });
 }
 
+function isolatePointerRoot(root: HTMLElement): void {
+  for (const eventName of ISOLATED_POINTER_EVENTS) {
+    if (eventName === 'wheel') continue;
+    root.addEventListener(eventName, event => event.stopPropagation());
+  }
+}
+
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -508,7 +515,7 @@ class CompletionChatAdapter {
 .scd-main-tabs { display:flex;justify-content:center;padding:4px 10px 8px; }
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
-.scd-versus { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
+.scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
 .scd-versus-player { min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center; }
 .scd-versus-avatar { width:min(150px,23vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(32px,6vw,60px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
@@ -873,6 +880,7 @@ export class DuelProductFoundation {
   private readySubmissionTimer: number | null = null;
   private cancellationSubmissionMatchId: string | null = null;
   private cancellationSubmissionTimer: number | null = null;
+  private readyDeadlineRecoveryAt = 0;
   private draftSubmissionKey: string | null = null;
   private lastConclusionMessageMatchId: string | null = null;
   private pendingConclusionMessageMatchId: string | null = null;
@@ -1008,7 +1016,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.51.1',
+      version: '0.51.2',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1136,7 +1144,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.51.1') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.51.2') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1250,6 +1258,7 @@ export class DuelProductFoundation {
 
     const wrapper = element('div', 'scd-modal-wrapper');
     const modal = element('div', 'scd-modal-container');
+    isolatePointerRoot(modal);
 
     const header = element('div', 'scd-modal-header');
     this.panelAccount = element('div', 'scd-modal-account');
@@ -1295,6 +1304,7 @@ export class DuelProductFoundation {
     isolateScrollRoot(stage);
     const wrapper = element('div', 'scd-modal-wrapper');
     this.stageBody = element('div', 'scd-stage-shell');
+    isolatePointerRoot(this.stageBody);
     wrapper.appendChild(this.stageBody);
     stage.appendChild(wrapper);
     return stage;
@@ -3067,8 +3077,9 @@ export class DuelProductFoundation {
         return;
       }
       this.cancellationSubmissionMatchId = null;
-      this.matchmakingError = 'Ready-check cancellation timed out. Please try again.';
+      this.matchmakingError = 'Ready-check cancellation timed out. Reconnecting…';
       this.renderStage();
+      this.gatewayClient.reconnect();
     }, 4_000);
   }
 
@@ -3094,6 +3105,7 @@ export class DuelProductFoundation {
     if (!snapshot) {
       this.clearReadySubmission();
       this.clearCancellationSubmission();
+      this.readyDeadlineRecoveryAt = 0;
       if (!state.queue) {
         if (this.lastGatewayMatchId !== null && state.status !== 'connected') {
           this.abortLocalMatch('gateway-match-connection-lost');
@@ -3111,6 +3123,7 @@ export class DuelProductFoundation {
     if (snapshot.matchId !== this.lastGatewayMatchId) {
       this.clearReadySubmission();
       this.clearCancellationSubmission();
+      this.readyDeadlineRecoveryAt = 0;
       const restoresPersistedMatch = snapshot.matchId === this.matchState.matchId
         && this.currentBoard?.boardId === snapshot.state.draft?.board?.boardId;
       if (!restoresPersistedMatch) {
@@ -3121,15 +3134,13 @@ export class DuelProductFoundation {
     if (snapshot.state.phase !== 'ready-check') {
       this.clearReadySubmission();
       this.clearCancellationSubmission();
+      this.readyDeadlineRecoveryAt = 0;
     } else {
       const selfAccountId = state.identity?.accountId;
       const self = snapshot.state.participants.find(participant => participant.accountId === selfAccountId);
       if (self?.ready) this.clearReadySubmission();
     }
-    if ((snapshot.state.phase === 'ready-check'
-        || snapshot.state.phase === 'draft'
-        || snapshot.state.phase === 'countdown')
-        && this.settings.panelOpen) {
+    if (this.currentStagePhase() && this.settings.panelOpen) {
       this.settingsStore.update({ panelOpen: false });
     }
     if (snapshot.state.phase === 'cancelled') {
@@ -3505,6 +3516,23 @@ export class DuelProductFoundation {
       root?.querySelectorAll<HTMLElement>('[data-scd-deadline]').forEach(node => {
         this.updateDeadlineNode(node);
       });
+    }
+    const snapshot = this.gatewayState.match;
+    const deadline = snapshot?.state.phase === 'ready-check'
+      ? snapshot.state.readyDeadlineAt
+      : null;
+    const now = this.serverNow();
+    if (snapshot?.state.phase === 'ready-check'
+        && deadline !== null
+        && deadline !== undefined
+        && now >= deadline + 1_000
+        && now >= this.readyDeadlineRecoveryAt) {
+      this.readyDeadlineRecoveryAt = now + 5_000;
+      this.clearReadySubmission();
+      this.clearCancellationSubmission();
+      this.matchmakingError = 'Ready check expired. Reconnecting…';
+      this.renderStage();
+      this.gatewayClient.reconnect();
     }
   }
 

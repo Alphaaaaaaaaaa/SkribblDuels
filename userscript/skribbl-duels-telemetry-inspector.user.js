@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.51.1
+// @version      0.51.2
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with restored live telemetry, authoritative Challenges and Rematches.
 // @match        https://skribbl.io/*
@@ -12642,7 +12642,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.51.1";
+var GATEWAY_CLIENT_VERSION = "0.51.2";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15874,6 +15874,7 @@ Object.assign(lookup, {
 	io: lookup,
 	connect: lookup
 });
+var TELEMETRY_FLUSH_DELAY_MS = 150;
 function initialSnapshot(endpoint) {
 	return {
 		status: endpoint ? "signed-out" : "not-configured",
@@ -16073,7 +16074,7 @@ var SocketIoGatewayClient = class {
 		if (this.telemetryFlushTimer === null) this.telemetryFlushTimer = setTimeout(() => {
 			this.telemetryFlushTimer = null;
 			this.flushTelemetry();
-		}, 40);
+		}, TELEMETRY_FLUSH_DELAY_MS);
 	}
 	submitClaimCandidate(message) {
 		if (!this.pendingClaims.some((candidate) => candidate.matchId === message.matchId && candidate.candidateId === message.candidateId)) this.pendingClaims.push(structuredClone(message));
@@ -37404,6 +37405,12 @@ function isolateScrollRoot(root) {
 	}, { passive: false });
 	root.addEventListener("touchmove", (event) => event.stopPropagation(), { passive: false });
 }
+function isolatePointerRoot(root) {
+	for (const eventName of ISOLATED_POINTER_EVENTS) {
+		if (eventName === "wheel") continue;
+		root.addEventListener(eventName, (event) => event.stopPropagation());
+	}
+}
 function formatTime(timestamp) {
 	return new Date(timestamp).toLocaleTimeString([], {
 		hour: "2-digit",
@@ -37610,7 +37617,7 @@ var CompletionChatAdapter = class {
 .scd-main-tabs { display:flex;justify-content:center;padding:4px 10px 8px; }
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
-.scd-versus { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
+.scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
 .scd-versus-player { min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center; }
 .scd-versus-avatar { width:min(150px,23vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(32px,6vw,60px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
@@ -37963,6 +37970,7 @@ var DuelProductFoundation = class {
 	readySubmissionTimer = null;
 	cancellationSubmissionMatchId = null;
 	cancellationSubmissionTimer = null;
+	readyDeadlineRecoveryAt = 0;
 	draftSubmissionKey = null;
 	lastConclusionMessageMatchId = null;
 	pendingConclusionMessageMatchId = null;
@@ -38080,7 +38088,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.51.1",
+			version: "0.51.2",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 7,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -38198,7 +38206,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.51.1") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.51.2") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38327,6 +38335,7 @@ var DuelProductFoundation = class {
 		});
 		const wrapper = element("div", "scd-modal-wrapper");
 		const modal = element("div", "scd-modal-container");
+		isolatePointerRoot(modal);
 		const header = element("div", "scd-modal-header");
 		this.panelAccount = element("div", "scd-modal-account");
 		const title = element("div", "scd-modal-title", "Skribbl Duels");
@@ -38368,6 +38377,7 @@ var DuelProductFoundation = class {
 		isolateScrollRoot(stage);
 		const wrapper = element("div", "scd-modal-wrapper");
 		this.stageBody = element("div", "scd-stage-shell");
+		isolatePointerRoot(this.stageBody);
 		wrapper.appendChild(this.stageBody);
 		stage.appendChild(wrapper);
 		return stage;
@@ -39763,8 +39773,9 @@ var DuelProductFoundation = class {
 				return;
 			}
 			this.cancellationSubmissionMatchId = null;
-			this.matchmakingError = "Ready-check cancellation timed out. Please try again.";
+			this.matchmakingError = "Ready-check cancellation timed out. Reconnecting\u2026";
 			this.renderStage();
+			this.gatewayClient.reconnect();
 		}, 4e3);
 	}
 	clearReadySubmission() {
@@ -39787,6 +39798,7 @@ var DuelProductFoundation = class {
 		if (!snapshot) {
 			this.clearReadySubmission();
 			this.clearCancellationSubmission();
+			this.readyDeadlineRecoveryAt = 0;
 			if (!state.queue) {
 				if (this.lastGatewayMatchId !== null && state.status !== "connected") this.abortLocalMatch("gateway-match-connection-lost");
 				this.lastGatewayMatchId = null;
@@ -39800,17 +39812,19 @@ var DuelProductFoundation = class {
 		if (snapshot.matchId !== this.lastGatewayMatchId) {
 			this.clearReadySubmission();
 			this.clearCancellationSubmission();
+			this.readyDeadlineRecoveryAt = 0;
 			if (!(snapshot.matchId === this.matchState.matchId && this.currentBoard?.boardId === snapshot.state.draft?.board?.boardId)) this.abortLocalMatch("gateway-match-superseded-local-state");
 			this.lastGatewayMatchId = snapshot.matchId;
 		}
 		if (snapshot.state.phase !== "ready-check") {
 			this.clearReadySubmission();
 			this.clearCancellationSubmission();
+			this.readyDeadlineRecoveryAt = 0;
 		} else {
 			const selfAccountId = state.identity?.accountId;
 			if (snapshot.state.participants.find((participant) => participant.accountId === selfAccountId)?.ready) this.clearReadySubmission();
 		}
-		if ((snapshot.state.phase === "ready-check" || snapshot.state.phase === "draft" || snapshot.state.phase === "countdown") && this.settings.panelOpen) this.settingsStore.update({ panelOpen: false });
+		if (this.currentStagePhase() && this.settings.panelOpen) this.settingsStore.update({ panelOpen: false });
 		if (snapshot.state.phase === "cancelled") {
 			this.abortLocalMatch("gateway-match-cancelled");
 			return;
@@ -40090,6 +40104,17 @@ var DuelProductFoundation = class {
 		for (const root of [this.panel, this.stage]) root?.querySelectorAll("[data-scd-deadline]").forEach((node) => {
 			this.updateDeadlineNode(node);
 		});
+		const snapshot = this.gatewayState.match;
+		const deadline = snapshot?.state.phase === "ready-check" ? snapshot.state.readyDeadlineAt : null;
+		const now = this.serverNow();
+		if (snapshot?.state.phase === "ready-check" && deadline !== null && deadline !== void 0 && now >= deadline + 1e3 && now >= this.readyDeadlineRecoveryAt) {
+			this.readyDeadlineRecoveryAt = now + 5e3;
+			this.clearReadySubmission();
+			this.clearCancellationSubmission();
+			this.matchmakingError = "Ready check expired. Reconnecting\u2026";
+			this.renderStage();
+			this.gatewayClient.reconnect();
+		}
 	}
 	updateBoardScore() {
 		const score = this.board?.querySelector("[data-role=\"score\"]");
@@ -40427,7 +40452,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.51.1";
+var BUILD_VERSION = "0.51.2";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

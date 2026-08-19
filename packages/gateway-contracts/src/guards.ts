@@ -357,6 +357,16 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
         && message.page === 'home';
     case 'MATCHMAKING_LEAVE':
       return nonEmptyString(message.requestId);
+    case 'INVITE_CREATE':
+      return nonEmptyString(message.requestId)
+        && (message.format === 'casual' || message.format === 'ranked')
+        && message.page === 'home';
+    case 'INVITE_ACCEPT':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.token, 128)
+        && message.page === 'home';
+    case 'INVITE_CANCEL':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.inviteId);
     case 'READY_SET':
       return nonEmptyString(message.matchId) && typeof message.ready === 'boolean';
     case 'DRAFT_PICK':
@@ -440,6 +450,18 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && typeof message.queued === 'boolean'
         && (message.position === null || nonNegativeInteger(message.position))
         && (message.joinedAt === null || finiteNumber(message.joinedAt));
+    case 'INVITE_STATUS':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.inviteId)
+        && (message.format === 'casual' || message.format === 'ranked')
+        && (message.status === 'waiting'
+          || message.status === 'accepted'
+          || message.status === 'cancelled'
+          || message.status === 'expired')
+        && (message.token === null || nonEmptyString(message.token, 128))
+        && finiteNumber(message.expiresAt)
+        && (message.matchId === null || nonEmptyString(message.matchId))
+        && (message.reason === null || nonEmptyString(message.reason, 128));
     case 'MATCH_SNAPSHOT':
       return nonEmptyString(message.matchId)
         && nonNegativeInteger(message.revision)

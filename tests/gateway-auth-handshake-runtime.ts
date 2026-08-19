@@ -32,7 +32,8 @@ const config: GatewayServerConfig = {
   draftFinalRevealMs: 8,
   matchCountdownMs: 10_000,
   reconnectGraceMs: 30_000,
-  drawProposalTimeoutMs: 30_000
+  drawProposalTimeoutMs: 30_000,
+  inviteTimeoutMs: 15 * 60_000
 };
 
 const gateway = createGatewayServer({

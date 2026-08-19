@@ -97,7 +97,9 @@ assert(source.includes('.avatar .owner') && source.includes("background-image:ur
 assert(source.includes('.scd-avatar-fallback,.scd-avatar-discord { background:rgba(255,255,255,.1); }'), 'avatar fallback/Discord background rule is missing');
 assert(source.includes("avatar.classList.add('scd-avatar-skribbl')"), 'Skribbl avatars are not separated from fallback backgrounds');
 assert(source.includes('.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1'), 'Challenge icon sizing was not restored');
-assert(source.includes('.scd-versus-avatar { width:min(150px,23vw)'), 'Versus avatars were not reduced');
+assert(source.includes('.scd-versus-avatar { width:min(88px,15vw)'), 'Versus avatars were not reduced to the requested compact size');
+assert(source.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(70px,.5fr)'), 'Invite button does not use the compact third queue column');
+assert(source.includes("inviteIcon.src = '/img/link.svg'"), 'Skribbl-style invite link icon is missing');
 assert(source.includes('max-height:75vh;overflow:auto'), 'Versus ready-check height is not capped at 75% of the viewport');
 assert(source.includes('.scd-avatar-skribbl { overflow:visible !important;border-radius:0; }'), 'Skribbl special layers can still be clipped');
 assert(source.includes('this.createFinishedMatchSummary('), 'finished-match result card is missing');
@@ -115,6 +117,8 @@ assert(source.includes('text-align:center;justify-self:stretch'), 'finished resu
 assert(source.includes('.scd-result-visual { position:relative;grid-row:1/3;width:48px;aspect-ratio:1/1'), 'finished result visual is not restored to 48px');
 assert(source.includes('.scd-win-player.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }'), 'winner Skribbl avatar does not use the full player box');
 assert(source.includes("document.addEventListener('visibilitychange', this.visibilityRecovery, true)"), 'background-countdown visibility recovery is missing');
+assert(source.includes("window.addEventListener('focus', this.visibilityRecovery, false)"), 'window focus recovery still captures every Hub control focus');
+assert(!source.includes("window.addEventListener('focus', this.visibilityRecovery, true)"), 'Hub control focus can still replace the target before click');
 assert(source.includes('}, false);') && source.includes('mirrorToSkribbl = true'), 'historical completion messages are still mirrored into Skribbl chat');
 assert(source.includes('suppressExternalConclusionForMatchIds'), 'historical result chat suppression is missing');
 assert(source.includes("this.checkbox('Show Match Chat toast notifications'"), 'chat notification toggle is missing');

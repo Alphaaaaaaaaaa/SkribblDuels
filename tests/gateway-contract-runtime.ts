@@ -13,7 +13,7 @@ const hello = {
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 7);
+assert.equal(GATEWAY_CONTRACT_VERSION, 8);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -33,6 +33,15 @@ assert.equal(isGatewayClientMessage({
   format: 'ranked',
   page: 'game'
 }), false);
+assert.equal(isGatewayClientMessage({
+  type: 'INVITE_CREATE', requestId: 'invite-create-1', format: 'casual', page: 'home'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'INVITE_ACCEPT', requestId: 'invite-accept-1', token: 'opaque-token', page: 'home'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'INVITE_CANCEL', requestId: 'invite-cancel-1', inviteId: 'invite-1'
+}), true);
 assert.equal(isGatewayClientMessage({
   type: 'MATCH_FORFEIT', matchId: 'match-1', actionId: 'action-1'
 }), true);
@@ -189,6 +198,17 @@ assert.equal(isGatewayServerMessage({
   reason: null,
   revision: 1,
   occurredAt: 1_500
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'INVITE_STATUS',
+  requestId: 'invite-create-1',
+  inviteId: 'invite-1',
+  format: 'casual',
+  status: 'waiting',
+  token: 'opaque-token',
+  expiresAt: 901_000,
+  matchId: null,
+  reason: null
 }), true);
 assert.equal(isGatewayServerMessage({ type: 'TELEMETRY_BATCH' }), false);
 

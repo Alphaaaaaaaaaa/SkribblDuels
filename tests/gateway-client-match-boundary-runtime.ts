@@ -61,6 +61,59 @@ type ClientInternals = {
   receive(value: unknown): void;
 };
 
+const firstPageClient = new SocketIoGatewayClient({
+  endpoint: 'https://gateway.example',
+  clientVersion: 'reload-persistence-test',
+  capabilities: ['skribbl-telemetry']
+});
+const firstPageInternals = firstPageClient as unknown as ClientInternals;
+firstPageInternals.state = {
+  ...firstPageClient.getState(),
+  status: 'connected',
+  match: snapshot('reload-match', 4)
+};
+firstPageClient.queueTelemetryEnvelope({
+  contractVersion: 1,
+  matchId: 'reload-match',
+  sequence: 12,
+  sentAt: 1_500,
+  event: { eventId: 'reload-event' }
+} as GatewayTelemetryEnvelope);
+firstPageClient.submitClaimCandidate({
+  matchId: 'reload-match',
+  candidateId: 'reload-candidate',
+  challengeId: 'bloodline',
+  definitionVersion: 1,
+  evidenceEventIds: ['reload-event'],
+  occurredAt: 1_500,
+  throughSequence: 12
+});
+
+const reloadedClient = new SocketIoGatewayClient({
+  endpoint: 'https://gateway.example',
+  clientVersion: 'reload-persistence-test',
+  capabilities: ['skribbl-telemetry']
+});
+const reloadedInternals = reloadedClient as unknown as ClientInternals;
+assert.deepEqual(
+  reloadedInternals.telemetryQueue.map(envelope => envelope.sequence),
+  [12],
+  'A page reload must restore telemetry which has not yet been acknowledged.'
+);
+assert.deepEqual(
+  reloadedInternals.pendingClaims.map(candidate => candidate.candidateId),
+  ['reload-candidate'],
+  'A page reload must restore claim candidates which still depend on pending telemetry.'
+);
+reloadedInternals.receive(snapshot('reload-match', 5));
+assert.equal(
+  reloadedInternals.telemetryQueue.length,
+  1,
+  'The resumed snapshot for the persisted match must preserve its transport queue.'
+);
+firstPageClient.stop();
+reloadedClient.stop();
+
 const client = new SocketIoGatewayClient({
   endpoint: 'https://gateway.example',
   clientVersion: 'boundary-test',

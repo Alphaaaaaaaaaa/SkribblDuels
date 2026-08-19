@@ -31,6 +31,7 @@ assert(product.includes('bindReliableButtonAction(ready'), 'ready acceptance is 
 assert(product.includes('bindReliableButtonAction(cancel'), 'ready-check cancellation is not protected against a snapshot replacing the pressed button');
 assert(product.includes("this.matchmakingError = 'Ready confirmation timed out. Please try again.'"), 'ready submission can remain locked without an acknowledgement');
 assert(product.includes("this.matchmakingError = 'Ready check expired. Reconnecting…'"), 'an expired ready check does not recover through an authoritative reconnect');
+assert(product.includes("this.settingsStore.update({ panelOpen: true, panelTab: 'duel' })"), 'Ready cancellation does not return to the Duels Hub');
 assert(!product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready)"), 'ready acceptance still toggles and can require a second click');
 assert(product.includes('createDraftProgressFields'), 'draft board is not rendered incrementally');
 assert(product.includes('if (this.currentStagePhase() && this.settings.panelOpen)'), 'the visible match-start phase does not close the Hub for the Versus stage');

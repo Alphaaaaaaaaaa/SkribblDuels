@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type {
   GatewayClientCapability,
   GatewayClientIdentity,
@@ -15,6 +15,10 @@ import type {
   GatewayDraftPick,
   GatewayDraftPickMessage,
   GatewayDraftState,
+  GatewayInviteAcceptMessage,
+  GatewayInviteCancelMessage,
+  GatewayInviteCreateMessage,
+  GatewayInviteStatusMessage,
   GatewayMatchEventMessage,
   GatewayMatchConclusion,
   GatewayMatchForfeitMessage,
@@ -30,6 +34,7 @@ import type {
 } from '@skribbl-duels/gateway-contracts';
 import { GatewayDraftAuthority } from './draftAuthority';
 import type {
+  GatewayDurableInviteSnapshot,
   GatewayDurableMatchSnapshot,
   GatewayMatchAuthorityPersistence
 } from './matchPersistence';
@@ -57,6 +62,7 @@ export interface GatewayMatchmakerOptions {
   matchCountdownMs: number;
   reconnectGraceMs?: number;
   drawProposalTimeoutMs?: number;
+  inviteTimeoutMs?: number;
   now?: () => number;
   createId?: () => string;
   random?: () => number;
@@ -126,6 +132,12 @@ interface ActiveMatch {
   rematchReadyAccountIds: Set<string>;
 }
 
+interface ActiveInvite extends GatewayDurableInviteSnapshot {
+  creatorPeer: MatchmakingPeer | null;
+  token: string | null;
+  expiryTimer: ReturnType<typeof setTimeout> | null;
+}
+
 interface DurableMatchParticipant {
   identity: GatewayClientIdentity;
   capabilities: GatewayClientCapability[];
@@ -193,6 +205,9 @@ export class GatewayMatchmaker {
   private readonly queues: Record<DuelFormat, QueueEntry[]> = { casual: [], ranked: [] };
   private readonly matches = new Map<string, ActiveMatch>();
   private readonly accountMatches = new Map<string, string>();
+  private readonly invites = new Map<string, ActiveInvite>();
+  private readonly inviteByTokenHash = new Map<string, string>();
+  private readonly inviteByCreator = new Map<string, string>();
   private readonly now: () => number;
   private readonly createId: () => string;
   private readonly random: () => number;
@@ -212,7 +227,11 @@ export class GatewayMatchmaker {
   public async restoreFromPersistence(): Promise<number> {
     const persistence = this.options.persistence;
     if (!persistence) return 0;
-    const snapshots = await persistence.loadActiveMatches(this.now());
+    const now = this.now();
+    const [snapshots, invites] = await Promise.all([
+      persistence.loadActiveMatches(now),
+      persistence.loadActiveInvites?.(now) ?? Promise.resolve([])
+    ]);
     for (const snapshot of snapshots) {
       try {
         this.restoreMatch(snapshot);
@@ -226,6 +245,7 @@ export class GatewayMatchmaker {
         }
       }
     }
+    for (const snapshot of invites) this.restoreInvite(snapshot);
     this.restoredMatchCount = this.matches.size;
     return this.restoredMatchCount;
   }
@@ -278,6 +298,154 @@ export class GatewayMatchmaker {
     }
   }
 
+  public async createInvite(
+    peer: MatchmakingPeer,
+    message: GatewayInviteCreateMessage
+  ): Promise<ReadyDecision> {
+    const accountId = peer.identity.accountId;
+    if (this.accountMatches.has(accountId)) {
+      return { ok: false, code: 'INVITE_MATCH_ACTIVE', message: 'Finish or leave the active Duel before creating an invite.' };
+    }
+    const existingId = this.inviteByCreator.get(accountId);
+    const existing = existingId ? this.invites.get(existingId) : null;
+    if (existing?.state === 'waiting' && existing.createRequestId === message.requestId) {
+      existing.creatorPeer = peer;
+      peer.send(this.inviteStatus(existing, message.requestId, null));
+      return { ok: true };
+    }
+    if (existing?.state === 'waiting') {
+      await this.cancelInviteInternal(existing, `superseded-${message.requestId}`, 'superseded-by-new-invite');
+    }
+    const queued = this.removeQueuedAccount(accountId);
+    if (queued) {
+      queued.send(this.queueStatus(queued, false, null));
+      this.publishQueuePositions(queued.format);
+    }
+
+    const createdAt = this.now();
+    const token = randomBytes(24).toString('base64url');
+    const proposed: GatewayDurableInviteSnapshot = {
+      snapshotVersion: 1,
+      inviteId: `invite-${this.createId()}`,
+      tokenHash: this.hashInviteToken(token),
+      creatorAccountId: accountId,
+      createRequestId: message.requestId,
+      format: message.format,
+      state: 'waiting',
+      createdAt,
+      expiresAt: createdAt + (this.options.inviteTimeoutMs ?? 15 * 60_000),
+      acceptedByAccountId: null,
+      acceptRequestId: null,
+      matchId: null
+    };
+    try {
+      const stored = this.options.persistence?.createInvite
+        ? await this.options.persistence.createInvite(proposed)
+        : proposed;
+      if (stored.tokenHash !== proposed.tokenHash) {
+        return { ok: false, code: 'INVITE_RETRY_REQUIRED', message: 'This invite request was already used. Please create a fresh link.' };
+      }
+      const invite: ActiveInvite = {
+        ...stored,
+        creatorPeer: peer,
+        token,
+        expiryTimer: null
+      };
+      this.registerInvite(invite);
+      peer.send(this.inviteStatus(invite, message.requestId, null));
+      return { ok: true };
+    } catch (error) {
+      this.reportPersistenceError(error);
+      return { ok: false, code: 'INVITE_PERSISTENCE_UNAVAILABLE', message: 'The durable invite service is temporarily unavailable.' };
+    }
+  }
+
+  public async acceptInvite(
+    peer: MatchmakingPeer,
+    message: GatewayInviteAcceptMessage
+  ): Promise<ReadyDecision> {
+    const accountId = peer.identity.accountId;
+    const tokenHash = this.hashInviteToken(message.token);
+    const inviteId = this.inviteByTokenHash.get(tokenHash);
+    const invite = inviteId ? this.invites.get(inviteId) : null;
+    if (!invite) {
+      return { ok: false, code: 'INVITE_INVALID', message: 'This Duel invite is invalid or has expired.' };
+    }
+    if (invite.state === 'accepted') {
+      if (invite.acceptedByAccountId === accountId && invite.acceptRequestId === message.requestId) {
+        peer.send(this.inviteStatus(invite, message.requestId, null));
+        return { ok: true };
+      }
+      return { ok: false, code: 'INVITE_ALREADY_USED', message: 'This Duel invite has already been used.' };
+    }
+    if (this.accountMatches.has(accountId)) {
+      return { ok: false, code: 'INVITE_MATCH_ACTIVE', message: 'This account already has an active Duel.' };
+    }
+    if (invite.state !== 'waiting' || invite.expiresAt <= this.now()) {
+      this.expireInvite(invite.inviteId, invite.expiresAt);
+      return { ok: false, code: 'INVITE_EXPIRED', message: 'This Duel invite has expired.' };
+    }
+    if (invite.creatorAccountId === accountId) {
+      return { ok: false, code: 'INVITE_SELF_ACCEPT', message: 'You cannot accept your own Duel invite.' };
+    }
+    if (!invite.creatorPeer) {
+      return { ok: false, code: 'INVITE_OWNER_OFFLINE', message: 'The invite creator is offline. Ask them to reconnect and try again.' };
+    }
+    if (this.accountMatches.has(invite.creatorAccountId)) {
+      return { ok: false, code: 'INVITE_OWNER_BUSY', message: 'The invite creator is already in another Duel.' };
+    }
+
+    const matchId = `match-${this.createId()}`;
+    try {
+      const accepted = this.options.persistence?.acceptInvite
+        ? await this.options.persistence.acceptInvite(tokenHash, accountId, message.requestId, matchId, this.now())
+        : { ...invite, state: 'accepted' as const, acceptedByAccountId: accountId, acceptRequestId: message.requestId, matchId };
+      if (!accepted) {
+        return { ok: false, code: 'INVITE_ALREADY_USED', message: 'This Duel invite is no longer available.' };
+      }
+      Object.assign(invite, accepted);
+    } catch (error) {
+      this.reportPersistenceError(error);
+      return { ok: false, code: 'INVITE_PERSISTENCE_UNAVAILABLE', message: 'The durable invite service is temporarily unavailable.' };
+    }
+
+    const acceptorQueue = this.removeQueuedAccount(accountId);
+    if (acceptorQueue) this.publishQueuePositions(acceptorQueue.format);
+    const ownInviteId = this.inviteByCreator.get(accountId);
+    const ownInvite = ownInviteId ? this.invites.get(ownInviteId) : null;
+    if (ownInvite?.state === 'waiting') {
+      await this.cancelInviteInternal(ownInvite, `accepted-other-${message.requestId}`, 'accepted-another-invite');
+    }
+    if (invite.expiryTimer) clearTimeout(invite.expiryTimer);
+    invite.expiryTimer = null;
+    this.inviteByCreator.delete(invite.creatorAccountId);
+    invite.creatorPeer.send(this.inviteStatus(invite, invite.createRequestId, null));
+    peer.send(this.inviteStatus(invite, message.requestId, null));
+
+    const creatorEntry = this.asInviteQueueEntry(invite.creatorPeer, invite, invite.createRequestId);
+    const acceptorEntry = this.asInviteQueueEntry(peer, invite, message.requestId);
+    this.createMatch(creatorEntry, acceptorEntry, matchId);
+    return { ok: true };
+  }
+
+  public async cancelInvite(
+    accountId: string,
+    message: GatewayInviteCancelMessage
+  ): Promise<ReadyDecision> {
+    const invite = this.invites.get(message.inviteId);
+    if (!invite || invite.creatorAccountId !== accountId) {
+      return { ok: false, code: 'INVITE_NOT_FOUND', message: 'The Duel invite is no longer active.' };
+    }
+    if (invite.state === 'cancelled') {
+      invite.creatorPeer?.send(this.inviteStatus(invite, message.requestId, 'cancelled-by-creator'));
+      return { ok: true };
+    }
+    if (invite.state !== 'waiting') {
+      return { ok: false, code: 'INVITE_NOT_ACTIVE', message: 'The Duel invite can no longer be cancelled.' };
+    }
+    return this.cancelInviteInternal(invite, message.requestId, 'cancelled-by-creator');
+  }
+
   public disconnect(accountId: string): void {
     const removed = this.removeQueuedAccount(accountId);
     const matchId = this.accountMatches.get(accountId);
@@ -285,6 +453,9 @@ export class GatewayMatchmaker {
     const participant = match?.participants.find(item =>
       item.identity.accountId === accountId && !item.simulated
     );
+    const inviteId = this.inviteByCreator.get(accountId);
+    const invite = inviteId ? this.invites.get(inviteId) : null;
+    if (invite?.creatorPeer?.identity.accountId === accountId) invite.creatorPeer = null;
     if (match && participant && participant.connected) {
       participant.connected = false;
       participant.send = () => {};
@@ -333,6 +504,14 @@ export class GatewayMatchmaker {
     participant.send = peer.send;
     participant.connected = true;
     return { status: 'resumed', matchId: activeMatchId };
+  }
+
+  public attachPeer(peer: MatchmakingPeer): void {
+    const inviteId = this.inviteByCreator.get(peer.identity.accountId);
+    const invite = inviteId ? this.invites.get(inviteId) : null;
+    if (!invite || invite.state !== 'waiting') return;
+    invite.creatorPeer = peer;
+    peer.send(this.inviteStatus(invite, invite.createRequestId, null));
   }
 
   public publishResumeSnapshot(accountId: string): void {
@@ -863,6 +1042,10 @@ export class GatewayMatchmaker {
     for (const match of this.matches.values()) {
       this.clearMatchTimers(match);
     }
+    for (const invite of this.invites.values()) {
+      if (invite.expiryTimer) clearTimeout(invite.expiryTimer);
+      invite.expiryTimer = null;
+    }
     await this.flushPersistence();
     for (const match of this.matches.values()) {
       for (const authority of match.telemetryAuthorities.values()) authority.destroy();
@@ -870,10 +1053,124 @@ export class GatewayMatchmaker {
     }
     this.matches.clear();
     this.accountMatches.clear();
+    this.invites.clear();
+    this.inviteByTokenHash.clear();
+    this.inviteByCreator.clear();
     this.bufferedOutbound.clear();
   }
 
+  private restoreInvite(snapshot: GatewayDurableInviteSnapshot): void {
+    if (snapshot.state !== 'waiting' || snapshot.expiresAt <= this.now()) return;
+    this.registerInvite({
+      ...snapshot,
+      creatorPeer: null,
+      token: null,
+      expiryTimer: null
+    });
+  }
+
+  private registerInvite(invite: ActiveInvite): void {
+    const previous = this.invites.get(invite.inviteId);
+    if (previous?.expiryTimer) clearTimeout(previous.expiryTimer);
+    this.invites.set(invite.inviteId, invite);
+    this.inviteByTokenHash.set(invite.tokenHash, invite.inviteId);
+    if (invite.state === 'waiting') this.inviteByCreator.set(invite.creatorAccountId, invite.inviteId);
+    invite.expiryTimer = setTimeout(
+      () => this.expireInvite(invite.inviteId, invite.expiresAt),
+      Math.max(0, invite.expiresAt - this.now())
+    );
+    invite.expiryTimer.unref?.();
+  }
+
+  private expireInvite(inviteId: string, expectedExpiresAt: number): void {
+    const invite = this.invites.get(inviteId);
+    if (!invite || invite.state !== 'waiting' || invite.expiresAt !== expectedExpiresAt) return;
+    if (this.now() < expectedExpiresAt) {
+      this.registerInvite(invite);
+      return;
+    }
+    invite.state = 'expired';
+    invite.expiryTimer = null;
+    if (this.inviteByCreator.get(invite.creatorAccountId) === invite.inviteId) {
+      this.inviteByCreator.delete(invite.creatorAccountId);
+    }
+    invite.creatorPeer?.send(this.inviteStatus(invite, invite.createRequestId, 'invite-expired'));
+  }
+
+  private async cancelInviteInternal(
+    invite: ActiveInvite,
+    requestId: string,
+    reason: string
+  ): Promise<ReadyDecision> {
+    if (invite.expiryTimer) clearTimeout(invite.expiryTimer);
+    invite.expiryTimer = null;
+    invite.state = 'cancelled';
+    if (this.inviteByCreator.get(invite.creatorAccountId) === invite.inviteId) {
+      this.inviteByCreator.delete(invite.creatorAccountId);
+    }
+    invite.creatorPeer?.send(this.inviteStatus(invite, requestId, reason));
+    try {
+      const persisted = this.options.persistence?.cancelInvite
+        ? await this.options.persistence.cancelInvite(
+            invite.inviteId,
+            invite.creatorAccountId,
+            requestId,
+            this.now()
+          )
+        : invite;
+      if (!persisted) {
+        return { ok: false, code: 'INVITE_NOT_ACTIVE', message: 'The Duel invite can no longer be cancelled.' };
+      }
+      Object.assign(invite, persisted, { creatorPeer: invite.creatorPeer, token: invite.token, expiryTimer: null });
+      return { ok: true };
+    } catch (error) {
+      this.reportPersistenceError(error);
+      return { ok: false, code: 'INVITE_PERSISTENCE_UNAVAILABLE', message: 'The durable invite service is temporarily unavailable.' };
+    }
+  }
+
+  private inviteStatus(
+    invite: ActiveInvite,
+    requestId: string,
+    reason: string | null
+  ): GatewayInviteStatusMessage {
+    return {
+      type: 'INVITE_STATUS',
+      requestId,
+      inviteId: invite.inviteId,
+      format: invite.format,
+      status: invite.state,
+      token: invite.state === 'waiting' ? invite.token : null,
+      expiresAt: invite.expiresAt,
+      matchId: invite.matchId,
+      reason
+    };
+  }
+
+  private asInviteQueueEntry(
+    peer: MatchmakingPeer,
+    invite: ActiveInvite,
+    requestId: string
+  ): QueueEntry {
+    return {
+      ...peer,
+      requestId,
+      format: invite.format,
+      joinedAt: this.now(),
+      simulationTimer: null
+    };
+  }
+
+  private hashInviteToken(token: string): string {
+    return createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
   private cancelAccount(accountId: string, reason: string): void {
+    const inviteId = this.inviteByCreator.get(accountId);
+    const invite = inviteId ? this.invites.get(inviteId) : null;
+    if (invite?.state === 'waiting') {
+      void this.cancelInviteInternal(invite, `automatic-${this.createId()}`, reason);
+    }
     const queued = this.removeQueuedAccount(accountId);
     if (queued) {
       queued.send(this.queueStatus(queued, false, null));
@@ -898,9 +1195,13 @@ export class GatewayMatchmaker {
     this.publishQueuePositions(format);
   }
 
-  private createMatch(first: QueueEntry, second: QueueEntry | MatchParticipant): void {
+  private createMatch(
+    first: QueueEntry,
+    second: QueueEntry | MatchParticipant,
+    requestedMatchId?: string
+  ): void {
     const createdAt = this.now();
-    const matchId = `match-${this.createId()}`;
+    const matchId = requestedMatchId ?? `match-${this.createId()}`;
     const participants: MatchParticipant[] = [
       this.asParticipant(first, false),
       'requestId' in second ? this.asParticipant(second, false) : second

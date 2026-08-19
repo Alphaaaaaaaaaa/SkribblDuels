@@ -52,8 +52,13 @@ function connectionError(message: GatewayServerMessage): Error & { data: Gateway
   return error;
 }
 
-function contractError(code: string, message: string, recoverable = false): GatewayErrorMessage {
-  return { type: 'ERROR', code, message, recoverable };
+function contractError(
+  code: string,
+  message: string,
+  recoverable = false,
+  requestId?: string
+): GatewayErrorMessage {
+  return { type: 'ERROR', code, message, recoverable, ...(requestId ? { requestId } : {}) };
 }
 
 function emitMessage(
@@ -76,6 +81,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     matchCountdownMs: config.matchCountdownMs,
     reconnectGraceMs: config.reconnectGraceMs,
     drawProposalTimeoutMs: config.drawProposalTimeoutMs,
+    inviteTimeoutMs: config.inviteTimeoutMs,
     ...(options.persistence ? { persistence: options.persistence } : {}),
     onPersistenceError(error) {
       console.error('[Skribbl Duels Gateway] Durable authority persistence failed.', error);
@@ -194,6 +200,11 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
           resumedMatchId: resume.matchId
         });
         if (resume.status === 'resumed') matchmaker.publishResumeSnapshot(accountId);
+        else matchmaker.attachPeer({
+          identity: socket.data.account.identity,
+          capabilities: socket.data.capabilities,
+          send: outgoing => emitMessage(socket, outgoing)
+        });
         return;
       }
 
@@ -215,6 +226,32 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       }
       if (message.type === 'MATCHMAKING_LEAVE') {
         matchmaker.leave(socket.data.account.identity.accountId, message.requestId);
+        return;
+      }
+      if (message.type === 'INVITE_CREATE') {
+        void matchmaker.createInvite({
+          identity: socket.data.account.identity,
+          capabilities: socket.data.capabilities,
+          send: outgoing => emitMessage(socket, outgoing)
+        }, message).then(decision => {
+          if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true, message.requestId));
+        });
+        return;
+      }
+      if (message.type === 'INVITE_ACCEPT') {
+        void matchmaker.acceptInvite({
+          identity: socket.data.account.identity,
+          capabilities: socket.data.capabilities,
+          send: outgoing => emitMessage(socket, outgoing)
+        }, message).then(decision => {
+          if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true, message.requestId));
+        });
+        return;
+      }
+      if (message.type === 'INVITE_CANCEL') {
+        void matchmaker.cancelInvite(socket.data.account.identity.accountId, message).then(decision => {
+          if (!decision.ok) emitMessage(socket, contractError(decision.code, decision.message, true, message.requestId));
+        });
         return;
       }
       if (message.type === 'READY_SET') {

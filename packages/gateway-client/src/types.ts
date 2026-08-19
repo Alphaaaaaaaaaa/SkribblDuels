@@ -3,13 +3,14 @@ import type {
   GatewayClientIdentity,
   GatewayClaimResolutionMessage,
   GatewayDuelChatMessage,
+  GatewayInviteStatusMessage,
   GatewayMatchEventMessage,
   GatewayMatchSnapshotMessage,
   GatewayQueueStatusMessage,
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.51.2' as const;
+export const GATEWAY_CLIENT_VERSION = '0.52.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'
@@ -26,6 +27,7 @@ export interface GatewayConnectionSnapshot {
   connectedAt: number | null;
   serverTimeOffsetMs: number | null;
   queue: GatewayQueueStatusMessage | null;
+  invite: GatewayInviteStatusMessage | null;
   match: GatewayMatchSnapshotMessage | null;
   lastMatchEvent: GatewayMatchEventMessage | null;
   duelChatMessages: readonly GatewayDuelChatMessage[];

@@ -20,6 +20,12 @@ revision history and two service-role-only RPCs. Configure the resulting
 Gateway deployment with `SUPABASE_SERVICE_ROLE_KEY`; never expose that key to
 the browser/userscript.
 
+For v0.52.0, apply `202608200001_create_duel_invites.sql` after the durable
+Match authority migration and before deploying Contract v8. It adds the
+Gateway-private invite table plus service-role-only create/accept/cancel RPCs.
+The table stores only the SHA-256 token hash; the copyable token exists only in
+the creator's live client response.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

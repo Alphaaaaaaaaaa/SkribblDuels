@@ -27,6 +27,7 @@ import {
   type GatewayClientCapability,
   type GatewayClaimResolutionMessage,
   type GatewayDraftState,
+  type GatewayInviteStatusMessage,
   type GatewayMatchmakingParticipant
 } from '@skribbl-duels/gateway-contracts';
 import {
@@ -176,6 +177,9 @@ interface ProductPublicApi {
     reconnect(): void;
     joinMatchmaking(format: 'casual' | 'ranked'): string;
     leaveMatchmaking(): string;
+    createInvite(format: 'casual' | 'ranked'): string;
+    acceptInvite(token: string): string;
+    cancelInvite(inviteId: string): string;
     setReady(matchId: string, ready: boolean): void;
     pickDraftChallenge(matchId: string, challengeId: string, clientRevision: number): void;
     sendDuelChat(matchId: string, message: string): string;
@@ -518,7 +522,7 @@ class CompletionChatAdapter {
 .scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
 .scd-versus-player { min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center; }
-.scd-versus-avatar { width:min(150px,23vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(32px,6vw,60px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
+.scd-versus-avatar { width:min(88px,15vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(24px,4vw,40px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
 .scd-versus-name { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.35em;font-weight:800; }
 .scd-versus-vs { font-size:clamp(28px,6vw,54px);font-weight:900;text-shadow:3px 3px 0 rgba(0,0,0,.3); }
 .scd-ready-state { display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.72);font-size:12px; }
@@ -576,7 +580,7 @@ class CompletionChatAdapter {
 .scd-tab.active { background: var(--SCD_ACCENT); }
 .scd-muted { color: rgba(255,255,255,.6); }
 .scd-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.scd-queue-row { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+.scd-queue-row { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(70px,.5fr);gap:10px; }
 .scd-queue-button { width:100%;border:0;border-radius:var(--BORDER_RADIUS,7px);color:white;font-weight:700;text-shadow:2px 2px 0 #0000002b;cursor:pointer;transition:background-color 80ms; }
 .scd-queue-casual { min-height:54px;background:#2c8de7;font-size:1.2em; }
 .scd-queue-casual:hover:not(:disabled) { background:#1671c5; }
@@ -584,6 +588,10 @@ class CompletionChatAdapter {
 .scd-queue-ranked { min-height:54px;background:#53e237;font-size:1.45em; }
 .scd-queue-ranked:hover:not(:disabled) { background:#38c41c; }
 .scd-queue-ranked:active:not(:disabled) { background:#30aa19;padding-top:2px; }
+.scd-invite-button { min-height:54px;background:#2c8de7;display:flex;align-items:center;justify-content:center;gap:.25em;font-size:1em; }
+.scd-invite-button:hover:not(:disabled) { background:#1671c5; }
+.scd-invite-button:active:not(:disabled) { background:#1361a9;padding-top:2px; }
+.scd-invite-button img { width:1.2em;height:1.2em;filter:var(--DROPSHADOW); }
 .scd-queue-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-stack { display: flex; flex-direction: column; gap: 9px; }
 .scd-card { background:var(--COLOR_PANEL_BG);border-radius:8px;padding:10px; }
@@ -672,7 +680,9 @@ class CompletionChatAdapter {
   .scd-modal-header { grid-template-columns:1fr auto; }
   .scd-modal-title { display:none; }
   .scd-versus-players { gap:8px; }
-  .scd-versus-avatar { width:min(112px,27vw); }
+  .scd-versus-avatar { width:min(68px,19vw); }
+  .scd-queue-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .scd-invite-button { grid-column:1 / -1; }
   .scd-label { grid-template-columns:minmax(0,1fr); }
   .scd-label input[type='checkbox'] { justify-self:start; }
 }
@@ -902,6 +912,10 @@ export class DuelProductFoundation {
   private readonly visibilityRecovery = () => this.reconcileAfterVisibilityRecovery();
   private pendingRestoredMatchId: string | null;
   private readonly suppressExternalConclusionForMatchIds = new Set<string>();
+  private pendingInviteToken: string | null = new URLSearchParams(window.location.search).get('scd-invite');
+  private inviteAcceptanceSubmitted = false;
+  private inviteAuthPrompted = false;
+  private copiedInviteId: string | null = null;
   private destroyed = false;
 
   public constructor(private readonly options: ProductFoundationOptions) {
@@ -947,7 +961,7 @@ export class DuelProductFoundation {
     document.addEventListener('keydown', this.draftKeydown, true);
     document.addEventListener('visibilitychange', this.visibilityRecovery, true);
     window.addEventListener('keydown', this.duelChatKeydown, true);
-    window.addEventListener('focus', this.visibilityRecovery, true);
+    window.addEventListener('focus', this.visibilityRecovery, false);
     this.unsubscribers.push(this.gatewayClient.subscribe(state => {
       const previous = this.gatewayState;
       const matchChanged = previous.match?.matchId !== state.match?.matchId
@@ -959,9 +973,13 @@ export class DuelProductFoundation {
         || previous.error !== state.error
         || previous.queue?.requestId !== state.queue?.requestId
         || previous.queue?.position !== state.queue?.position
+        || previous.invite?.inviteId !== state.invite?.inviteId
+        || previous.invite?.status !== state.invite?.status
+        || previous.invite?.token !== state.invite?.token
         || previous.identity?.displayName !== state.identity?.displayName;
       if (matchChanged) this.matchActionError = null;
       this.gatewayState = state;
+      this.handleInviteGatewayState(previous, state);
       this.handleGatewayMatchState(state);
       this.handleGatewayRealtimeState(state);
       this.flushForfeitAfterReconnect(state);
@@ -977,6 +995,7 @@ export class DuelProductFoundation {
       this.gatewayClient.setAccessToken(
         state.status === 'signed-in' ? state.accessToken : null
       );
+      this.handleInviteAuthenticationState();
       this.renderStage();
       if (this.settings.panelOpen) this.renderPanel();
     }));
@@ -1016,7 +1035,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.51.2',
+      version: '0.52.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1034,6 +1053,9 @@ export class DuelProductFoundation {
         reconnect: () => this.gatewayClient.reconnect(),
         joinMatchmaking: format => this.beginMatchmaking(format),
         leaveMatchmaking: () => this.cancelMatchmaking(),
+        createInvite: format => this.gatewayClient.createInvite(format),
+        acceptInvite: token => this.gatewayClient.acceptInvite(token),
+        cancelInvite: inviteId => this.gatewayClient.cancelInvite(inviteId),
         setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
         pickDraftChallenge: (matchId, challengeId, clientRevision) =>
           this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
@@ -1109,7 +1131,7 @@ export class DuelProductFoundation {
     document.removeEventListener('keydown', this.draftKeydown, true);
     document.removeEventListener('visibilitychange', this.visibilityRecovery, true);
     window.removeEventListener('keydown', this.duelChatKeydown, true);
-    window.removeEventListener('focus', this.visibilityRecovery, true);
+    window.removeEventListener('focus', this.visibilityRecovery, false);
     this.gatewayClient.stop();
     this.authClient.stop();
     this.launcher?.remove();
@@ -1144,7 +1166,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.51.2') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.52.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1524,7 +1546,6 @@ export class DuelProductFoundation {
       if ((phase === 'running' || phase === 'finished') && this.serverNow() >= this.countdownGoUntil) {
         this.countdownGoUntil = 0;
         this.stopCountdownAnimation();
-        this.settingsStore.update({ panelOpen: false, panelTab: 'match' });
       }
     }
     if (this.gatewayState.status === 'error') this.gatewayClient.reconnect();
@@ -2215,6 +2236,7 @@ export class DuelProductFoundation {
     const homepage = this.isHomepageVisible();
     const gatewayMatch = this.gatewayState.match;
     const queue = this.gatewayState.queue;
+    const invite = this.gatewayState.invite;
     const connected = this.gatewayState.status === 'connected';
     const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 
@@ -2267,16 +2289,46 @@ export class DuelProductFoundation {
       return card;
     }
 
+    if (invite?.status === 'waiting') {
+      card.append(
+        element('div', '', `${invite.format === 'casual' ? 'Casual 3×3' : 'Ranked 5×5'} invite is ready`),
+        element('div', 'scd-muted', `Single-use link · expires at ${formatTime(invite.expiresAt)}`)
+      );
+      const actions = element('div', 'scd-row');
+      const copy = element('button', 'scd-button primary', 'Copy link') as HTMLButtonElement;
+      copy.type = 'button';
+      copy.disabled = !invite.token;
+      copy.addEventListener('click', () => void this.copyInviteLink(invite));
+      const cancel = element('button', 'scd-button danger', 'Cancel invite') as HTMLButtonElement;
+      cancel.type = 'button';
+      cancel.addEventListener('click', () => this.gatewayClient.cancelInvite(invite.inviteId));
+      actions.append(copy, cancel);
+      card.appendChild(actions);
+      if (!invite.token) {
+        card.appendChild(element('div', 'scd-muted', 'The Gateway restored this invite after a restart. Cancel it and create a fresh link to copy its token again.'));
+      }
+      return card;
+    }
+
     const row = element('div', 'scd-queue-row');
     const casual = element('button', 'scd-queue-button scd-queue-casual', 'Casual 3×3') as HTMLButtonElement;
     const ranked = element('button', 'scd-queue-button scd-queue-ranked', 'Ranked 5×5') as HTMLButtonElement;
+    const inviteButton = element('button', 'scd-queue-button scd-invite-button') as HTMLButtonElement;
+    inviteButton.type = 'button';
+    const inviteIcon = document.createElement('img');
+    inviteIcon.src = '/img/link.svg';
+    inviteIcon.alt = '';
+    inviteButton.append(inviteIcon, element('span', '', 'Invite'));
     casual.disabled = !homepage || !connected;
     ranked.disabled = !homepage || !connected;
+    inviteButton.disabled = !homepage;
     casual.addEventListener('click', () => this.beginMatchmaking('casual'));
     ranked.addEventListener('click', () => this.beginMatchmaking('ranked'));
+    inviteButton.addEventListener('click', () => void this.beginInviteCreation());
     this.tooltips.register(casual, 'Reset old match state and enter the server Casual queue');
     this.tooltips.register(ranked, 'Reset old match state and enter the server Ranked queue');
-    row.append(casual, ranked);
+    this.tooltips.register(inviteButton, 'Create a single-use link for a real authenticated opponent');
+    row.append(casual, ranked, inviteButton);
     card.appendChild(row);
     card.appendChild(element('div', 'scd-muted', connected
       ? 'The current Gateway test can supply a simulated queued opponent; the browser never invents the opponent itself.'
@@ -2998,6 +3050,132 @@ export class DuelProductFoundation {
     }
   }
 
+  private async beginInviteCreation(): Promise<void> {
+    this.matchmakingError = null;
+    if (!this.isHomepageVisible()) {
+      this.showSimpleToast('Invite unavailable', 'Return to the visible Skribbl homepage first.');
+      return;
+    }
+    if (this.authState.status !== 'signed-in') {
+      const connect = await this.showConfirmToast(
+        'Discord authentication required',
+        'Both players need a linked Discord account before a Duel invite can be created or accepted.',
+        { confirm: 'Connect Discord', cancel: 'Cancel' }
+      );
+      if (connect) await this.authClient.signInWithDiscord();
+      return;
+    }
+    if (this.gatewayState.status !== 'connected') {
+      this.showSimpleToast('Gateway not connected', 'Reconnect the authenticated Gateway, then create the invite again.');
+      return;
+    }
+    if (this.gatewayState.match) {
+      this.showSimpleToast('Match already active', 'Return from or finish the current Duel before creating a new invite.');
+      return;
+    }
+    const format = await this.showInviteFormatToast();
+    if (!format) return;
+    try {
+      this.gatewayClient.createInvite(format);
+    } catch (error) {
+      this.matchmakingError = error instanceof Error ? error.message : String(error);
+      this.renderPanel();
+    }
+  }
+
+  private handleInviteGatewayState(
+    previous: GatewayConnectionSnapshot,
+    state: GatewayConnectionSnapshot
+  ): void {
+    const invite = state.invite;
+    if (invite?.status === 'waiting' && invite.token
+        && (previous.invite?.inviteId !== invite.inviteId || this.copiedInviteId !== invite.inviteId)) {
+      this.copiedInviteId = invite.inviteId;
+      void this.copyInviteLink(invite);
+    }
+    if (state.match && this.pendingInviteToken) {
+      this.pendingInviteToken = null;
+      this.inviteAcceptanceSubmitted = false;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('scd-invite');
+      window.history.replaceState(window.history.state, '', url);
+      return;
+    }
+    if (this.inviteAcceptanceSubmitted
+        && this.pendingInviteToken
+        && state.error
+        && state.error !== previous.error) {
+      this.showSimpleToast('Invite could not be accepted', state.error, 6_000);
+      this.pendingInviteToken = null;
+      this.inviteAcceptanceSubmitted = false;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('scd-invite');
+      window.history.replaceState(window.history.state, '', url);
+      return;
+    }
+    if (state.status === 'connected'
+        && this.pendingInviteToken
+        && !this.inviteAcceptanceSubmitted
+        && !state.match) {
+      this.inviteAcceptanceSubmitted = true;
+      try {
+        this.gatewayClient.acceptInvite(this.pendingInviteToken);
+        this.showSimpleToast('Duel invite', 'Invite submitted. Waiting for the authoritative Ready check…');
+      } catch (error) {
+        this.inviteAcceptanceSubmitted = false;
+        this.showSimpleToast('Invite could not be accepted', error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
+  private handleInviteAuthenticationState(): void {
+    if (!this.pendingInviteToken
+        || this.authState.status === 'initializing'
+        || this.authState.status === 'signed-in'
+        || this.inviteAuthPrompted) return;
+    this.inviteAuthPrompted = true;
+    void this.showConfirmToast(
+      'Discord authentication required',
+      'This Duel link is single-use. Connect Discord to authenticate with the Gateway, or cancel the invite.',
+      { confirm: 'Connect Discord', cancel: 'Cancel invite' }
+    ).then(async connect => {
+      if (connect) {
+        await this.authClient.signInWithDiscord();
+        return;
+      }
+      this.pendingInviteToken = null;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('scd-invite');
+      window.history.replaceState(window.history.state, '', url);
+    });
+  }
+
+  private async copyInviteLink(invite: GatewayInviteStatusMessage): Promise<void> {
+    if (!invite.token) return;
+    const url = new URL('/', window.location.origin);
+    url.searchParams.set('scd-invite', invite.token);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      copied = true;
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = url.toString();
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.select();
+      copied = document.execCommand('copy');
+      input.remove();
+    }
+    this.showSimpleToast(
+      copied ? 'Duel invite copied' : 'Duel invite ready',
+      copied
+        ? 'Send the single-use link to one authenticated friend.'
+        : 'Automatic clipboard access was blocked. Use Copy link in the Duels Hub.'
+    );
+  }
+
   private cancelMatchmaking(): string {
     this.matchmakingError = null;
     try {
@@ -3062,6 +3240,7 @@ export class DuelProductFoundation {
     this.renderStage();
     try {
       this.cancelMatchmaking();
+      this.settingsStore.update({ panelOpen: true, panelTab: 'duel' });
     } catch (error) {
       this.clearCancellationSubmission();
       this.matchmakingError = error instanceof Error ? error.message : String(error);
@@ -3206,6 +3385,10 @@ export class DuelProductFoundation {
   }
 
   private showChatToast(author: string, message: string): void {
+    this.showSimpleToast(`Match Chat · ${author}`, message, 3_500);
+  }
+
+  private showSimpleToast(title: string, message: string, timeout = 3_500): void {
     let container = document.querySelector<HTMLElement>('.typo-toast-container');
     if (!container) {
       container = element('div', 'typo-toast-container');
@@ -3222,12 +3405,53 @@ export class DuelProductFoundation {
     const closeButton = element('span', 'close-toast', '×');
     closeButton.addEventListener('click', close);
     toast.append(
-      element('h3', '', `Match Chat · ${author}`),
+      element('h3', '', title),
       closeButton,
       element('span', '', message)
     );
     container.appendChild(toast);
-    window.setTimeout(close, 3_500);
+    window.setTimeout(close, timeout);
+  }
+
+  private showInviteFormatToast(): Promise<'casual' | 'ranked' | null> {
+    let container = document.querySelector<HTMLElement>('.typo-toast-container');
+    if (!container) {
+      container = element('div', 'typo-toast-container');
+      container.dataset.scdRuntimeId = this.options.runtimeId;
+      (document.body ?? document.documentElement).prepend(container);
+    }
+    return new Promise(resolve => {
+      const toast = element('div', 'typo-toast scd-duel-toast');
+      toast.dataset.scdRuntimeId = this.options.runtimeId;
+      let settled = false;
+      const settle = (format: 'casual' | 'ranked' | null): void => {
+        if (settled) return;
+        settled = true;
+        toast.classList.add('closing');
+        window.setTimeout(() => toast.remove(), 150);
+        resolve(format);
+      };
+      const closeButton = element('span', 'close-toast', '×');
+      closeButton.setAttribute('role', 'button');
+      closeButton.tabIndex = 0;
+      closeButton.addEventListener('click', () => settle(null));
+      const actions = element('div', 'typo-toast-confirm');
+      const casual = element('button', 'scd-button', 'Casual 3×3') as HTMLButtonElement;
+      const ranked = element('button', 'scd-button', 'Ranked 5×5') as HTMLButtonElement;
+      casual.type = 'button';
+      ranked.type = 'button';
+      casual.addEventListener('click', () => settle('casual'));
+      ranked.addEventListener('click', () => settle('ranked'));
+      actions.append(casual, ranked);
+      toast.append(
+        element('h3', '', 'Choose invite format'),
+        closeButton,
+        element('span', '', 'The invited player will enter the normal 30-second Ready check.'),
+        actions
+      );
+      container.appendChild(toast);
+      casual.focus();
+    });
   }
 
   private showConfirmToast(

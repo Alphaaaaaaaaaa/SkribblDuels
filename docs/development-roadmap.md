@@ -33,14 +33,17 @@
 | Match Chat polish | Complete | Unicode counter, submit auto-scroll, top fade, native scrollbars and optional Typo-compatible toast notifications |
 | v0.50 reliability hardening | Complete | Rematch queue isolation, WebSocket-first reconnect recovery, active-lobby action locks, `.skd` collection support and Challenge boundary tests |
 | v0.51 durable Match authority | Complete | Supabase snapshots, restart hydration, re-armed deadlines, durable action/chat/claim/telemetry idempotency and revision audit history |
+| v0.52 Friendly invite links | Complete | Hash-only single-use tokens, durable accept/cancel, Discord-auth bootstrap and direct real-client Ready checks |
+| Reload-safe Challenge transport | Complete | Pending telemetry, in-flight batches and Claim candidates survive `/credits` navigation and runtime reloads until server ACK/resolution |
 
 ## Active development sequence
 
-### 1. Friendly matches
+### 1. Friendly-match beta certification
 
-- Add expiring Gateway-owned Friendly invite creation and join tokens.
-- Reuse the authoritative Ready, Draft, Countdown and reconnect lifecycle.
-- Prevent an invite token from revealing account data before it is accepted.
+- Run the invite flow in two real browser/authenticated-client sessions.
+- Certify reconnect, creator-offline, expiry, duplicate-use and cancellation UX.
+- Decide whether a friendly match should receive a distinct format/history flag
+  before Ranked history is introduced.
 
 ### 2. Production reliability
 
@@ -65,9 +68,9 @@
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
 Challenge recovery, the balance pass and Rematch readiness shipped in v0.49.0.
-v0.50.0 hardened the telemetry/reconnect boundary. v0.51.0 adds restart-safe
-Match authority and durable idempotency without changing Contract v7. Invite
-links remain a parallel product workstream; multi-instance coordination,
+v0.50.0 hardened the telemetry/reconnect boundary. v0.51.0 added restart-safe
+Match authority and durable idempotency. v0.52.0 adds Contract v8 invite links
+and reload-safe pending telemetry/Claims; multi-instance coordination,
 observability and anti-abuse controls are now the highest-risk prerequisites.
 The complete post-v0.50 build gate is recorded in
 `docs/full-build-roadmap-post-v0.50.0.md`.

@@ -6,6 +6,7 @@ import {
   isGatewayServerMessage,
   type GatewayClientMessage,
   type GatewayClaimCandidateMessage,
+  type GatewayInviteCreateMessage,
   type GatewayMatchmakingJoinMessage,
   type GatewayServerMessage,
   type GatewaySocketAuth,
@@ -33,6 +34,14 @@ interface GatewayResumeCursor {
   revision: number;
 }
 
+interface GatewayPendingTransportSnapshot {
+  version: 1;
+  matchId: string;
+  telemetryQueue: GatewayTelemetryEnvelope[];
+  telemetryInFlight: GatewayTelemetryEnvelope[];
+  pendingClaims: Array<Omit<GatewayClaimCandidateMessage, 'type'>>;
+}
+
 function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
   return {
     status: endpoint ? 'signed-out' : 'not-configured',
@@ -42,6 +51,7 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     connectedAt: null,
     serverTimeOffsetMs: null,
     queue: null,
+    invite: null,
     match: null,
     lastMatchEvent: null,
     duelChatMessages: [],
@@ -74,6 +84,7 @@ export class SocketIoGatewayClient {
   public constructor(private readonly options: SocketIoGatewayClientOptions) {
     this.state = initialSnapshot(options.endpoint);
     this.resumeCursor = this.loadResumeCursor();
+    this.restorePendingTransport();
   }
 
   public getState(): GatewayConnectionSnapshot {
@@ -122,9 +133,10 @@ export class SocketIoGatewayClient {
   }
 
   public stop(): void {
+    this.requeueTelemetryInFlight();
     this.accessToken = null;
     this.disconnectSocket();
-    this.clearTelemetryQueue();
+    this.persistPendingTransport();
     this.update(initialSnapshot(this.options.endpoint));
     this.listeners.clear();
   }
@@ -142,6 +154,7 @@ export class SocketIoGatewayClient {
     this.update({
       ...this.state,
       queue: null,
+      invite: null,
       match: null,
       lastMatchEvent: null,
       duelChatMessages: [],
@@ -157,6 +170,24 @@ export class SocketIoGatewayClient {
     this.emit({ type: 'MATCHMAKING_LEAVE', requestId });
     this.clearResumeCursor();
     this.clearTelemetryQueue();
+    return requestId;
+  }
+
+  public createInvite(format: GatewayInviteCreateMessage['format']): string {
+    const requestId = this.createRequestId('invite-create');
+    this.emit({ type: 'INVITE_CREATE', requestId, format, page: 'home' });
+    return requestId;
+  }
+
+  public acceptInvite(token: string): string {
+    const requestId = this.createRequestId('invite-accept');
+    this.emit({ type: 'INVITE_ACCEPT', requestId, token, page: 'home' });
+    return requestId;
+  }
+
+  public cancelInvite(inviteId: string): string {
+    const requestId = this.createRequestId('invite-cancel');
+    this.emit({ type: 'INVITE_CANCEL', requestId, inviteId });
     return requestId;
   }
 
@@ -214,6 +245,7 @@ export class SocketIoGatewayClient {
     if (this.telemetryQueue.some(item => item.sequence === envelope.sequence)) return;
     this.telemetryQueue.push(structuredClone(envelope));
     this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+    this.persistPendingTransport();
     if (this.telemetryQueue.length >= 64) {
       this.flushTelemetry();
       return;
@@ -231,7 +263,10 @@ export class SocketIoGatewayClient {
   ): void {
     if (!this.pendingClaims.some(candidate =>
       candidate.matchId === message.matchId && candidate.candidateId === message.candidateId
-    )) this.pendingClaims.push(structuredClone(message));
+    )) {
+      this.pendingClaims.push(structuredClone(message));
+      this.persistPendingTransport();
+    }
     this.flushTelemetry();
     this.flushClaims();
   }
@@ -312,7 +347,10 @@ export class SocketIoGatewayClient {
     if (value.type === 'WELCOME') {
       const resumed = value.resumedMatchId !== null
         && (this.state.match === null || this.state.match.matchId === value.resumedMatchId);
-      if (!resumed) this.clearResumeCursor();
+      if (!resumed) {
+        this.clearResumeCursor();
+        this.clearTelemetryQueue();
+      }
       this.update({
         status: 'connected',
         endpoint: this.options.endpoint,
@@ -321,6 +359,7 @@ export class SocketIoGatewayClient {
         connectedAt: Date.now(),
         serverTimeOffsetMs: value.serverTime - Date.now(),
         queue: resumed ? this.state.queue : null,
+        invite: this.state.invite,
         match: resumed ? this.state.match : null,
         lastMatchEvent: resumed ? this.state.lastMatchEvent : null,
         duelChatMessages: resumed ? this.state.duelChatMessages : [],
@@ -356,15 +395,27 @@ export class SocketIoGatewayClient {
       });
       return;
     }
+    if (value.type === 'INVITE_STATUS') {
+      this.update({
+        ...this.state,
+        queue: null,
+        invite: value.status === 'waiting' ? structuredClone(value) : null,
+        error: null
+      });
+      return;
+    }
     if (value.type === 'MATCH_SNAPSHOT') {
       if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
       const sameMatch = this.state.match?.matchId === value.matchId;
-      const sameTelemetryMatch = sameMatch || this.state.telemetryAck?.matchId === value.matchId;
+      const transportMatchId = this.pendingTransportMatchId();
+      const sameTelemetryMatch = sameMatch
+        || this.state.telemetryAck?.matchId === value.matchId
+        || transportMatchId === value.matchId;
       // A direct rematch does not pass through joinMatchmaking(), so the last
       // telemetry batch of the finished match can still be in flight. If it
       // remains at the front of the queue, the new match never reaches the
       // server and every local completion stays pending forever.
-      if (!sameMatch) this.clearTelemetryQueue();
+      if (!sameTelemetryMatch) this.clearTelemetryQueue();
       if (value.state.phase === 'cancelled') this.clearResumeCursor();
       else this.setResumeCursor(value.matchId, value.revision);
       this.update({
@@ -395,6 +446,10 @@ export class SocketIoGatewayClient {
     }
     if (value.type === 'CLAIM_RESOLUTION') {
       if (this.state.match?.matchId !== value.matchId) return;
+      this.pendingClaims = this.pendingClaims.filter(candidate =>
+        candidate.matchId !== value.matchId || candidate.candidateId !== value.candidateId
+      );
+      this.persistPendingTransport();
       this.update({ ...this.state, lastClaimResolution: structuredClone(value), error: null });
       return;
     }
@@ -411,6 +466,7 @@ export class SocketIoGatewayClient {
         this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
         this.telemetryInFlight = [];
       }
+      this.persistPendingTransport();
       this.update({ ...this.state, telemetryAck: structuredClone(value), error: null });
       if (this.telemetryQueue.length > 0) this.flushTelemetry();
       this.flushClaims();
@@ -445,6 +501,7 @@ export class SocketIoGatewayClient {
     if (batch.length === 0) return;
     this.telemetryQueue.splice(0, batch.length);
     this.telemetryInFlight = batch;
+    this.persistPendingTransport();
     this.emit({
       type: 'TELEMETRY_BATCH',
       matchId,
@@ -460,6 +517,7 @@ export class SocketIoGatewayClient {
     this.telemetryQueue = [];
     this.telemetryInFlight = [];
     this.pendingClaims = [];
+    this.removePendingTransport();
   }
 
   private flushClaims(): void {
@@ -472,7 +530,7 @@ export class SocketIoGatewayClient {
     const ready = this.pendingClaims.filter(candidate =>
       candidate.matchId === matchId && candidate.throughSequence <= lastSequence
     );
-    this.pendingClaims = this.pendingClaims.filter(candidate => !ready.includes(candidate));
+    this.persistPendingTransport();
     for (const candidate of ready) this.emit({ type: 'CLAIM_CANDIDATE', ...candidate });
   }
 
@@ -485,6 +543,7 @@ export class SocketIoGatewayClient {
     }
     this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
     this.telemetryInFlight = [];
+    this.persistPendingTransport();
   }
 
   private createRequestId(prefix: string): string {
@@ -496,6 +555,101 @@ export class SocketIoGatewayClient {
 
   private resumeStorageKey(): string | null {
     return this.options.endpoint ? `skribblDuelsGatewayResumeV1:${this.options.endpoint}` : null;
+  }
+
+  private pendingTransportStorageKey(): string | null {
+    return this.options.endpoint ? `skribblDuelsGatewayPendingV1:${this.options.endpoint}` : null;
+  }
+
+  private pendingTransportMatchId(): string | null {
+    return this.telemetryQueue[0]?.matchId
+      ?? this.telemetryInFlight[0]?.matchId
+      ?? this.pendingClaims[0]?.matchId
+      ?? null;
+  }
+
+  private restorePendingTransport(): void {
+    const key = this.pendingTransportStorageKey();
+    if (!key) return;
+    try {
+      const value = JSON.parse(sessionStorage.getItem(key) ?? 'null') as Partial<GatewayPendingTransportSnapshot> | null;
+      if (!value
+          || value.version !== 1
+          || typeof value.matchId !== 'string'
+          || value.matchId.length === 0
+          || !Array.isArray(value.telemetryQueue)
+          || !Array.isArray(value.telemetryInFlight)
+          || !Array.isArray(value.pendingClaims)) return;
+
+      const envelopes = [...value.telemetryQueue, ...value.telemetryInFlight]
+        .filter((envelope): envelope is GatewayTelemetryEnvelope => Boolean(
+          envelope
+          && envelope.matchId === value.matchId
+          && Number.isInteger(envelope.sequence)
+          && envelope.sequence > 0
+        ));
+      const bySequence = new Map<number, GatewayTelemetryEnvelope>();
+      for (const envelope of envelopes) bySequence.set(envelope.sequence, structuredClone(envelope));
+      this.telemetryQueue = [...bySequence.values()]
+        .sort((left, right) => left.sequence - right.sequence)
+        .slice(-512);
+      this.telemetryInFlight = [];
+      this.pendingClaims = value.pendingClaims
+        .filter((candidate): candidate is Omit<GatewayClaimCandidateMessage, 'type'> => Boolean(
+          candidate
+          && candidate.matchId === value.matchId
+          && typeof candidate.candidateId === 'string'
+          && candidate.candidateId.length > 0
+          && Number.isInteger(candidate.throughSequence)
+          && candidate.throughSequence > 0
+        ))
+        .slice(-64)
+        .map(candidate => structuredClone(candidate));
+      this.persistPendingTransport();
+    } catch {
+      // The live connection remains usable when session storage is unavailable or corrupt.
+    }
+  }
+
+  private persistPendingTransport(): void {
+    const key = this.pendingTransportStorageKey();
+    if (!key) return;
+    const matchId = this.pendingTransportMatchId();
+    if (!matchId) {
+      this.removePendingTransport();
+      return;
+    }
+    const snapshot: GatewayPendingTransportSnapshot = {
+      version: 1,
+      matchId,
+      telemetryQueue: this.telemetryQueue
+        .filter(envelope => envelope.matchId === matchId)
+        .slice(-512)
+        .map(envelope => structuredClone(envelope)),
+      telemetryInFlight: this.telemetryInFlight
+        .filter(envelope => envelope.matchId === matchId)
+        .slice(-64)
+        .map(envelope => structuredClone(envelope)),
+      pendingClaims: this.pendingClaims
+        .filter(candidate => candidate.matchId === matchId)
+        .slice(-64)
+        .map(candidate => structuredClone(candidate))
+    };
+    try {
+      sessionStorage.setItem(key, JSON.stringify(snapshot));
+    } catch {
+      // Persistence is a reload safety net; the in-memory transport still works without it.
+    }
+  }
+
+  private removePendingTransport(): void {
+    const key = this.pendingTransportStorageKey();
+    if (!key) return;
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      // Storage cleanup is best-effort only.
+    }
   }
 
   private loadResumeCursor(): GatewayResumeCursor | null {

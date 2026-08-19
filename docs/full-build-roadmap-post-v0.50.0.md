@@ -1,9 +1,9 @@
 # Full-build roadmap after v0.50.0
 
 This roadmap lists the work still required for a production-complete Skribbl
-Duels build. Invite-link generation and implementation are specified in
-`invite-link-v0.52.0-plan.md` and are the next feature release after the v0.51.2
-production-correctness hotfix.
+Duels build. Invite-link generation and implementation shipped in v0.52.0 as
+specified in `invite-link-v0.52.0-plan.md`; closed two-browser certification is
+now the immediate beta gate.
 
 ## P0 — production correctness
 
@@ -98,7 +98,7 @@ production-correctness hotfix.
 
 ## Recommended execution order
 
-1. Invite links on top of the durable authority for closed real-client beta.
+1. Certify v0.52 invite links with two real authenticated browsers and closed beta users.
 2. Multi-instance realtime infrastructure, observability and abuse controls.
 3. Ranked rating, history and leaderboards.
 4. Full Challenge live certification and balancing telemetry.

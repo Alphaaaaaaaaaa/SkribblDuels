@@ -1,9 +1,32 @@
-# Skribbl Duels v0.51.2
+# Skribbl Duels v0.52.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
-Gateway Contract v7, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v8, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.52.0
+
+- Adds Gateway-owned Casual and Ranked invite links for closed two-client beta
+  tests. Tokens are random, single-use and expire after 15 minutes; Supabase
+  stores only their SHA-256 hashes.
+- Atomically accepts or cancels invites with durable request IDs, rejects
+  self-use/reuse, excludes QueueBots and starts the normal authoritative
+  30-second Ready check for the two authenticated clients.
+- Adds the compact Skribbl-style Invite button, format-selection/Auth toasts,
+  automatic clipboard copy and URL bootstrap through
+  `?scd-invite=<opaque-token>`.
+- Fixes every Hub/Draft/result mouse action being destroyed by the capturing
+  window-focus recovery handler. Ready Cancel now reopens the Duels Hub and
+  the Versus avatars are smaller without shrinking their inner Special layer.
+- Persists unacknowledged telemetry, in-flight batches and Claim candidates in
+  session storage. `/credits` navigation and page/runtime reloads therefore
+  replay Bloodline evidence before a Claim is validated instead of briefly
+  showing `completion-pending` and then reverting it.
+
+Apply `supabase/migrations/202608200001_create_duel_invites.sql` before
+deploying the v0.52.0 Gateway, then publish the v0.52.0 userscript. Gateway and
+userscript must both use Contract v8.
 
 ## v0.51.2
 
@@ -140,7 +163,9 @@ repository itself contains only the single stable Userscript entry point.
 
 ## Database migrations
 
-v0.51.0 requires
+v0.52.0 requires
+`supabase/migrations/202608200001_create_duel_invites.sql`; installations that
+have not deployed v0.51.0 must first apply
 `supabase/migrations/202608190001_create_durable_match_authority.sql` before the
 Gateway is deployed. Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
@@ -158,7 +183,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/durable-match-authority-v0.51.0.md`,
+See `docs/invite-link-v0.52.0-plan.md`,
+`docs/durable-match-authority-v0.51.0.md`,
 `docs/reliability-challenge-hardening-v0.50.0.md`,
 `docs/full-build-roadmap-post-v0.50.0.md`,
 `docs/live-telemetry-ui-hotfix-v0.49.1.md`,

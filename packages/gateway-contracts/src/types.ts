@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 7 as const;
+export const GATEWAY_CONTRACT_VERSION = 8 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -47,6 +47,26 @@ export interface GatewayMatchmakingJoinMessage {
 export interface GatewayMatchmakingLeaveMessage {
   type: 'MATCHMAKING_LEAVE';
   requestId: string;
+}
+
+export interface GatewayInviteCreateMessage {
+  type: 'INVITE_CREATE';
+  requestId: string;
+  format: 'casual' | 'ranked';
+  page: 'home';
+}
+
+export interface GatewayInviteAcceptMessage {
+  type: 'INVITE_ACCEPT';
+  requestId: string;
+  token: string;
+  page: 'home';
+}
+
+export interface GatewayInviteCancelMessage {
+  type: 'INVITE_CANCEL';
+  requestId: string;
+  inviteId: string;
 }
 
 export interface GatewayReadyMessage {
@@ -138,6 +158,9 @@ export type GatewayClientMessage =
   | GatewayHelloMessage
   | GatewayMatchmakingJoinMessage
   | GatewayMatchmakingLeaveMessage
+  | GatewayInviteCreateMessage
+  | GatewayInviteAcceptMessage
+  | GatewayInviteCancelMessage
   | GatewayReadyMessage
   | GatewayDraftPickMessage
   | GatewayClaimCandidateMessage
@@ -173,6 +196,18 @@ export interface GatewayQueueStatusMessage {
   queued: boolean;
   position: number | null;
   joinedAt: number | null;
+}
+
+export interface GatewayInviteStatusMessage {
+  type: 'INVITE_STATUS';
+  requestId: string;
+  inviteId: string;
+  format: 'casual' | 'ranked';
+  status: 'waiting' | 'accepted' | 'cancelled' | 'expired';
+  token: string | null;
+  expiresAt: number;
+  matchId: string | null;
+  reason: string | null;
 }
 
 export interface GatewayMatchmakingParticipant {
@@ -361,6 +396,7 @@ export type GatewayServerMessage =
   | GatewayWelcomeMessage
   | GatewayAuthRequiredMessage
   | GatewayQueueStatusMessage
+  | GatewayInviteStatusMessage
   | GatewayMatchSnapshotMessage
   | GatewayMatchEventMessage
   | GatewayClaimResolutionMessage

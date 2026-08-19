@@ -1,9 +1,8 @@
-# Invite links — planned v0.52.0
+# Invite links — v0.52.0 implementation
 
-Invite links are the next feature release after the v0.51.2 production
-correctness hotfix. They are intentionally scheduled before multi-instance
-Gateway scaling so closed two-client beta tests can use real authenticated
-players without QueueBots.
+Invite links ship after the v0.51.2 production correctness hotfix and before
+multi-instance Gateway scaling so closed two-client beta tests can use real
+authenticated players without QueueBots.
 
 ## Authoritative flow
 
@@ -17,15 +16,17 @@ players without QueueBots.
 6. From Ready onward, the existing durable Draft, countdown, telemetry,
    Challenge Claim, conclusion and Rematch authority is reused unchanged.
 
-## v0.52.0 release gate
+## v0.52.0 implementation and release gate
 
-- Invite creation, copy, cancellation and expiry UI.
-- Link bootstrap after Discord authentication.
-- Durable, idempotent accept/cancel operations.
+- Implemented Invite creation, automatic copy, cancellation and expiry UI.
+- Implemented link bootstrap after Discord authentication.
+- Implemented durable, idempotent accept/cancel operations in
+  `202608200001_create_duel_invites.sql`.
 - Invite creators are removed from public queues and cannot hold two live
   matchmaking lifecycles.
-- Two-browser tests for accept, reject, expiry, reload, reconnect and duplicate
-  link use.
+- Runtime/contract tests cover accept, cancel, restart restore, self-use and
+  duplicate link use. Real two-browser expiry/reconnect testing remains the
+  beta release gate.
 - QueueBots remain an optional staging fixture and are not part of an invite
   match.
 

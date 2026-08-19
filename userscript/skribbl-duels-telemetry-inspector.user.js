@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.51.2
+// @version      0.52.0
 // @author       Alpha
-// @description  Gateway-backed Skribbl Duels with restored live telemetry, authoritative Challenges and Rematches.
+// @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -12619,10 +12619,11 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 7 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 8 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
+		case "INVITE_STATUS": return nonEmptyString(message.requestId) && nonEmptyString(message.inviteId) && (message.format === "casual" || message.format === "ranked") && (message.status === "waiting" || message.status === "accepted" || message.status === "cancelled" || message.status === "expired") && (message.token === null || nonEmptyString(message.token, 128)) && finiteNumber(message.expiresAt) && (message.matchId === null || nonEmptyString(message.matchId)) && (message.reason === null || nonEmptyString(message.reason, 128));
 		case "MATCH_SNAPSHOT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingState(message.state);
 		case "MATCH_EVENT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingEvent(message.event);
 		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && nonNegativeInteger(message.definitionVersion) && nonEmptyString(message.ownerAccountId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision) && finiteNumber(message.occurredAt);
@@ -12642,7 +12643,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.51.2";
+var GATEWAY_CLIENT_VERSION = "0.52.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15884,6 +15885,7 @@ function initialSnapshot(endpoint) {
 		connectedAt: null,
 		serverTimeOffsetMs: null,
 		queue: null,
+		invite: null,
 		match: null,
 		lastMatchEvent: null,
 		duelChatMessages: [],
@@ -15911,6 +15913,7 @@ var SocketIoGatewayClient = class {
 		this.options = options;
 		this.state = initialSnapshot(options.endpoint);
 		this.resumeCursor = this.loadResumeCursor();
+		this.restorePendingTransport();
 	}
 	getState() {
 		return structuredClone(this.state);
@@ -15951,9 +15954,10 @@ var SocketIoGatewayClient = class {
 		this.connect();
 	}
 	stop() {
+		this.requeueTelemetryInFlight();
 		this.accessToken = null;
 		this.disconnectSocket();
-		this.clearTelemetryQueue();
+		this.persistPendingTransport();
 		this.update(initialSnapshot(this.options.endpoint));
 		this.listeners.clear();
 	}
@@ -15970,6 +15974,7 @@ var SocketIoGatewayClient = class {
 		this.update({
 			...this.state,
 			queue: null,
+			invite: null,
 			match: null,
 			lastMatchEvent: null,
 			duelChatMessages: [],
@@ -15987,6 +15992,35 @@ var SocketIoGatewayClient = class {
 		});
 		this.clearResumeCursor();
 		this.clearTelemetryQueue();
+		return requestId;
+	}
+	createInvite(format) {
+		const requestId = this.createRequestId("invite-create");
+		this.emit({
+			type: "INVITE_CREATE",
+			requestId,
+			format,
+			page: "home"
+		});
+		return requestId;
+	}
+	acceptInvite(token) {
+		const requestId = this.createRequestId("invite-accept");
+		this.emit({
+			type: "INVITE_ACCEPT",
+			requestId,
+			token,
+			page: "home"
+		});
+		return requestId;
+	}
+	cancelInvite(inviteId) {
+		const requestId = this.createRequestId("invite-cancel");
+		this.emit({
+			type: "INVITE_CANCEL",
+			requestId,
+			inviteId
+		});
 		return requestId;
 	}
 	setReady(matchId, ready) {
@@ -16067,6 +16101,7 @@ var SocketIoGatewayClient = class {
 		if (this.telemetryQueue.some((item) => item.sequence === envelope.sequence)) return;
 		this.telemetryQueue.push(structuredClone(envelope));
 		this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
+		this.persistPendingTransport();
 		if (this.telemetryQueue.length >= 64) {
 			this.flushTelemetry();
 			return;
@@ -16077,7 +16112,10 @@ var SocketIoGatewayClient = class {
 		}, TELEMETRY_FLUSH_DELAY_MS);
 	}
 	submitClaimCandidate(message) {
-		if (!this.pendingClaims.some((candidate) => candidate.matchId === message.matchId && candidate.candidateId === message.candidateId)) this.pendingClaims.push(structuredClone(message));
+		if (!this.pendingClaims.some((candidate) => candidate.matchId === message.matchId && candidate.candidateId === message.candidateId)) {
+			this.pendingClaims.push(structuredClone(message));
+			this.persistPendingTransport();
+		}
 		this.flushTelemetry();
 		this.flushClaims();
 	}
@@ -16107,7 +16145,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 7,
+				contractVersion: 8,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -16146,13 +16184,16 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v7 message.`
+				error: `Gateway sent an invalid Contract v8 message.`
 			});
 			return;
 		}
 		if (value.type === "WELCOME") {
 			const resumed = value.resumedMatchId !== null && (this.state.match === null || this.state.match.matchId === value.resumedMatchId);
-			if (!resumed) this.clearResumeCursor();
+			if (!resumed) {
+				this.clearResumeCursor();
+				this.clearTelemetryQueue();
+			}
 			this.update({
 				status: "connected",
 				endpoint: this.options.endpoint,
@@ -16161,6 +16202,7 @@ var SocketIoGatewayClient = class {
 				connectedAt: Date.now(),
 				serverTimeOffsetMs: value.serverTime - Date.now(),
 				queue: resumed ? this.state.queue : null,
+				invite: this.state.invite,
 				match: resumed ? this.state.match : null,
 				lastMatchEvent: resumed ? this.state.lastMatchEvent : null,
 				duelChatMessages: resumed ? this.state.duelChatMessages : [],
@@ -16196,11 +16238,21 @@ var SocketIoGatewayClient = class {
 			});
 			return;
 		}
+		if (value.type === "INVITE_STATUS") {
+			this.update({
+				...this.state,
+				queue: null,
+				invite: value.status === "waiting" ? structuredClone(value) : null,
+				error: null
+			});
+			return;
+		}
 		if (value.type === "MATCH_SNAPSHOT") {
 			if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
 			const sameMatch = this.state.match?.matchId === value.matchId;
-			const sameTelemetryMatch = sameMatch || this.state.telemetryAck?.matchId === value.matchId;
-			if (!sameMatch) this.clearTelemetryQueue();
+			const transportMatchId = this.pendingTransportMatchId();
+			const sameTelemetryMatch = sameMatch || this.state.telemetryAck?.matchId === value.matchId || transportMatchId === value.matchId;
+			if (!sameTelemetryMatch) this.clearTelemetryQueue();
 			if (value.state.phase === "cancelled") this.clearResumeCursor();
 			else this.setResumeCursor(value.matchId, value.revision);
 			this.update({
@@ -16235,6 +16287,8 @@ var SocketIoGatewayClient = class {
 		}
 		if (value.type === "CLAIM_RESOLUTION") {
 			if (this.state.match?.matchId !== value.matchId) return;
+			this.pendingClaims = this.pendingClaims.filter((candidate) => candidate.matchId !== value.matchId || candidate.candidateId !== value.candidateId);
+			this.persistPendingTransport();
 			this.update({
 				...this.state,
 				lastClaimResolution: structuredClone(value),
@@ -16251,6 +16305,7 @@ var SocketIoGatewayClient = class {
 				this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
 				this.telemetryInFlight = [];
 			}
+			this.persistPendingTransport();
 			this.update({
 				...this.state,
 				telemetryAck: structuredClone(value),
@@ -16280,6 +16335,7 @@ var SocketIoGatewayClient = class {
 		if (batch.length === 0) return;
 		this.telemetryQueue.splice(0, batch.length);
 		this.telemetryInFlight = batch;
+		this.persistPendingTransport();
 		this.emit({
 			type: "TELEMETRY_BATCH",
 			matchId,
@@ -16294,6 +16350,7 @@ var SocketIoGatewayClient = class {
 		this.telemetryQueue = [];
 		this.telemetryInFlight = [];
 		this.pendingClaims = [];
+		this.removePendingTransport();
 	}
 	flushClaims() {
 		if (this.state.status !== "connected" || !this.socket?.connected) return;
@@ -16301,7 +16358,7 @@ var SocketIoGatewayClient = class {
 		const telemetryAck = this.state.telemetryAck;
 		const lastSequence = telemetryAck && telemetryAck.matchId === matchId ? telemetryAck.lastSequence : 0;
 		const ready = this.pendingClaims.filter((candidate) => candidate.matchId === matchId && candidate.throughSequence <= lastSequence);
-		this.pendingClaims = this.pendingClaims.filter((candidate) => !ready.includes(candidate));
+		this.persistPendingTransport();
 		for (const candidate of ready) this.emit({
 			type: "CLAIM_CANDIDATE",
 			...candidate
@@ -16316,12 +16373,60 @@ var SocketIoGatewayClient = class {
 		}
 		this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
 		this.telemetryInFlight = [];
+		this.persistPendingTransport();
 	}
 	createRequestId(prefix) {
 		return `${prefix}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 	}
 	resumeStorageKey() {
 		return this.options.endpoint ? `skribblDuelsGatewayResumeV1:${this.options.endpoint}` : null;
+	}
+	pendingTransportStorageKey() {
+		return this.options.endpoint ? `skribblDuelsGatewayPendingV1:${this.options.endpoint}` : null;
+	}
+	pendingTransportMatchId() {
+		return this.telemetryQueue[0]?.matchId ?? this.telemetryInFlight[0]?.matchId ?? this.pendingClaims[0]?.matchId ?? null;
+	}
+	restorePendingTransport() {
+		const key = this.pendingTransportStorageKey();
+		if (!key) return;
+		try {
+			const value = JSON.parse(sessionStorage.getItem(key) ?? "null");
+			if (!value || value.version !== 1 || typeof value.matchId !== "string" || value.matchId.length === 0 || !Array.isArray(value.telemetryQueue) || !Array.isArray(value.telemetryInFlight) || !Array.isArray(value.pendingClaims)) return;
+			const envelopes = [...value.telemetryQueue, ...value.telemetryInFlight].filter((envelope) => Boolean(envelope && envelope.matchId === value.matchId && Number.isInteger(envelope.sequence) && envelope.sequence > 0));
+			const bySequence = /* @__PURE__ */ new Map();
+			for (const envelope of envelopes) bySequence.set(envelope.sequence, structuredClone(envelope));
+			this.telemetryQueue = [...bySequence.values()].sort((left, right) => left.sequence - right.sequence).slice(-512);
+			this.telemetryInFlight = [];
+			this.pendingClaims = value.pendingClaims.filter((candidate) => Boolean(candidate && candidate.matchId === value.matchId && typeof candidate.candidateId === "string" && candidate.candidateId.length > 0 && Number.isInteger(candidate.throughSequence) && candidate.throughSequence > 0)).slice(-64).map((candidate) => structuredClone(candidate));
+			this.persistPendingTransport();
+		} catch {}
+	}
+	persistPendingTransport() {
+		const key = this.pendingTransportStorageKey();
+		if (!key) return;
+		const matchId = this.pendingTransportMatchId();
+		if (!matchId) {
+			this.removePendingTransport();
+			return;
+		}
+		const snapshot = {
+			version: 1,
+			matchId,
+			telemetryQueue: this.telemetryQueue.filter((envelope) => envelope.matchId === matchId).slice(-512).map((envelope) => structuredClone(envelope)),
+			telemetryInFlight: this.telemetryInFlight.filter((envelope) => envelope.matchId === matchId).slice(-64).map((envelope) => structuredClone(envelope)),
+			pendingClaims: this.pendingClaims.filter((candidate) => candidate.matchId === matchId).slice(-64).map((candidate) => structuredClone(candidate))
+		};
+		try {
+			sessionStorage.setItem(key, JSON.stringify(snapshot));
+		} catch {}
+	}
+	removePendingTransport() {
+		const key = this.pendingTransportStorageKey();
+		if (!key) return;
+		try {
+			sessionStorage.removeItem(key);
+		} catch {}
 	}
 	loadResumeCursor() {
 		const key = this.resumeStorageKey();
@@ -37620,7 +37725,7 @@ var CompletionChatAdapter = class {
 .scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
 .scd-versus-player { min-width:0;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center; }
-.scd-versus-avatar { width:min(150px,23vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(32px,6vw,60px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
+.scd-versus-avatar { width:min(88px,15vw);aspect-ratio:1;border-radius:50%;object-fit:cover;display:grid;place-items:center;font-size:clamp(24px,4vw,40px);font-weight:900;box-shadow:0 8px 30px rgba(0,0,0,.24); }
 .scd-versus-name { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.35em;font-weight:800; }
 .scd-versus-vs { font-size:clamp(28px,6vw,54px);font-weight:900;text-shadow:3px 3px 0 rgba(0,0,0,.3); }
 .scd-ready-state { display:flex;align-items:center;gap:6px;color:rgba(255,255,255,.72);font-size:12px; }
@@ -37678,7 +37783,7 @@ var CompletionChatAdapter = class {
 .scd-tab.active { background: var(--SCD_ACCENT); }
 .scd-muted { color: rgba(255,255,255,.6); }
 .scd-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.scd-queue-row { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+.scd-queue-row { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(70px,.5fr);gap:10px; }
 .scd-queue-button { width:100%;border:0;border-radius:var(--BORDER_RADIUS,7px);color:white;font-weight:700;text-shadow:2px 2px 0 #0000002b;cursor:pointer;transition:background-color 80ms; }
 .scd-queue-casual { min-height:54px;background:#2c8de7;font-size:1.2em; }
 .scd-queue-casual:hover:not(:disabled) { background:#1671c5; }
@@ -37686,6 +37791,10 @@ var CompletionChatAdapter = class {
 .scd-queue-ranked { min-height:54px;background:#53e237;font-size:1.45em; }
 .scd-queue-ranked:hover:not(:disabled) { background:#38c41c; }
 .scd-queue-ranked:active:not(:disabled) { background:#30aa19;padding-top:2px; }
+.scd-invite-button { min-height:54px;background:#2c8de7;display:flex;align-items:center;justify-content:center;gap:.25em;font-size:1em; }
+.scd-invite-button:hover:not(:disabled) { background:#1671c5; }
+.scd-invite-button:active:not(:disabled) { background:#1361a9;padding-top:2px; }
+.scd-invite-button img { width:1.2em;height:1.2em;filter:var(--DROPSHADOW); }
 .scd-queue-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-stack { display: flex; flex-direction: column; gap: 9px; }
 .scd-card { background:var(--COLOR_PANEL_BG);border-radius:8px;padding:10px; }
@@ -37774,7 +37883,9 @@ var CompletionChatAdapter = class {
   .scd-modal-header { grid-template-columns:1fr auto; }
   .scd-modal-title { display:none; }
   .scd-versus-players { gap:8px; }
-  .scd-versus-avatar { width:min(112px,27vw); }
+  .scd-versus-avatar { width:min(68px,19vw); }
+  .scd-queue-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .scd-invite-button { grid-column:1 / -1; }
   .scd-label { grid-template-columns:minmax(0,1fr); }
   .scd-label input[type='checkbox'] { justify-self:start; }
 }
@@ -37992,6 +38103,10 @@ var DuelProductFoundation = class {
 	visibilityRecovery = () => this.reconcileAfterVisibilityRecovery();
 	pendingRestoredMatchId;
 	suppressExternalConclusionForMatchIds = /* @__PURE__ */ new Set();
+	pendingInviteToken = new URLSearchParams(window.location.search).get("scd-invite");
+	inviteAcceptanceSubmitted = false;
+	inviteAuthPrompted = false;
+	copiedInviteId = null;
 	destroyed = false;
 	constructor(options) {
 		this.options = options;
@@ -38030,14 +38145,15 @@ var DuelProductFoundation = class {
 		document.addEventListener("keydown", this.draftKeydown, true);
 		document.addEventListener("visibilitychange", this.visibilityRecovery, true);
 		window.addEventListener("keydown", this.duelChatKeydown, true);
-		window.addEventListener("focus", this.visibilityRecovery, true);
+		window.addEventListener("focus", this.visibilityRecovery, false);
 		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
 			const previous = this.gatewayState;
 			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
 			const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
-			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.identity?.displayName !== state.identity?.displayName;
+			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName;
 			if (matchChanged) this.matchActionError = null;
 			this.gatewayState = state;
+			this.handleInviteGatewayState(previous, state);
 			this.handleGatewayMatchState(state);
 			this.handleGatewayRealtimeState(state);
 			this.flushForfeitAfterReconnect(state);
@@ -38051,6 +38167,7 @@ var DuelProductFoundation = class {
 		this.unsubscribers.push(this.authClient.subscribe((state) => {
 			this.authState = state;
 			this.gatewayClient.setAccessToken(state.status === "signed-in" ? state.accessToken : null);
+			this.handleInviteAuthenticationState();
 			this.renderStage();
 			if (this.settings.panelOpen) this.renderPanel();
 		}));
@@ -38088,9 +38205,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.51.2",
+			version: "0.52.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 7,
+			gatewayContractVersion: 8,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -38106,6 +38223,9 @@ var DuelProductFoundation = class {
 				reconnect: () => this.gatewayClient.reconnect(),
 				joinMatchmaking: (format) => this.beginMatchmaking(format),
 				leaveMatchmaking: () => this.cancelMatchmaking(),
+				createInvite: (format) => this.gatewayClient.createInvite(format),
+				acceptInvite: (token) => this.gatewayClient.acceptInvite(token),
+				cancelInvite: (inviteId) => this.gatewayClient.cancelInvite(inviteId),
 				setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
 				pickDraftChallenge: (matchId, challengeId, clientRevision) => this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
 				sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message),
@@ -38171,7 +38291,7 @@ var DuelProductFoundation = class {
 		document.removeEventListener("keydown", this.draftKeydown, true);
 		document.removeEventListener("visibilitychange", this.visibilityRecovery, true);
 		window.removeEventListener("keydown", this.duelChatKeydown, true);
-		window.removeEventListener("focus", this.visibilityRecovery, true);
+		window.removeEventListener("focus", this.visibilityRecovery, false);
 		this.gatewayClient.stop();
 		this.authClient.stop();
 		this.launcher?.remove();
@@ -38206,7 +38326,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.51.2") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.52.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38558,10 +38678,6 @@ var DuelProductFoundation = class {
 			if ((phase === "running" || phase === "finished") && this.serverNow() >= this.countdownGoUntil) {
 				this.countdownGoUntil = 0;
 				this.stopCountdownAnimation();
-				this.settingsStore.update({
-					panelOpen: false,
-					panelTab: "match"
-				});
 			}
 		}
 		if (this.gatewayState.status === "error") this.gatewayClient.reconnect();
@@ -39110,6 +39226,7 @@ var DuelProductFoundation = class {
 		const homepage = this.isHomepageVisible();
 		const gatewayMatch = this.gatewayState.match;
 		const queue = this.gatewayState.queue;
+		const invite = this.gatewayState.invite;
 		const connected = this.gatewayState.status === "connected";
 		const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 		if (!homepage) card.appendChild(element("div", "scd-muted", "Matchmaking is available only on the Skribbl homepage. Return home before entering a queue."));
@@ -39148,16 +39265,40 @@ var DuelProductFoundation = class {
 			card.appendChild(cancel);
 			return card;
 		}
+		if (invite?.status === "waiting") {
+			card.append(element("div", "", `${invite.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} invite is ready`), element("div", "scd-muted", `Single-use link \u00B7 expires at ${formatTime(invite.expiresAt)}`));
+			const actions = element("div", "scd-row");
+			const copy = element("button", "scd-button primary", "Copy link");
+			copy.type = "button";
+			copy.disabled = !invite.token;
+			copy.addEventListener("click", () => void this.copyInviteLink(invite));
+			const cancel = element("button", "scd-button danger", "Cancel invite");
+			cancel.type = "button";
+			cancel.addEventListener("click", () => this.gatewayClient.cancelInvite(invite.inviteId));
+			actions.append(copy, cancel);
+			card.appendChild(actions);
+			if (!invite.token) card.appendChild(element("div", "scd-muted", "The Gateway restored this invite after a restart. Cancel it and create a fresh link to copy its token again."));
+			return card;
+		}
 		const row = element("div", "scd-queue-row");
 		const casual = element("button", "scd-queue-button scd-queue-casual", "Casual 3\u00D73");
 		const ranked = element("button", "scd-queue-button scd-queue-ranked", "Ranked 5\u00D75");
+		const inviteButton = element("button", "scd-queue-button scd-invite-button");
+		inviteButton.type = "button";
+		const inviteIcon = document.createElement("img");
+		inviteIcon.src = "/img/link.svg";
+		inviteIcon.alt = "";
+		inviteButton.append(inviteIcon, element("span", "", "Invite"));
 		casual.disabled = !homepage || !connected;
 		ranked.disabled = !homepage || !connected;
+		inviteButton.disabled = !homepage;
 		casual.addEventListener("click", () => this.beginMatchmaking("casual"));
 		ranked.addEventListener("click", () => this.beginMatchmaking("ranked"));
+		inviteButton.addEventListener("click", () => void this.beginInviteCreation());
 		this.tooltips.register(casual, "Reset old match state and enter the server Casual queue");
 		this.tooltips.register(ranked, "Reset old match state and enter the server Ranked queue");
-		row.append(casual, ranked);
+		this.tooltips.register(inviteButton, "Create a single-use link for a real authenticated opponent");
+		row.append(casual, ranked, inviteButton);
 		card.appendChild(row);
 		card.appendChild(element("div", "scd-muted", connected ? "The current Gateway test can supply a simulated queued opponent; the browser never invents the opponent itself." : "Connect the authenticated Gateway before entering matchmaking."));
 		return card;
@@ -39618,7 +39759,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v7`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
+		gateway.append(element("strong", "", `Gateway Contract v8`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -39706,6 +39847,107 @@ var DuelProductFoundation = class {
 			throw error;
 		}
 	}
+	async beginInviteCreation() {
+		this.matchmakingError = null;
+		if (!this.isHomepageVisible()) {
+			this.showSimpleToast("Invite unavailable", "Return to the visible Skribbl homepage first.");
+			return;
+		}
+		if (this.authState.status !== "signed-in") {
+			if (await this.showConfirmToast("Discord authentication required", "Both players need a linked Discord account before a Duel invite can be created or accepted.", {
+				confirm: "Connect Discord",
+				cancel: "Cancel"
+			})) await this.authClient.signInWithDiscord();
+			return;
+		}
+		if (this.gatewayState.status !== "connected") {
+			this.showSimpleToast("Gateway not connected", "Reconnect the authenticated Gateway, then create the invite again.");
+			return;
+		}
+		if (this.gatewayState.match) {
+			this.showSimpleToast("Match already active", "Return from or finish the current Duel before creating a new invite.");
+			return;
+		}
+		const format = await this.showInviteFormatToast();
+		if (!format) return;
+		try {
+			this.gatewayClient.createInvite(format);
+		} catch (error) {
+			this.matchmakingError = error instanceof Error ? error.message : String(error);
+			this.renderPanel();
+		}
+	}
+	handleInviteGatewayState(previous, state) {
+		const invite = state.invite;
+		if (invite?.status === "waiting" && invite.token && (previous.invite?.inviteId !== invite.inviteId || this.copiedInviteId !== invite.inviteId)) {
+			this.copiedInviteId = invite.inviteId;
+			this.copyInviteLink(invite);
+		}
+		if (state.match && this.pendingInviteToken) {
+			this.pendingInviteToken = null;
+			this.inviteAcceptanceSubmitted = false;
+			const url = new URL(window.location.href);
+			url.searchParams.delete("scd-invite");
+			window.history.replaceState(window.history.state, "", url);
+			return;
+		}
+		if (this.inviteAcceptanceSubmitted && this.pendingInviteToken && state.error && state.error !== previous.error) {
+			this.showSimpleToast("Invite could not be accepted", state.error, 6e3);
+			this.pendingInviteToken = null;
+			this.inviteAcceptanceSubmitted = false;
+			const url = new URL(window.location.href);
+			url.searchParams.delete("scd-invite");
+			window.history.replaceState(window.history.state, "", url);
+			return;
+		}
+		if (state.status === "connected" && this.pendingInviteToken && !this.inviteAcceptanceSubmitted && !state.match) {
+			this.inviteAcceptanceSubmitted = true;
+			try {
+				this.gatewayClient.acceptInvite(this.pendingInviteToken);
+				this.showSimpleToast("Duel invite", "Invite submitted. Waiting for the authoritative Ready check\u2026");
+			} catch (error) {
+				this.inviteAcceptanceSubmitted = false;
+				this.showSimpleToast("Invite could not be accepted", error instanceof Error ? error.message : String(error));
+			}
+		}
+	}
+	handleInviteAuthenticationState() {
+		if (!this.pendingInviteToken || this.authState.status === "initializing" || this.authState.status === "signed-in" || this.inviteAuthPrompted) return;
+		this.inviteAuthPrompted = true;
+		this.showConfirmToast("Discord authentication required", "This Duel link is single-use. Connect Discord to authenticate with the Gateway, or cancel the invite.", {
+			confirm: "Connect Discord",
+			cancel: "Cancel invite"
+		}).then(async (connect) => {
+			if (connect) {
+				await this.authClient.signInWithDiscord();
+				return;
+			}
+			this.pendingInviteToken = null;
+			const url = new URL(window.location.href);
+			url.searchParams.delete("scd-invite");
+			window.history.replaceState(window.history.state, "", url);
+		});
+	}
+	async copyInviteLink(invite) {
+		if (!invite.token) return;
+		const url = new URL("/", window.location.origin);
+		url.searchParams.set("scd-invite", invite.token);
+		let copied = false;
+		try {
+			await navigator.clipboard.writeText(url.toString());
+			copied = true;
+		} catch {
+			const input = document.createElement("textarea");
+			input.value = url.toString();
+			input.style.position = "fixed";
+			input.style.opacity = "0";
+			document.body.appendChild(input);
+			input.select();
+			copied = document.execCommand("copy");
+			input.remove();
+		}
+		this.showSimpleToast(copied ? "Duel invite copied" : "Duel invite ready", copied ? "Send the single-use link to one authenticated friend." : "Automatic clipboard access was blocked. Use Copy link in the Duels Hub.");
+	}
 	cancelMatchmaking() {
 		this.matchmakingError = null;
 		try {
@@ -39758,6 +40000,10 @@ var DuelProductFoundation = class {
 		this.renderStage();
 		try {
 			this.cancelMatchmaking();
+			this.settingsStore.update({
+				panelOpen: true,
+				panelTab: "duel"
+			});
 		} catch (error) {
 			this.clearCancellationSubmission();
 			this.matchmakingError = error instanceof Error ? error.message : String(error);
@@ -39880,6 +40126,9 @@ var DuelProductFoundation = class {
 		if (resolution) this.handleGatewayClaimResolution(resolution);
 	}
 	showChatToast(author, message) {
+		this.showSimpleToast(`Match Chat \u00B7 ${author}`, message, 3500);
+	}
+	showSimpleToast(title, message, timeout = 3500) {
 		let container = document.querySelector(".typo-toast-container");
 		if (!container) {
 			container = element("div", "typo-toast-container");
@@ -39895,9 +40144,44 @@ var DuelProductFoundation = class {
 		};
 		const closeButton = element("span", "close-toast", "\u00D7");
 		closeButton.addEventListener("click", close);
-		toast.append(element("h3", "", `Match Chat \u00B7 ${author}`), closeButton, element("span", "", message));
+		toast.append(element("h3", "", title), closeButton, element("span", "", message));
 		container.appendChild(toast);
-		window.setTimeout(close, 3500);
+		window.setTimeout(close, timeout);
+	}
+	showInviteFormatToast() {
+		let container = document.querySelector(".typo-toast-container");
+		if (!container) {
+			container = element("div", "typo-toast-container");
+			container.dataset.scdRuntimeId = this.options.runtimeId;
+			(document.body ?? document.documentElement).prepend(container);
+		}
+		return new Promise((resolve) => {
+			const toast = element("div", "typo-toast scd-duel-toast");
+			toast.dataset.scdRuntimeId = this.options.runtimeId;
+			let settled = false;
+			const settle = (format) => {
+				if (settled) return;
+				settled = true;
+				toast.classList.add("closing");
+				window.setTimeout(() => toast.remove(), 150);
+				resolve(format);
+			};
+			const closeButton = element("span", "close-toast", "\u00D7");
+			closeButton.setAttribute("role", "button");
+			closeButton.tabIndex = 0;
+			closeButton.addEventListener("click", () => settle(null));
+			const actions = element("div", "typo-toast-confirm");
+			const casual = element("button", "scd-button", "Casual 3\u00D73");
+			const ranked = element("button", "scd-button", "Ranked 5\u00D75");
+			casual.type = "button";
+			ranked.type = "button";
+			casual.addEventListener("click", () => settle("casual"));
+			ranked.addEventListener("click", () => settle("ranked"));
+			actions.append(casual, ranked);
+			toast.append(element("h3", "", "Choose invite format"), closeButton, element("span", "", "The invited player will enter the normal 30-second Ready check."), actions);
+			container.appendChild(toast);
+			casual.focus();
+		});
 	}
 	showConfirmToast(title, content, naming, timeout = 3e4) {
 		let container = document.querySelector(".typo-toast-container");
@@ -40452,7 +40736,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.51.2";
+var BUILD_VERSION = "0.52.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

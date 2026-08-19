@@ -1,0 +1,5052 @@
+{
+  "fixtureVersion": 1,
+  "metadata": {
+    "fixtureId": "starter-ultimate-comeback-mogged-v17",
+    "name": "Skribbl Duels starter challenges with strict Ultimate Comeback and Mogged v17",
+    "description": "All 24 starter challenges, including strict #1 comeback logic, score-reset invalidation and official-word-list Mogged detection.",
+    "createdAt": 1786000396300,
+    "source": "synthetic",
+    "tags": [
+      "alliteration",
+      "avatar-randomized",
+      "caught-in-4k",
+      "challenge-definitions",
+      "color-picker",
+      "copy-and-paste",
+      "credits",
+      "distinct-drawing-turns",
+      "drawing",
+      "fanboy",
+      "final-score",
+      "first-guesser",
+      "fresh-round",
+      "game-ended",
+      "home",
+      "in-and-out",
+      "likes",
+      "multi-word",
+      "my-favorite-color-is-red",
+      "need-some-space",
+      "omg-hacker",
+      "opening-ten-seconds",
+      "ouch",
+      "own-drawing",
+      "owner-of-the-lobby",
+      "picasso",
+      "player-joined",
+      "player-left",
+      "private-lobby",
+      "public-lobby",
+      "received-likes",
+      "red-avatar",
+      "score-baseline",
+      "simultaneous-likes",
+      "sniper",
+      "special-avatar",
+      "starter",
+      "streak",
+      "threshold-inclusive",
+      "through-thick-and-thin",
+      "time-waste",
+      "ultimate-comeback",
+      "v15",
+      "v16",
+      "votes",
+      "white-canvas",
+      "winner",
+      "word-analysis",
+      "mogged",
+      "official-word-list",
+      "strict-first",
+      "score-reset-guard",
+      "v17"
+    ],
+    "contractVersion": "1.0.0",
+    "schemaVersion": 1,
+    "eventCount": 88,
+    "durationMs": 397000,
+    "eventTypes": [
+      "AVATAR_RANDOMIZED",
+      "CANVAS_METRICS",
+      "CHAT_MESSAGE_RECEIVED",
+      "CORRECT_GUESS",
+      "CREDITS_LINK_CLICKED",
+      "CREDITS_OPENED",
+      "DRAW_COMMAND_BATCH_SUBMITTED",
+      "FIRST_GUESS",
+      "GAME_ENDED",
+      "LOBBY_HYDRATED",
+      "LOGO_AVATAR_CLICKED",
+      "PLAYER_JOINED",
+      "PLAYER_LEFT",
+      "PRIVATE_LOBBY_CREATE_REQUESTED",
+      "RED_AVATAR_LOGIN_CONFIRMED",
+      "ROUND_STARTED",
+      "SCORE_CHANGED",
+      "SPECIAL_AVATAR_FOUND",
+      "TEXT_SUBMITTED",
+      "VOTE_RECEIVED",
+      "VOTE_SUBMITTED"
+    ],
+    "omittedHighVolumeEvents": false
+  },
+  "events": [
+    {
+      "offsetMs": 0,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-1",
+        "telemetrySequence": 1,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000000000,
+        "monotonicMs": 1000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 4000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-quickscope",
+        "telemetrySequence": 2,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000004000,
+        "monotonicMs": 5000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-starter-quickscope",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 4000,
+          "estimatedTimeAtGuess": 76,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Nagel",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 6000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-cool-number",
+        "telemetrySequence": 3,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1701000006000,
+        "monotonicMs": 7000,
+        "actor": {
+          "playerId": 7,
+          "name": "Geburtstag",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-3",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 7,
+          "previousScore": 1000,
+          "totalScore": 1250,
+          "roundScore": 250,
+          "delta": 250,
+          "coolNumber": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 8000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-tldr",
+        "telemetrySequence": 4,
+        "type": "TEXT_SUBMITTED",
+        "category": "chat",
+        "occurredAt": 1701000008000,
+        "monotonicMs": 9000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-4",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 30
+        },
+        "payload": {
+          "message": "Diese Nachricht ist absichtlich deutlich länger als fünfzig Zeichen.",
+          "eligibleGuess": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 12000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-2",
+        "telemetrySequence": 5,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000012000,
+        "monotonicMs": 13000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-2",
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-5",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 5,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            7
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 91000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-late-guess",
+        "telemetrySequence": 6,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000091000,
+        "monotonicMs": 92000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-2",
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-starter-late-guess",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 6,
+          "elapsedMs": 79000,
+          "estimatedTimeAtGuess": 0.8,
+          "serverTimeAnchorAtGuess": 32,
+          "includesWord": true,
+          "word": "Atlantis",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 95000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-3",
+        "telemetrySequence": 7,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000095000,
+        "monotonicMs": 96000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            6
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-ouch-first-correct",
+        "telemetrySequence": 8,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000100000,
+        "monotonicMs": 101000,
+        "actor": {
+          "playerId": 7,
+          "name": "Geburtstag",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 7,
+          "position": 1,
+          "elapsedMs": 5000,
+          "estimatedTimeAtGuess": 75,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-ouch-first",
+        "telemetrySequence": 9,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000100001,
+        "monotonicMs": 101001,
+        "actor": {
+          "playerId": 7,
+          "name": "Geburtstag",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 7,
+          "position": 1,
+          "elapsedMs": 5000,
+          "estimatedTimeAtGuess": 75,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100450,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-ouch-self",
+        "telemetrySequence": 10,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000100450,
+        "monotonicMs": 101450,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 2,
+          "elapsedMs": 5450,
+          "estimatedTimeAtGuess": 74.55,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Banane",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 110000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-4",
+        "telemetrySequence": 11,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000110000,
+        "monotonicMs": 111000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-4",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-11",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            6
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 119000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-sniper-round-4-correct",
+        "telemetrySequence": 12,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000119000,
+        "monotonicMs": 120000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-4",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-12",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 3,
+          "elapsedMs": 9000,
+          "estimatedTimeAtGuess": 71,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Kamera",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 130000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-5",
+        "telemetrySequence": 13,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000130000,
+        "monotonicMs": 131000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-5",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-13",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            7
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 139000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-sniper-round-5-correct",
+        "telemetrySequence": 14,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000139000,
+        "monotonicMs": 140000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-5",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-14",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 4,
+          "elapsedMs": 9000,
+          "estimatedTimeAtGuess": 71,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Rakete",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 160000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-1-start",
+        "telemetrySequence": 15,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000160000,
+        "monotonicMs": 160000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-1-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "drawerId": 301,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 165000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-1-correct",
+        "telemetrySequence": 16,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000165000,
+        "monotonicMs": 165000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-1-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5100,
+          "estimatedTimeAtGuess": 74.80000000000001,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord1",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 165001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-1-first",
+        "telemetrySequence": 17,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000165001,
+        "monotonicMs": 165001,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-1-raw-first",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5100,
+          "estimatedTimeAtGuess": 74.80000000000001,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord1",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 180000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-2-start",
+        "telemetrySequence": 18,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000180000,
+        "monotonicMs": 180000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-2",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 302
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-2-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "drawerId": 302,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 185000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-2-correct",
+        "telemetrySequence": 19,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000185000,
+        "monotonicMs": 185000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-2",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 302
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-2-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5200,
+          "estimatedTimeAtGuess": 74.7,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord2",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 185001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-2-first",
+        "telemetrySequence": 20,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000185001,
+        "monotonicMs": 185001,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-2",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 302
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-2-raw-first",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5200,
+          "estimatedTimeAtGuess": 74.7,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord2",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 200000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-3-start",
+        "telemetrySequence": 21,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000200000,
+        "monotonicMs": 200000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 303
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-3-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "drawerId": 303,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 205000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-3-correct",
+        "telemetrySequence": 22,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000205000,
+        "monotonicMs": 205000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 303
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-3-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5300,
+          "estimatedTimeAtGuess": 74.60000000000001,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord3",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 205001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-3-first",
+        "telemetrySequence": 23,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000205001,
+        "monotonicMs": 205001,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 303
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-3-raw-first",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5300,
+          "estimatedTimeAtGuess": 74.60000000000001,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord3",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 220000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-4-start",
+        "telemetrySequence": 24,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000220000,
+        "monotonicMs": 220000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-4",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 304
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-4-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "drawerId": 304,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 225000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-4-correct",
+        "telemetrySequence": 25,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000225000,
+        "monotonicMs": 225000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-4",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 304
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-4-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5400,
+          "estimatedTimeAtGuess": 74.5,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord4",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 225001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-4-first",
+        "telemetrySequence": 26,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000225001,
+        "monotonicMs": 225001,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-4",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 304
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-4-raw-first",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5400,
+          "estimatedTimeAtGuess": 74.5,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord4",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 240000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-5-start",
+        "telemetrySequence": 27,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000240000,
+        "monotonicMs": 240000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-5",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 305
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-5-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "drawerId": 305,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 245000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-5-correct",
+        "telemetrySequence": 28,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000245000,
+        "monotonicMs": 245000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-5",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 305
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-5-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5500,
+          "estimatedTimeAtGuess": 74.4,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord5",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 245001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "omg-hacker-turn-5-first",
+        "telemetrySequence": 29,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000245001,
+        "monotonicMs": 245001,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-5",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 305
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "omg-hacker-turn-5-raw-first",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 5500,
+          "estimatedTimeAtGuess": 74.4,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "HackerWord5",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 260000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "fanboy-like-turn-1",
+        "telemetrySequence": 30,
+        "type": "VOTE_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000260000,
+        "monotonicMs": 260000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-fanboy-like-turn-1",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 8
+        },
+        "payload": {
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 260100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "fanboy-like-turn-1-duplicate",
+        "telemetrySequence": 31,
+        "type": "VOTE_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000260100,
+        "monotonicMs": 260100,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-fanboy-like-turn-1-duplicate",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 8
+        },
+        "payload": {
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 270000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "fanboy-dislike-turn-2",
+        "telemetrySequence": 32,
+        "type": "VOTE_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000270000,
+        "monotonicMs": 270000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-fanboy-dislike-turn-2",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 8
+        },
+        "payload": {
+          "vote": 0,
+          "voteName": "DISLIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 270100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "fanboy-like-turn-2",
+        "telemetrySequence": 33,
+        "type": "VOTE_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000270100,
+        "monotonicMs": 270100,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-fanboy-like-turn-2",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 8
+        },
+        "payload": {
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 280000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "fanboy-like-turn-3",
+        "telemetrySequence": 34,
+        "type": "VOTE_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000280000,
+        "monotonicMs": 280000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-fanboy-like-turn-3",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 8
+        },
+        "payload": {
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 300000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-unseen-leave",
+        "telemetrySequence": 35,
+        "type": "PLAYER_LEFT",
+        "category": "lobby",
+        "occurredAt": 1701000300000,
+        "monotonicMs": 301000,
+        "actor": {
+          "playerId": 390,
+          "name": "AlreadyHere",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-unseen-leave",
+          "changeId": "change-raw-in-out-unseen-leave",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 390,
+          "player": {
+            "id": 390,
+            "name": "AlreadyHere",
+            "avatar": [
+              1,
+              2,
+              3,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          },
+          "reason": 0,
+          "reasonName": "LEFT",
+          "wasDrawer": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 301000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-391-join",
+        "telemetrySequence": 36,
+        "type": "PLAYER_JOINED",
+        "category": "lobby",
+        "occurredAt": 1701000301000,
+        "monotonicMs": 302000,
+        "actor": {
+          "playerId": 391,
+          "name": "Traveler391",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-391-join",
+          "changeId": "change-raw-in-out-player-391-join",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "user": {
+            "id": 391,
+            "name": "Traveler391",
+            "avatar": [
+              2,
+              10,
+              20,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          }
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 301100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-391-join-duplicate",
+        "telemetrySequence": 37,
+        "type": "PLAYER_JOINED",
+        "category": "lobby",
+        "occurredAt": 1701000301100,
+        "monotonicMs": 302100,
+        "actor": {
+          "playerId": 391,
+          "name": "Traveler391",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-391-join-duplicate",
+          "changeId": "change-raw-in-out-player-391-join-duplicate",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "user": {
+            "id": 391,
+            "name": "Traveler391",
+            "avatar": [
+              2,
+              10,
+              20,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          }
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 303500,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-391-leave",
+        "telemetrySequence": 38,
+        "type": "PLAYER_LEFT",
+        "category": "lobby",
+        "occurredAt": 1701000303500,
+        "monotonicMs": 304500,
+        "actor": {
+          "playerId": 391,
+          "name": "Traveler391",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-391-leave",
+          "changeId": "change-raw-in-out-player-391-leave",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 391,
+          "player": {
+            "id": 391,
+            "name": "Traveler391",
+            "avatar": [
+              2,
+              10,
+              20,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          },
+          "reason": 0,
+          "reasonName": "LEFT",
+          "wasDrawer": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 306000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-392-join",
+        "telemetrySequence": 39,
+        "type": "PLAYER_JOINED",
+        "category": "lobby",
+        "occurredAt": 1701000306000,
+        "monotonicMs": 307000,
+        "actor": {
+          "playerId": 392,
+          "name": "Traveler392",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-392-join",
+          "changeId": "change-raw-in-out-player-392-join",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "user": {
+            "id": 392,
+            "name": "Traveler392",
+            "avatar": [
+              3,
+              11,
+              21,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          }
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 308500,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-392-leave",
+        "telemetrySequence": 40,
+        "type": "PLAYER_LEFT",
+        "category": "lobby",
+        "occurredAt": 1701000308500,
+        "monotonicMs": 309500,
+        "actor": {
+          "playerId": 392,
+          "name": "Traveler392",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-392-leave",
+          "changeId": "change-raw-in-out-player-392-leave",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 392,
+          "player": {
+            "id": 392,
+            "name": "Traveler392",
+            "avatar": [
+              3,
+              11,
+              21,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          },
+          "reason": 0,
+          "reasonName": "LEFT",
+          "wasDrawer": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 311000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-393-join",
+        "telemetrySequence": 41,
+        "type": "PLAYER_JOINED",
+        "category": "lobby",
+        "occurredAt": 1701000311000,
+        "monotonicMs": 312000,
+        "actor": {
+          "playerId": 393,
+          "name": "Traveler393",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-393-join",
+          "changeId": "change-raw-in-out-player-393-join",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "user": {
+            "id": 393,
+            "name": "Traveler393",
+            "avatar": [
+              4,
+              12,
+              22,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          }
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 313500,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "in-out-player-393-leave",
+        "telemetrySequence": 42,
+        "type": "PLAYER_LEFT",
+        "category": "lobby",
+        "occurredAt": 1701000313500,
+        "monotonicMs": 314500,
+        "actor": {
+          "playerId": 393,
+          "name": "Traveler393",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "omg-hacker-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 301
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-in-out-player-393-leave",
+          "changeId": "change-raw-in-out-player-393-leave",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 393,
+          "player": {
+            "id": 393,
+            "name": "Traveler393",
+            "avatar": [
+              4,
+              12,
+              22,
+              -1
+            ],
+            "score": 0,
+            "guessed": false,
+            "flags": 0
+          },
+          "reason": 0,
+          "reasonName": "LEFT",
+          "wasDrawer": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 330000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-own-round-start",
+        "telemetrySequence": 43,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000330000,
+        "monotonicMs": 331000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-own-round-start",
+          "changeId": "change-raw-picasso-own-round-start",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "drawerId": 21,
+          "word": "Mona Lisa",
+          "wordLengths": null,
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 331000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-like-401",
+        "telemetrySequence": 44,
+        "type": "VOTE_RECEIVED",
+        "category": "drawing",
+        "occurredAt": 1701000331000,
+        "monotonicMs": 332000,
+        "actor": {
+          "playerId": 401,
+          "name": "ArtFan401",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-like-401",
+          "changeId": "change-raw-picasso-like-401",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 401,
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 331100,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-like-401-duplicate",
+        "telemetrySequence": 45,
+        "type": "VOTE_RECEIVED",
+        "category": "drawing",
+        "occurredAt": 1701000331100,
+        "monotonicMs": 332100,
+        "actor": {
+          "playerId": 401,
+          "name": "ArtFan401",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-like-401-duplicate",
+          "changeId": "change-raw-picasso-like-401-duplicate",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 401,
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 332000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-like-402",
+        "telemetrySequence": 46,
+        "type": "VOTE_RECEIVED",
+        "category": "drawing",
+        "occurredAt": 1701000332000,
+        "monotonicMs": 333000,
+        "actor": {
+          "playerId": 402,
+          "name": "ArtFan402",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-like-402",
+          "changeId": "change-raw-picasso-like-402",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 402,
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 333000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-dislike-401",
+        "telemetrySequence": 47,
+        "type": "VOTE_RECEIVED",
+        "category": "drawing",
+        "occurredAt": 1701000333000,
+        "monotonicMs": 334000,
+        "actor": {
+          "playerId": 401,
+          "name": "ArtFan401",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-dislike-401",
+          "changeId": "change-raw-picasso-dislike-401",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 401,
+          "vote": 0,
+          "voteName": "DISLIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 334000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-like-403",
+        "telemetrySequence": 48,
+        "type": "VOTE_RECEIVED",
+        "category": "drawing",
+        "occurredAt": 1701000334000,
+        "monotonicMs": 335000,
+        "actor": {
+          "playerId": 403,
+          "name": "ArtFan403",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-like-403",
+          "changeId": "change-raw-picasso-like-403",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 403,
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 335000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "picasso-like-404",
+        "telemetrySequence": 49,
+        "type": "VOTE_RECEIVED",
+        "category": "drawing",
+        "occurredAt": 1701000335000,
+        "monotonicMs": 336000,
+        "actor": {
+          "playerId": 404,
+          "name": "ArtFan404",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "picasso-own-drawing-turn",
+          "roundIndex": 3,
+          "roundNumber": 4,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-picasso-like-404",
+          "changeId": "change-raw-picasso-like-404",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 404,
+          "vote": 1,
+          "voteName": "LIKE"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 340000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "copy-paste-own-round-start",
+        "telemetrySequence": 50,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000340000,
+        "monotonicMs": 341000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "copy-paste-own-drawing-turn",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-copy-paste-own-round-start",
+          "changeId": "change-copy-paste-own-round-start",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "drawerId": 21,
+          "word": "Kopierer",
+          "wordLengths": null,
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 342000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "copy-paste-guess-1",
+        "telemetrySequence": 51,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000342000,
+        "monotonicMs": 343000,
+        "actor": {
+          "playerId": 501,
+          "name": "CopyPlayer501",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "copy-paste-own-drawing-turn",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-copy-paste-guess-1",
+          "changeId": "change-copy-paste-guess-1",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 501,
+          "position": 1,
+          "elapsedMs": 2000,
+          "estimatedTimeAtGuess": 78.0,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 346000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "copy-paste-guess-2",
+        "telemetrySequence": 52,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000346000,
+        "monotonicMs": 347000,
+        "actor": {
+          "playerId": 502,
+          "name": "CopyPlayer502",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "copy-paste-own-drawing-turn",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-copy-paste-guess-2",
+          "changeId": "change-copy-paste-guess-2",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 502,
+          "position": 2,
+          "elapsedMs": 6000,
+          "estimatedTimeAtGuess": 74.0,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 349000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "copy-paste-guess-3",
+        "telemetrySequence": 53,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000349000,
+        "monotonicMs": 350000,
+        "actor": {
+          "playerId": 503,
+          "name": "CopyPlayer503",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "copy-paste-own-drawing-turn",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-copy-paste-guess-3",
+          "changeId": "change-copy-paste-guess-3",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 503,
+          "position": 3,
+          "elapsedMs": 9000,
+          "estimatedTimeAtGuess": 71.0,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 352000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "drawing-challenges-own-round-start",
+        "telemetrySequence": 54,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000352000,
+        "monotonicMs": 353000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "drawing-challenges-own-turn",
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-drawing-challenges-own-round-start",
+          "changeId": "change-drawing-challenges-own-round-start",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "drawerId": 21,
+          "word": "Farbkasten",
+          "wordLengths": null,
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 353000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "drawing-brush-xs-red",
+        "telemetrySequence": 55,
+        "type": "DRAW_COMMAND_BATCH_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000353000,
+        "monotonicMs": 354000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "drawing-challenges-own-turn",
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 19,
+          "rawRecordId": "raw-drawing-brush-xs-red"
+        },
+        "payload": {
+          "commandCount": 2,
+          "tools": [
+            0
+          ],
+          "colors": [
+            0,
+            4
+          ],
+          "brushSizes": [
+            4
+          ],
+          "commands": [
+            {
+              "kind": "PENCIL",
+              "tool": 0,
+              "color": 4,
+              "brushSize": 4,
+              "startX": 100,
+              "startY": 100,
+              "endX": 105,
+              "endY": 105,
+              "raw": [
+                0,
+                4,
+                4,
+                100,
+                100,
+                105,
+                105
+              ]
+            },
+            {
+              "kind": "PENCIL",
+              "tool": 0,
+              "color": 0,
+              "brushSize": 4,
+              "startX": 110,
+              "startY": 100,
+              "endX": 115,
+              "endY": 105,
+              "raw": [
+                0,
+                0,
+                4,
+                110,
+                100,
+                115,
+                105
+              ]
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": true
+      }
+    },
+    {
+      "offsetMs": 354000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "drawing-brush-s-dark-red",
+        "telemetrySequence": 56,
+        "type": "DRAW_COMMAND_BATCH_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000354000,
+        "monotonicMs": 355000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "drawing-challenges-own-turn",
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 19,
+          "rawRecordId": "raw-drawing-brush-s-dark-red"
+        },
+        "payload": {
+          "commandCount": 1,
+          "tools": [
+            0
+          ],
+          "colors": [
+            5
+          ],
+          "brushSizes": [
+            10
+          ],
+          "commands": [
+            {
+              "kind": "PENCIL",
+              "tool": 0,
+              "color": 5,
+              "brushSize": 10,
+              "startX": 100,
+              "startY": 100,
+              "endX": 105,
+              "endY": 105,
+              "raw": [
+                0,
+                5,
+                10,
+                100,
+                100,
+                105,
+                105
+              ]
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": true
+      }
+    },
+    {
+      "offsetMs": 355000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "drawing-brush-m-orange-yellow",
+        "telemetrySequence": 57,
+        "type": "DRAW_COMMAND_BATCH_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000355000,
+        "monotonicMs": 356000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "drawing-challenges-own-turn",
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 19,
+          "rawRecordId": "raw-drawing-brush-m-orange-yellow"
+        },
+        "payload": {
+          "commandCount": 2,
+          "tools": [
+            0,
+            1
+          ],
+          "colors": [
+            6,
+            8
+          ],
+          "brushSizes": [
+            20
+          ],
+          "commands": [
+            {
+              "kind": "PENCIL",
+              "tool": 0,
+              "color": 6,
+              "brushSize": 20,
+              "startX": 100,
+              "startY": 100,
+              "endX": 105,
+              "endY": 105,
+              "raw": [
+                0,
+                6,
+                20,
+                100,
+                100,
+                105,
+                105
+              ]
+            },
+            {
+              "kind": "FILL",
+              "tool": 1,
+              "color": 8,
+              "startX": 200,
+              "startY": 200,
+              "raw": [
+                1,
+                8,
+                200,
+                200
+              ]
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": true
+      }
+    },
+    {
+      "offsetMs": 356000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "drawing-brush-l-green",
+        "telemetrySequence": 58,
+        "type": "DRAW_COMMAND_BATCH_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000356000,
+        "monotonicMs": 357000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "drawing-challenges-own-turn",
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 19,
+          "rawRecordId": "raw-drawing-brush-l-green"
+        },
+        "payload": {
+          "commandCount": 1,
+          "tools": [
+            0
+          ],
+          "colors": [
+            10
+          ],
+          "brushSizes": [
+            32
+          ],
+          "commands": [
+            {
+              "kind": "PENCIL",
+              "tool": 0,
+              "color": 10,
+              "brushSize": 32,
+              "startX": 100,
+              "startY": 100,
+              "endX": 105,
+              "endY": 105,
+              "raw": [
+                0,
+                10,
+                32,
+                100,
+                100,
+                105,
+                105
+              ]
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": true
+      }
+    },
+    {
+      "offsetMs": 357000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "drawing-brush-xl-blue",
+        "telemetrySequence": 59,
+        "type": "DRAW_COMMAND_BATCH_SUBMITTED",
+        "category": "drawing",
+        "occurredAt": 1701000357000,
+        "monotonicMs": 358000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "drawing-challenges-own-turn",
+          "roundIndex": 5,
+          "roundNumber": 6,
+          "maxRounds": 6,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 19,
+          "rawRecordId": "raw-drawing-brush-xl-blue"
+        },
+        "payload": {
+          "commandCount": 1,
+          "tools": [
+            0
+          ],
+          "colors": [
+            16
+          ],
+          "brushSizes": [
+            40
+          ],
+          "commands": [
+            {
+              "kind": "PENCIL",
+              "tool": 0,
+              "color": 16,
+              "brushSize": 40,
+              "startX": 100,
+              "startY": 100,
+              "endX": 105,
+              "endY": 105,
+              "raw": [
+                0,
+                16,
+                40,
+                100,
+                100,
+                105,
+                105
+              ]
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": true
+      }
+    },
+    {
+      "offsetMs": 360000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "caught-in-4k-self-score",
+        "telemetrySequence": 60,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1701000360000,
+        "monotonicMs": 361000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "copy-paste-own-drawing-turn",
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 5,
+          "gameStateName": "ROUND_RESULTS",
+          "meId": 21,
+          "drawerId": 21
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-caught-in-4k-self-score",
+          "changeId": "change-caught-in-4k-self-score",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 21,
+          "previousScore": 3900,
+          "totalScore": 4000,
+          "roundScore": 100,
+          "delta": 100,
+          "coolNumber": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 365000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "caught-in-4k-game-ended",
+        "telemetrySequence": 61,
+        "type": "GAME_ENDED",
+        "category": "round",
+        "occurredAt": 1701000365000,
+        "monotonicMs": 366000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": null,
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "gameStateId": 6,
+          "gameStateName": "GAME_RESULTS",
+          "meId": 21,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-caught-in-4k-game-ended",
+          "changeId": "change-caught-in-4k-game-ended",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 5,
+          "stateId": 6,
+          "stateName": "GAME_RESULTS",
+          "time": 10,
+          "roundIndex": 4,
+          "roundNumber": 5,
+          "maxRounds": 5,
+          "finalScores": [
+            {
+              "playerId": 21,
+              "totalScore": 4000,
+              "roundScore": 100
+            },
+            {
+              "playerId": 17,
+              "totalScore": 3995,
+              "roundScore": 500
+            },
+            {
+              "playerId": 7,
+              "totalScore": 3990,
+              "roundScore": 200
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 370000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "owner-private-create-request",
+        "telemetrySequence": 62,
+        "type": "PRIVATE_LOBBY_CREATE_REQUESTED",
+        "category": "lobby",
+        "occurredAt": 1701000370000,
+        "monotonicMs": 371000,
+        "actor": {
+          "playerId": null,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 2,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": 3,
+          "gameStateId": null,
+          "gameStateName": "UNKNOWN",
+          "meId": 21,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-owner-private-create",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 10
+        },
+        "payload": {
+          "name": "Alpha",
+          "avatar": [
+            14,
+            50,
+            49,
+            4
+          ],
+          "create": 1,
+          "lang": 1
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 372000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "owner-private-hydrated",
+        "telemetrySequence": 63,
+        "type": "LOBBY_HYDRATED",
+        "category": "lobby",
+        "occurredAt": 1701000372000,
+        "monotonicMs": 373000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "owner-private-session",
+          "lobbyGeneration": 4,
+          "lobbyId": "OWNER1",
+          "lobbyType": 1,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 7,
+          "gameStateName": "PRIVATE_LOBBY_SETUP",
+          "meId": 0,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-owner-private-ready",
+          "changeId": "change-owner-private-ready",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "lobbyId": "OWNER1",
+          "playerCount": 1,
+          "stateName": "PRIVATE_LOBBY_SETUP",
+          "lobbyGeneration": 4,
+          "languageId": 1,
+          "languageName": "German",
+          "meId": 0,
+          "ownerId": 0,
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": 0,
+          "roundNumber": 1
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 380000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "red-avatar-randomized",
+        "telemetrySequence": 64,
+        "type": "AVATAR_RANDOMIZED",
+        "category": "home",
+        "occurredAt": 1701000380000,
+        "monotonicMs": 381000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 4,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": 3,
+          "gameStateId": null,
+          "gameStateName": "UNKNOWN",
+          "meId": 21,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousAvatar": [
+            14,
+            50,
+            49,
+            4
+          ],
+          "avatar": [
+            0,
+            38,
+            41,
+            -1
+          ],
+          "redSkin": true,
+          "method": "randomize-button",
+          "validRandomization": true,
+          "randomizeClickObserved": true,
+          "randomizeClickId": "red-randomize-click",
+          "changedIndices": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "absoluteDeltas": [
+            14,
+            12,
+            8,
+            5
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 381000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "red-avatar-login-confirmed",
+        "telemetrySequence": 65,
+        "type": "RED_AVATAR_LOGIN_CONFIRMED",
+        "category": "home",
+        "occurredAt": 1701000381000,
+        "monotonicMs": 382000,
+        "actor": {
+          "playerId": null,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 4,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": 3,
+          "gameStateId": null,
+          "gameStateName": "UNKNOWN",
+          "meId": 21,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "raw-red-login",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 10
+        },
+        "payload": {
+          "avatar": [
+            0,
+            38,
+            41,
+            -1
+          ],
+          "skinColorId": 0
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 383000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "red-public-lobby-hydrated",
+        "telemetrySequence": 66,
+        "type": "LOBBY_HYDRATED",
+        "category": "lobby",
+        "occurredAt": 1701000383000,
+        "monotonicMs": 384000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "red-public-session",
+          "lobbyGeneration": 5,
+          "lobbyId": "REDPUB1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "red-public-game",
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": 3,
+          "gameStateId": 0,
+          "gameStateName": "WAITING",
+          "meId": 21,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "raw-red-hydrated",
+          "changeId": "change-red-hydrated",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "lobbyId": "REDPUB1",
+          "playerCount": 3,
+          "stateName": "WAITING",
+          "lobbyGeneration": 5,
+          "languageId": 1,
+          "languageName": "German",
+          "meId": 21,
+          "ownerId": -1,
+          "roundIndex": 0,
+          "roundNumber": 1
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 385000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "my-eyes-insult-message",
+        "telemetrySequence": 67,
+        "type": "CHAT_MESSAGE_RECEIVED",
+        "category": "chat",
+        "occurredAt": 1701000385000,
+        "monotonicMs": 385000,
+        "actor": {
+          "playerId": 88,
+          "name": "RudePlayer",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "red-public-session",
+          "lobbyGeneration": 5,
+          "lobbyId": "REDPUB1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "red-public-game",
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": 3,
+          "gameStateId": 0,
+          "gameStateName": "WAITING",
+          "meId": 21,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": "my-eyes-raw",
+          "changeId": "my-eyes-change",
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 88,
+          "message": "du Idiot!",
+          "countedAsWrongGuess": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 386000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "need-some-space-correct",
+        "telemetrySequence": 68,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000386000,
+        "monotonicMs": 386000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 5,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "need-some-space-raw",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 3,
+          "elapsedMs": 12000,
+          "estimatedTimeAtGuess": 68,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "New York",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 387000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "home-logo-avatar-click",
+        "telemetrySequence": 69,
+        "type": "LOGO_AVATAR_CLICKED",
+        "category": "home",
+        "occurredAt": 1786000387000,
+        "monotonicMs": 487000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 0,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": null,
+          "languageName": null,
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": null,
+          "gameStateId": null,
+          "gameStateName": "DISCONNECTED",
+          "meId": null,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "avatarIndex": 3,
+          "clickCount": 42,
+          "clickId": "home-special-click-id"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 388050,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "home-special-avatar-stable",
+        "telemetrySequence": 70,
+        "type": "SPECIAL_AVATAR_FOUND",
+        "category": "home",
+        "occurredAt": 1786000388050,
+        "monotonicMs": 488050,
+        "actor": null,
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 0,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": null,
+          "languageName": null,
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": null,
+          "gameStateId": null,
+          "gameStateName": "DISCONNECTED",
+          "meId": null,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "avatarIndex": 3,
+          "clickId": "home-special-click-id",
+          "specialId": 101,
+          "specialBackgroundPosition": "-100% -100%",
+          "stableForMs": 1050
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 389000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "bloodline-credits-link-clicked",
+        "telemetrySequence": 71,
+        "type": "CREDITS_LINK_CLICKED",
+        "category": "home",
+        "occurredAt": 1786000389000,
+        "monotonicMs": 489000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 0,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": null,
+          "languageName": null,
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": null,
+          "gameStateId": null,
+          "gameStateName": "DISCONNECTED",
+          "meId": null,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "href": "https://skribbl.io/credits",
+          "pathname": "/credits",
+          "navigationId": "bloodline-navigation-id"
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 389300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "bloodline-credits-opened",
+        "telemetrySequence": 72,
+        "type": "CREDITS_OPENED",
+        "category": "home",
+        "occurredAt": 1786000389300,
+        "monotonicMs": 489300,
+        "actor": null,
+        "context": {
+          "lobbySessionId": null,
+          "lobbyGeneration": 0,
+          "lobbyId": null,
+          "lobbyType": null,
+          "languageId": null,
+          "languageName": null,
+          "gameSessionId": null,
+          "roundSessionId": null,
+          "roundIndex": null,
+          "roundNumber": null,
+          "maxRounds": null,
+          "gameStateId": null,
+          "gameStateName": "DISCONNECTED",
+          "meId": null,
+          "drawerId": null
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "pathname": "/credits",
+          "readyState": "complete",
+          "linkClickObserved": true,
+          "navigationId": "bloodline-navigation-id",
+          "linkClickedAt": 1786000389000,
+          "loadElapsedMs": 300
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 390300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "time-waste-too-short",
+        "telemetrySequence": 73,
+        "type": "CANVAS_METRICS",
+        "category": "drawing",
+        "occurredAt": 1786000390300,
+        "monotonicMs": 490300,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "time-waste-lobby-session",
+          "lobbyGeneration": 9,
+          "lobbyId": "Time1234",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "time-waste-game-session",
+          "roundSessionId": "time-waste-round-session",
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 88
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "width": 800,
+          "height": 600,
+          "totalPixels": 480000,
+          "whitePixels": 480000,
+          "nonWhitePixels": 0,
+          "whiteRatio": 1,
+          "validStrokeCount": 0,
+          "trigger": "continuous-white-duration",
+          "whiteDurationMs": 59000
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 391300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "time-waste-foreign-white-60s",
+        "telemetrySequence": 74,
+        "type": "CANVAS_METRICS",
+        "category": "drawing",
+        "occurredAt": 1786000391300,
+        "monotonicMs": 491300,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "time-waste-lobby-session",
+          "lobbyGeneration": 9,
+          "lobbyId": "Time1234",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "time-waste-game-session",
+          "roundSessionId": "time-waste-round-session",
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 88
+        },
+        "source": {
+          "origin": "dom-adapter",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "width": 800,
+          "height": 600,
+          "totalPixels": 480000,
+          "whitePixels": 480000,
+          "nonWhitePixels": 0,
+          "whiteRatio": 1,
+          "validStrokeCount": 0,
+          "trigger": "continuous-white-duration",
+          "whiteDurationMs": 60000
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 391600,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-reset-hydrated",
+        "telemetrySequence": 75,
+        "type": "LOBBY_HYDRATED",
+        "category": "lobby",
+        "occurredAt": 1786000391600,
+        "monotonicMs": 391600,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "comeback-reset-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Reset123",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-reset-game",
+          "roundSessionId": "comeback-reset-turn",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "lobbyId": "Reset123",
+          "playerCount": 2,
+          "stateName": "DRAWING",
+          "lobbyGeneration": 9,
+          "languageId": 1,
+          "languageName": "German",
+          "meId": 21,
+          "ownerId": -1,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "players": [
+            {
+              "id": 21,
+              "name": "Alpha",
+              "avatar": [
+                14,
+                50,
+                49,
+                4
+              ],
+              "score": 100,
+              "guessed": false,
+              "flags": 0
+            },
+            {
+              "id": 70,
+              "name": "OldWinner",
+              "avatar": [
+                1,
+                1,
+                1,
+                -1
+              ],
+              "score": 1500,
+              "guessed": false,
+              "flags": 0
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 391700,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-reset-leader-score-zero",
+        "telemetrySequence": 76,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1786000391700,
+        "monotonicMs": 391700,
+        "actor": {
+          "playerId": 70,
+          "name": "OldWinner",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "comeback-reset-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Reset123",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-reset-game",
+          "roundSessionId": "comeback-reset-turn",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 70,
+          "previousScore": 1500,
+          "totalScore": 0,
+          "roundScore": 0,
+          "delta": -1500,
+          "coolNumber": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 391800,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-reset-self-next-game-score",
+        "telemetrySequence": 77,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1786000391800,
+        "monotonicMs": 391800,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "comeback-reset-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Reset123",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-reset-game",
+          "roundSessionId": "comeback-reset-turn",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 21,
+          "previousScore": 0,
+          "totalScore": 100,
+          "roundScore": 100,
+          "delta": 100,
+          "coolNumber": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 392300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-comeback-hydrated",
+        "telemetrySequence": 78,
+        "type": "LOBBY_HYDRATED",
+        "category": "lobby",
+        "occurredAt": 1786000392300,
+        "monotonicMs": 492300,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "comeback-lobby-session",
+          "lobbyGeneration": 10,
+          "lobbyId": "Come1234",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-game-session",
+          "roundSessionId": "comeback-round-session",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "lobbyId": "Come1234",
+          "playerCount": 4,
+          "stateName": "DRAWING",
+          "lobbyGeneration": 10,
+          "languageId": 1,
+          "languageName": "German",
+          "meId": 21,
+          "ownerId": 77,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "players": [
+            {
+              "id": 21,
+              "name": "Alpha",
+              "avatar": [
+                14,
+                50,
+                49,
+                4
+              ],
+              "score": 100,
+              "guessed": false,
+              "flags": 0
+            },
+            {
+              "id": 61,
+              "name": "DepartingLead",
+              "avatar": [
+                1,
+                2,
+                3,
+                -1
+              ],
+              "score": 1400,
+              "guessed": false,
+              "flags": 0
+            },
+            {
+              "id": 62,
+              "name": "PersistentLead",
+              "avatar": [
+                2,
+                3,
+                4,
+                -1
+              ],
+              "score": 1500,
+              "guessed": false,
+              "flags": 0
+            },
+            {
+              "id": 63,
+              "name": "TooClose",
+              "avatar": [
+                3,
+                4,
+                5,
+                -1
+              ],
+              "score": 1200,
+              "guessed": false,
+              "flags": 0
+            }
+          ]
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 393300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-comeback-target-left",
+        "telemetrySequence": 79,
+        "type": "PLAYER_LEFT",
+        "category": "lobby",
+        "occurredAt": 1786000393300,
+        "monotonicMs": 493300,
+        "actor": {
+          "playerId": 61,
+          "name": "DepartingLead",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "comeback-lobby-session",
+          "lobbyGeneration": 10,
+          "lobbyId": "Come1234",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-game-session",
+          "roundSessionId": "comeback-round-session",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 61,
+          "player": {
+            "id": 61,
+            "name": "DepartingLead",
+            "avatar": [
+              1,
+              2,
+              3,
+              -1
+            ],
+            "score": 1400,
+            "guessed": false,
+            "flags": 0
+          },
+          "reason": 0,
+          "reasonName": "DISCONNECT",
+          "wasDrawer": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 394300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-comeback-target-score",
+        "telemetrySequence": 80,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1786000394300,
+        "monotonicMs": 494300,
+        "actor": {
+          "playerId": 62,
+          "name": "PersistentLead",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "comeback-lobby-session",
+          "lobbyGeneration": 10,
+          "lobbyId": "Come1234",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-game-session",
+          "roundSessionId": "comeback-round-session",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 62,
+          "previousScore": 1500,
+          "totalScore": 1520,
+          "roundScore": 20,
+          "delta": 20,
+          "coolNumber": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 395300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "ultimate-comeback-self-score",
+        "telemetrySequence": 81,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1786000395300,
+        "monotonicMs": 495300,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "comeback-lobby-session",
+          "lobbyGeneration": 10,
+          "lobbyId": "Come1234",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "comeback-game-session",
+          "roundSessionId": "comeback-round-session",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 77
+        },
+        "source": {
+          "origin": "lobby-change",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 21,
+          "previousScore": 100,
+          "totalScore": 1521,
+          "roundScore": 1421,
+          "delta": 1421,
+          "coolNumber": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 396300,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-round-start",
+        "telemetrySequence": 82,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1786000396300,
+        "monotonicMs": 396300,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "drawerId": 99,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 396400,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-wrong-1",
+        "telemetrySequence": 83,
+        "type": "CHAT_MESSAGE_RECEIVED",
+        "category": "chat",
+        "occurredAt": 1786000396400,
+        "monotonicMs": 396400,
+        "actor": {
+          "playerId": 101,
+          "name": "Player1",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 101,
+          "message": "Reddit",
+          "countedAsWrongGuess": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 396500,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-wrong-2",
+        "telemetrySequence": 84,
+        "type": "CHAT_MESSAGE_RECEIVED",
+        "category": "chat",
+        "occurredAt": 1786000396500,
+        "monotonicMs": 396500,
+        "actor": {
+          "playerId": 102,
+          "name": "Player2",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 102,
+          "message": "Punkt",
+          "countedAsWrongGuess": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 396600,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-wrong-3",
+        "telemetrySequence": 85,
+        "type": "CHAT_MESSAGE_RECEIVED",
+        "category": "chat",
+        "occurredAt": 1786000396600,
+        "monotonicMs": 396600,
+        "actor": {
+          "playerId": 103,
+          "name": "Player3",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 103,
+          "message": "Ski",
+          "countedAsWrongGuess": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 396700,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-wrong-4",
+        "telemetrySequence": 86,
+        "type": "CHAT_MESSAGE_RECEIVED",
+        "category": "chat",
+        "occurredAt": 1786000396700,
+        "monotonicMs": 396700,
+        "actor": {
+          "playerId": 104,
+          "name": "Player4",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 104,
+          "message": "Atlantis",
+          "countedAsWrongGuess": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 396800,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-wrong-5",
+        "telemetrySequence": 87,
+        "type": "CHAT_MESSAGE_RECEIVED",
+        "category": "chat",
+        "occurredAt": 1786000396800,
+        "monotonicMs": 396800,
+        "actor": {
+          "playerId": 105,
+          "name": "Player5",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 105,
+          "message": "Nagel",
+          "countedAsWrongGuess": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 397000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "mogged-self-correct",
+        "telemetrySequence": 88,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1786000397000,
+        "monotonicMs": 397000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "mogged-lobby",
+          "lobbyGeneration": 10,
+          "lobbyId": "Mog12345",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "mogged-game",
+          "roundSessionId": "mogged-turn",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 99
+        },
+        "source": {
+          "origin": "system",
+          "rawRecordId": null,
+          "changeId": null,
+          "direction": null,
+          "socketEvent": null,
+          "packetId": null
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 6,
+          "elapsedMs": 25000,
+          "estimatedTimeAtGuess": 55,
+          "serverTimeAnchorAtGuess": 55,
+          "includesWord": true,
+          "word": "Hai",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    }
+  ]
+}

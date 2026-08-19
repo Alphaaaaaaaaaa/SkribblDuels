@@ -1,0 +1,11 @@
+{
+  "name": "@skribbl-duels/product-core",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@skribbl-duels/challenge-engine": "file:../challenge-engine",
+    "@skribbl-duels/telemetry-contracts": "file:../telemetry-contracts"
+  }
+}

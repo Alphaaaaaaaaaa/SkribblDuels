@@ -1,0 +1,571 @@
+{
+  "fixtureVersion": 1,
+  "metadata": {
+    "fixtureId": "starter-challenges-with-ouch-v2",
+    "name": "Starter challenges with Ouch",
+    "description": "Completes the deterministic starter challenges and Ouch in fresh public rounds.",
+    "createdAt": 1701000000000,
+    "source": "synthetic",
+    "tags": [
+      "challenge-definitions",
+      "starter",
+      "public-lobby",
+      "fresh-round",
+      "ouch"
+    ],
+    "contractVersion": "1.0.0",
+    "schemaVersion": 1,
+    "eventCount": 10,
+    "durationMs": 100450,
+    "eventTypes": [
+      "CORRECT_GUESS",
+      "FIRST_GUESS",
+      "ROUND_STARTED",
+      "SCORE_CHANGED",
+      "TEXT_SUBMITTED"
+    ],
+    "omittedHighVolumeEvents": false
+  },
+  "events": [
+    {
+      "offsetMs": 0,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-1",
+        "telemetrySequence": 1,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000000000,
+        "monotonicMs": 1000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 4000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-quickscope",
+        "telemetrySequence": 2,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000004000,
+        "monotonicMs": 5000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-starter-quickscope",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 4000,
+          "estimatedTimeAtGuess": 76,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Nagel",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 6000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-cool-number",
+        "telemetrySequence": 3,
+        "type": "SCORE_CHANGED",
+        "category": "score",
+        "occurredAt": 1701000006000,
+        "monotonicMs": 7000,
+        "actor": {
+          "playerId": 7,
+          "name": "Geburtstag",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-3",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 7,
+          "previousScore": 1000,
+          "totalScore": 1250,
+          "roundScore": 250,
+          "delta": 250,
+          "coolNumber": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 8000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-tldr",
+        "telemetrySequence": 4,
+        "type": "TEXT_SUBMITTED",
+        "category": "chat",
+        "occurredAt": 1701000008000,
+        "monotonicMs": 9000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-1",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-4",
+          "changeId": null,
+          "direction": "client-to-server",
+          "socketEvent": "data",
+          "packetId": 30
+        },
+        "payload": {
+          "message": "Diese Nachricht ist absichtlich deutlich länger als fünfzig Zeichen.",
+          "eligibleGuess": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 12000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-2",
+        "telemetrySequence": 5,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000012000,
+        "monotonicMs": 13000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-2",
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-5",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 3,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            7
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 91000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-late-guess",
+        "telemetrySequence": 6,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000091000,
+        "monotonicMs": 92000,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-2",
+          "roundIndex": 1,
+          "roundNumber": 2,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-starter-late-guess",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 6,
+          "elapsedMs": 79000,
+          "estimatedTimeAtGuess": 0.8,
+          "serverTimeAnchorAtGuess": 32,
+          "includesWord": true,
+          "word": "Atlantis",
+          "wrongGuessesBeforeCorrect": 1,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 95000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-round-3",
+        "telemetrySequence": 7,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1701000095000,
+        "monotonicMs": 96000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [
+            6
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-ouch-first-correct",
+        "telemetrySequence": 8,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000100000,
+        "monotonicMs": 101000,
+        "actor": {
+          "playerId": 7,
+          "name": "Geburtstag",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 7,
+          "position": 1,
+          "elapsedMs": 5000,
+          "estimatedTimeAtGuess": 75,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100001,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-ouch-first",
+        "telemetrySequence": 9,
+        "type": "FIRST_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000100001,
+        "monotonicMs": 101001,
+        "actor": {
+          "playerId": 7,
+          "name": "Geburtstag",
+          "isSelf": false
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 7,
+          "position": 1,
+          "elapsedMs": 5000,
+          "estimatedTimeAtGuess": 75,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": false,
+          "word": null,
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "derived",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 100450,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "starter-ouch-self",
+        "telemetrySequence": 10,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1701000100450,
+        "monotonicMs": 101450,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "starter-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "STARTER1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "starter-game-session",
+          "roundSessionId": "starter-round-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "starter-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 2,
+          "elapsedMs": 5450,
+          "estimatedTimeAtGuess": 74.55,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Banane",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    }
+  ]
+}

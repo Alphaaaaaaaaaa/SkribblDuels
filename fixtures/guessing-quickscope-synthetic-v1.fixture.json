@@ -1,0 +1,127 @@
+{
+  "fixtureVersion": 1,
+  "metadata": {
+    "fixtureId": "guessing-quickscope-synthetic-v1",
+    "name": "Synthetic Quickscope completion",
+    "description": "A public German round followed by a self correct guess after 4.4 seconds.",
+    "createdAt": 1700000000000,
+    "source": "synthetic",
+    "tags": ["guessing", "quickscope", "public-lobby"],
+    "contractVersion": "1.0.0",
+    "schemaVersion": 1,
+    "eventCount": 2,
+    "durationMs": 4400,
+    "eventTypes": ["CORRECT_GUESS", "ROUND_STARTED"],
+    "omittedHighVolumeEvents": false
+  },
+  "events": [
+    {
+      "offsetMs": 0,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "quickscope-round-started",
+        "telemetrySequence": 1,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1700000000000,
+        "monotonicMs": 1000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "fixture-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "FIXTURE1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "fixture-game-session",
+          "roundSessionId": "fixture-round-session",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "fixture-raw-1",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "drawerId": 17,
+          "word": null,
+          "wordLengths": [5],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 4400,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "quickscope-correct-guess",
+        "telemetrySequence": 2,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1700000004400,
+        "monotonicMs": 5400,
+        "actor": {
+          "playerId": 21,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "fixture-lobby-session",
+          "lobbyGeneration": 1,
+          "lobbyId": "FIXTURE1",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "fixture-game-session",
+          "roundSessionId": "fixture-round-session",
+          "roundIndex": 0,
+          "roundNumber": 1,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 21,
+          "drawerId": 17
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "fixture-raw-2",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 21,
+          "position": 1,
+          "elapsedMs": 4400,
+          "estimatedTimeAtGuess": 75.6,
+          "serverTimeAnchorAtGuess": 80,
+          "includesWord": true,
+          "word": "Nagel",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    }
+  ]
+}

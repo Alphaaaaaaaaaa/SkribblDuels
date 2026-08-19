@@ -1,0 +1,18 @@
+{
+  "name": "@skribbl-duels/telemetry-inspector",
+  "version": "0.51.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@skribbl-duels/telemetry-contracts": "file:../../packages/telemetry-contracts",
+    "@skribbl-duels/telemetry-core": "file:../../packages/telemetry-core",
+    "rxjs": "7.8.2",
+    "@skribbl-duels/telemetry-replay": "file:../../packages/telemetry-replay",
+    "@skribbl-duels/challenge-engine": "file:../../packages/challenge-engine",
+    "@skribbl-duels/challenge-definitions": "file:../../packages/challenge-definitions",
+    "@skribbl-duels/product-core": "file:../../packages/product-core",
+    "@skribbl-duels/gateway-contracts": "file:../../packages/gateway-contracts",
+    "@skribbl-duels/gateway-client": "file:../../packages/gateway-client",
+    "@skribbl-duels/auth-client": "file:../../packages/auth-client"
+  }
+}

@@ -1,0 +1,358 @@
+{
+  "fixtureVersion": 1,
+  "metadata": {
+    "fixtureId": "sniper-live-round3-turn-sessions-v5",
+    "name": "Sniper live regression: three drawer turns in round 3/3",
+    "description": "Reproduces Reddit, Punkt and Ski as three separate drawing turns while the visible server round remains 3/3. Guess placement varies and all are correct first attempts.",
+    "createdAt": 1784653300000,
+    "source": "synthetic",
+    "tags": [
+      "sniper",
+      "live-regression",
+      "round-session",
+      "same-server-round",
+      "first-attempt"
+    ],
+    "contractVersion": "1.0.0",
+    "schemaVersion": 1,
+    "eventCount": 6,
+    "durationMs": 112139,
+    "eventTypes": [
+      "CORRECT_GUESS",
+      "ROUND_STARTED"
+    ],
+    "omittedHighVolumeEvents": false
+  },
+  "events": [
+    {
+      "offsetMs": 0,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-round3-turn-1-start",
+        "telemetrySequence": 1,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1784653150000,
+        "monotonicMs": 1000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-lobby-session",
+          "lobbyGeneration": 3,
+          "lobbyId": "FtPxHnv7",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "be7499ff-9b1b-459c-badc-39c0a7427c1a",
+          "roundSessionId": "live-round3-drawing-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 207,
+          "drawerId": 164
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "live-round3-turn-1-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "drawerId": 164,
+          "word": null,
+          "wordLengths": [
+            6
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 12613,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-round3-turn-1-correct",
+        "telemetrySequence": 2,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1784653162613,
+        "monotonicMs": 13613,
+        "actor": {
+          "playerId": 207,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-lobby-session",
+          "lobbyGeneration": 3,
+          "lobbyId": "FtPxHnv7",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "be7499ff-9b1b-459c-badc-39c0a7427c1a",
+          "roundSessionId": "live-round3-drawing-turn-1",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 207,
+          "drawerId": 164
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "live-round3-turn-1-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 207,
+          "position": 1,
+          "elapsedMs": 12613,
+          "estimatedTimeAtGuess": 67.387,
+          "serverTimeAnchorAtGuess": 32,
+          "includesWord": true,
+          "word": "Reddit",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": true
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 51000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-round3-turn-2-start",
+        "telemetrySequence": 3,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1784653201000,
+        "monotonicMs": 52000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-lobby-session",
+          "lobbyGeneration": 3,
+          "lobbyId": "FtPxHnv7",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "be7499ff-9b1b-459c-badc-39c0a7427c1a",
+          "roundSessionId": "live-round3-drawing-turn-2",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 207,
+          "drawerId": 147
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "live-round3-turn-2-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "drawerId": 147,
+          "word": null,
+          "wordLengths": [
+            5
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 60021,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-round3-turn-2-correct",
+        "telemetrySequence": 4,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1784653210021,
+        "monotonicMs": 61021,
+        "actor": {
+          "playerId": 207,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-lobby-session",
+          "lobbyGeneration": 3,
+          "lobbyId": "FtPxHnv7",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "be7499ff-9b1b-459c-badc-39c0a7427c1a",
+          "roundSessionId": "live-round3-drawing-turn-2",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 207,
+          "drawerId": 147
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "live-round3-turn-2-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 207,
+          "position": 4,
+          "elapsedMs": 9021,
+          "estimatedTimeAtGuess": 70.979,
+          "serverTimeAnchorAtGuess": 32,
+          "includesWord": true,
+          "word": "Punkt",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 102000,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-round3-turn-3-start",
+        "telemetrySequence": 5,
+        "type": "ROUND_STARTED",
+        "category": "round",
+        "occurredAt": 1784653252000,
+        "monotonicMs": 103000,
+        "actor": null,
+        "context": {
+          "lobbySessionId": "live-lobby-session",
+          "lobbyGeneration": 3,
+          "lobbyId": "FtPxHnv7",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "be7499ff-9b1b-459c-badc-39c0a7427c1a",
+          "roundSessionId": "live-round3-drawing-turn-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 207,
+          "drawerId": 118
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "live-round3-turn-3-raw-start",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 11
+        },
+        "payload": {
+          "previousStateId": 3,
+          "stateId": 4,
+          "stateName": "DRAWING",
+          "time": 80,
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "drawerId": 118,
+          "word": null,
+          "wordLengths": [
+            3
+          ],
+          "initialTime": 80
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    },
+    {
+      "offsetMs": 112139,
+      "event": {
+        "schemaVersion": 1,
+        "eventId": "live-round3-turn-3-correct",
+        "telemetrySequence": 6,
+        "type": "CORRECT_GUESS",
+        "category": "guessing",
+        "occurredAt": 1784653262139,
+        "monotonicMs": 113139,
+        "actor": {
+          "playerId": 207,
+          "name": "Alpha",
+          "isSelf": true
+        },
+        "context": {
+          "lobbySessionId": "live-lobby-session",
+          "lobbyGeneration": 3,
+          "lobbyId": "FtPxHnv7",
+          "lobbyType": 0,
+          "languageId": 1,
+          "languageName": "German",
+          "gameSessionId": "be7499ff-9b1b-459c-badc-39c0a7427c1a",
+          "roundSessionId": "live-round3-drawing-turn-3",
+          "roundIndex": 2,
+          "roundNumber": 3,
+          "maxRounds": 3,
+          "gameStateId": 4,
+          "gameStateName": "DRAWING",
+          "meId": 207,
+          "drawerId": 118
+        },
+        "source": {
+          "origin": "decoded-packet",
+          "rawRecordId": "live-round3-turn-3-raw-correct",
+          "changeId": null,
+          "direction": "server-to-client",
+          "socketEvent": "data",
+          "packetId": 15
+        },
+        "payload": {
+          "playerId": 207,
+          "position": 2,
+          "elapsedMs": 10139,
+          "estimatedTimeAtGuess": 69.861,
+          "serverTimeAnchorAtGuess": 32,
+          "includesWord": true,
+          "word": "Ski",
+          "wrongGuessesBeforeCorrect": 0,
+          "isFirstGuesser": false
+        },
+        "confidence": "confirmed",
+        "highVolume": false
+      }
+    }
+  ]
+}

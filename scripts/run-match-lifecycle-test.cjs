@@ -26,7 +26,10 @@ assert(product.includes('this.scheduleConclusionPresentation(event.state, event.
 assert(product.includes("'#scd-raw-recorder-panel'"), 'foreign telemetry panels are not isolated');
 assert(product.includes("window.location.pathname !== '/'"), 'homepage-only matchmaking guard is missing');
 assert(product.includes('newMatch.disabled = !this.matchState.format || !homepageAvailable'), 'New Match remains available inside a Skribbl lobby');
-assert(product.includes("this.gatewayClient.setReady(match.matchId, true)"), 'ready acceptance is not a one-way one-click action');
+assert(product.includes("this.gatewayClient.setReady(matchId, true)"), 'ready acceptance is not a one-way one-click action');
+assert(product.includes('bindReliableButtonAction(ready'), 'ready acceptance is not protected against a snapshot replacing the pressed button');
+assert(product.includes('bindReliableButtonAction(cancel'), 'ready-check cancellation is not protected against a snapshot replacing the pressed button');
+assert(product.includes("this.matchmakingError = 'Ready confirmation timed out. Please try again.'"), 'ready submission can remain locked without an acknowledgement');
 assert(!product.includes("this.gatewayClient.setReady(gatewayMatch.matchId, !self?.ready)"), 'ready acceptance still toggles and can require a second click');
 assert(product.includes('createDraftProgressFields'), 'draft board is not rendered incrementally');
 assert(product.includes("snapshot.state.phase === 'ready-check'"), 'match-found phase does not close the Hub for the Versus stage');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.51.0
+// @version      0.51.1
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with restored live telemetry, authoritative Challenges and Rematches.
 // @match        https://skribbl.io/*
@@ -12642,7 +12642,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.51.0";
+var GATEWAY_CLIENT_VERSION = "0.51.1";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -37281,6 +37281,36 @@ var CHALLENGE_ICON_ASSET_PATHS = {
 	"reflexes-like-a-cat": "challenge-icons/reflexes-like-a-cat.gif",
 	"drop-down": "challenge-icons/drop-down.gif"
 };
+function bindReliableButtonAction(button, action) {
+	let suppressPointerClick = false;
+	let suppressionTimer = null;
+	button.addEventListener("pointerdown", (event) => {
+		if (button.disabled || event.button !== 0 || event.isPrimary === false) return;
+		suppressPointerClick = true;
+		if (suppressionTimer !== null) clearTimeout(suppressionTimer);
+		suppressionTimer = setTimeout(() => {
+			suppressPointerClick = false;
+			suppressionTimer = null;
+		}, 1e3);
+		button.focus({ preventScroll: true });
+		action();
+	});
+	button.addEventListener("click", (event) => {
+		if (suppressPointerClick && event.detail !== 0) {
+			suppressPointerClick = false;
+			if (suppressionTimer !== null) clearTimeout(suppressionTimer);
+			suppressionTimer = null;
+			event.preventDefault();
+			return;
+		}
+		if (!button.disabled) action();
+	});
+	button.addEventListener("pointercancel", () => {
+		suppressPointerClick = false;
+		if (suppressionTimer !== null) clearTimeout(suppressionTimer);
+		suppressionTimer = null;
+	});
+}
 var ISOLATED_POINTER_EVENTS = [
 	"pointerdown",
 	"pointerup",
@@ -37930,6 +37960,9 @@ var DuelProductFoundation = class {
 	matchStartTimer = null;
 	matchmakingError = null;
 	readySubmissionMatchId = null;
+	readySubmissionTimer = null;
+	cancellationSubmissionMatchId = null;
+	cancellationSubmissionTimer = null;
 	draftSubmissionKey = null;
 	lastConclusionMessageMatchId = null;
 	pendingConclusionMessageMatchId = null;
@@ -38047,7 +38080,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.51.0",
+			version: "0.51.1",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 7,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -38147,6 +38180,8 @@ var DuelProductFoundation = class {
 		this.introTimer = null;
 		if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
 		this.winAnimationTimer = null;
+		this.clearReadySubmission();
+		this.clearCancellationSubmission();
 		this.stopIntroAnimation();
 		this.stopCountdownAnimation();
 		this.homeButton = null;
@@ -38163,7 +38198,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.51.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.51.1") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38710,26 +38745,19 @@ var DuelProductFoundation = class {
 		this.registerDeadline(deadline, match.state.readyDeadlineAt, "Ready check \u00B7 ", "s");
 		const actions = element("div", "scd-ready-actions");
 		const accepting = this.readySubmissionMatchId === match.matchId && !self?.ready;
-		const ready = element("button", "scd-button primary scd-ready-action", self?.ready ? "Ready" : accepting ? "Accepting\u2026" : "Ready");
+		const cancelling = this.cancellationSubmissionMatchId === match.matchId;
+		const ready = element("button", "scd-button primary scd-ready-action");
 		ready.type = "button";
-		ready.prepend(this.createIconAsset("challenge-icons/checkmark.gif", "\u2713", "Ready"));
-		ready.disabled = Boolean(self?.ready) || accepting;
-		ready.addEventListener("click", () => {
-			if (ready.disabled) return;
-			this.readySubmissionMatchId = match.matchId;
-			ready.disabled = true;
-			try {
-				this.gatewayClient.setReady(match.matchId, true);
-			} catch (error) {
-				this.readySubmissionMatchId = null;
-				this.matchmakingError = error instanceof Error ? error.message : String(error);
-				this.renderStage();
-			}
-		});
-		const cancel = element("button", "scd-button danger scd-ready-action", "Cancel");
+		ready.append(this.createIconAsset("challenge-icons/checkmark.gif", "\u2713", "Ready"), element("span", "", self?.ready ? "Ready" : accepting ? "Accepting\u2026" : "Ready"));
+		ready.disabled = Boolean(self?.ready) || accepting || cancelling;
+		ready.setAttribute("aria-busy", accepting ? "true" : "false");
+		bindReliableButtonAction(ready, () => this.submitReadyCheck(match.matchId));
+		const cancel = element("button", "scd-button danger scd-ready-action");
 		cancel.type = "button";
-		cancel.prepend(this.createIconAsset("challenge-icons/crossmark.gif", "\u00D7", "Cancel"));
-		cancel.addEventListener("click", () => this.cancelMatchmaking());
+		cancel.append(this.createIconAsset("challenge-icons/crossmark.gif", "\u00D7", "Cancel"), element("span", "", cancelling ? "Cancelling\u2026" : "Cancel"));
+		cancel.disabled = cancelling;
+		cancel.setAttribute("aria-busy", cancelling ? "true" : "false");
+		bindReliableButtonAction(cancel, () => this.cancelReadyCheck(match.matchId));
 		actions.append(ready, cancel);
 		versus.append(players, deadline, actions);
 		if (this.matchmakingError) versus.appendChild(element("div", "scd-auth-error", this.matchmakingError));
@@ -39670,20 +39698,95 @@ var DuelProductFoundation = class {
 	}
 	cancelMatchmaking() {
 		this.matchmakingError = null;
-		this.abortLocalMatch("matchmaking-cancelled");
 		try {
-			return this.gatewayClient.leaveMatchmaking();
+			const requestId = this.gatewayClient.leaveMatchmaking();
+			this.abortLocalMatch("matchmaking-cancelled");
+			return requestId;
 		} catch (error) {
 			this.matchmakingError = error instanceof Error ? error.message : String(error);
 			this.renderPanel();
 			throw error;
 		}
 	}
+	submitReadyCheck(matchId) {
+		const snapshot = this.gatewayState.match;
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		const self = snapshot?.state.participants.find((participant) => participant.accountId === selfAccountId);
+		if (!snapshot || snapshot.matchId !== matchId || snapshot.state.phase !== "ready-check" || self?.ready || this.readySubmissionMatchId === matchId || this.cancellationSubmissionMatchId === matchId) return;
+		this.matchmakingError = null;
+		this.clearReadySubmission();
+		this.readySubmissionMatchId = matchId;
+		this.renderStage();
+		try {
+			this.gatewayClient.setReady(matchId, true);
+		} catch (error) {
+			this.clearReadySubmission();
+			this.matchmakingError = error instanceof Error ? error.message : String(error);
+			this.renderStage();
+			return;
+		}
+		this.readySubmissionTimer = window.setTimeout(() => {
+			this.readySubmissionTimer = null;
+			if (this.readySubmissionMatchId !== matchId) return;
+			const current = this.gatewayState.match;
+			const currentSelf = current?.state.participants.find((participant) => participant.accountId === this.gatewayState.identity?.accountId);
+			if (!current || current.matchId !== matchId || current.state.phase !== "ready-check" || currentSelf?.ready) {
+				this.readySubmissionMatchId = null;
+				return;
+			}
+			this.readySubmissionMatchId = null;
+			this.matchmakingError = "Ready confirmation timed out. Please try again.";
+			this.renderStage();
+		}, 4e3);
+	}
+	cancelReadyCheck(matchId) {
+		const snapshot = this.gatewayState.match;
+		if (!snapshot || snapshot.matchId !== matchId || snapshot.state.phase !== "ready-check" || this.cancellationSubmissionMatchId === matchId) return;
+		this.matchmakingError = null;
+		this.clearCancellationSubmission();
+		this.cancellationSubmissionMatchId = matchId;
+		this.renderStage();
+		try {
+			this.cancelMatchmaking();
+		} catch (error) {
+			this.clearCancellationSubmission();
+			this.matchmakingError = error instanceof Error ? error.message : String(error);
+			this.renderStage();
+			return;
+		}
+		this.cancellationSubmissionTimer = window.setTimeout(() => {
+			this.cancellationSubmissionTimer = null;
+			if (this.cancellationSubmissionMatchId !== matchId) return;
+			const current = this.gatewayState.match;
+			if (!current || current.matchId !== matchId || current.state.phase !== "ready-check") {
+				this.cancellationSubmissionMatchId = null;
+				return;
+			}
+			this.cancellationSubmissionMatchId = null;
+			this.matchmakingError = "Ready-check cancellation timed out. Please try again.";
+			this.renderStage();
+		}, 4e3);
+	}
+	clearReadySubmission() {
+		if (this.readySubmissionTimer !== null) window.clearTimeout(this.readySubmissionTimer);
+		this.readySubmissionTimer = null;
+		this.readySubmissionMatchId = null;
+	}
+	clearCancellationSubmission() {
+		if (this.cancellationSubmissionTimer !== null) window.clearTimeout(this.cancellationSubmissionTimer);
+		this.cancellationSubmissionTimer = null;
+		this.cancellationSubmissionMatchId = null;
+	}
 	handleGatewayMatchState(state) {
 		const snapshot = state.match;
-		if (state.error) this.readySubmissionMatchId = null;
+		if (state.error) {
+			this.clearReadySubmission();
+			this.clearCancellationSubmission();
+			this.matchmakingError = state.error;
+		}
 		if (!snapshot) {
-			this.readySubmissionMatchId = null;
+			this.clearReadySubmission();
+			this.clearCancellationSubmission();
 			if (!state.queue) {
 				if (this.lastGatewayMatchId !== null && state.status !== "connected") this.abortLocalMatch("gateway-match-connection-lost");
 				this.lastGatewayMatchId = null;
@@ -39695,13 +39798,17 @@ var DuelProductFoundation = class {
 			this.pendingRestoredMatchId = null;
 		}
 		if (snapshot.matchId !== this.lastGatewayMatchId) {
+			this.clearReadySubmission();
+			this.clearCancellationSubmission();
 			if (!(snapshot.matchId === this.matchState.matchId && this.currentBoard?.boardId === snapshot.state.draft?.board?.boardId)) this.abortLocalMatch("gateway-match-superseded-local-state");
 			this.lastGatewayMatchId = snapshot.matchId;
 		}
-		if (snapshot.state.phase !== "ready-check") this.readySubmissionMatchId = null;
-		else {
+		if (snapshot.state.phase !== "ready-check") {
+			this.clearReadySubmission();
+			this.clearCancellationSubmission();
+		} else {
 			const selfAccountId = state.identity?.accountId;
-			if (snapshot.state.participants.find((participant) => participant.accountId === selfAccountId)?.ready) this.readySubmissionMatchId = null;
+			if (snapshot.state.participants.find((participant) => participant.accountId === selfAccountId)?.ready) this.clearReadySubmission();
 		}
 		if ((snapshot.state.phase === "ready-check" || snapshot.state.phase === "draft" || snapshot.state.phase === "countdown") && this.settings.panelOpen) this.settingsStore.update({ panelOpen: false });
 		if (snapshot.state.phase === "cancelled") {
@@ -40320,7 +40427,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.51.0";
+var BUILD_VERSION = "0.51.1";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

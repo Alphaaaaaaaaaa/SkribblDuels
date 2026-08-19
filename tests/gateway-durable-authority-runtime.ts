@@ -132,6 +132,64 @@ assert.equal(resolutions.length, beforeDuplicateClaim + 1);
 assert.equal(resolutions.at(-1)?.reason, 'claim-match-not-running');
 await restored.close();
 
+const simulatedPersistence = new MemoryAuthorityPersistence();
+const simulatedMessages: GatewayServerMessage[] = [];
+const simulatedReady = new GatewayMatchmaker({
+  ...options,
+  persistence: simulatedPersistence,
+  simulatedPlayersEnabled: true,
+  simulatedMatchDelayMs: 5,
+  simulatedReadyDelayMs: 5
+});
+simulatedReady.join(peer('alpha', simulatedMessages), {
+  type: 'MATCHMAKING_JOIN', requestId: 'durable-simulated-ready', format: 'casual', page: 'home'
+});
+await new Promise(resolve => setTimeout(resolve, 25));
+await simulatedReady.flushPersistence();
+const simulatedReadySnapshot = simulatedMessages.filter(message =>
+  message.type === 'MATCH_SNAPSHOT' && message.state.phase === 'ready-check'
+).at(-1);
+assert.ok(simulatedReadySnapshot && simulatedReadySnapshot.type === 'MATCH_SNAPSHOT');
+assert.equal(simulatedReadySnapshot.state.participants.some(participant => participant.simulated && participant.ready), true);
+assert.deepEqual(simulatedReady.setReady('alpha', {
+  type: 'READY_SET', matchId: simulatedReadySnapshot.matchId, ready: true
+}), { ok: true });
+await simulatedReady.flushPersistence();
+assert.equal(
+  simulatedMessages.filter(message => message.type === 'MATCH_SNAPSHOT').at(-1)?.state.phase,
+  'draft',
+  'A persisted QueueBot ready-check must accept the real participant and enter Draft.'
+);
+await simulatedReady.close();
+
+const cancellationPersistence = new MemoryAuthorityPersistence();
+const cancellationMessages: GatewayServerMessage[] = [];
+const durableCancellation = new GatewayMatchmaker({
+  ...options,
+  persistence: cancellationPersistence,
+  simulatedPlayersEnabled: true,
+  simulatedMatchDelayMs: 5,
+  simulatedReadyDelayMs: 5
+});
+durableCancellation.join(peer('alpha', cancellationMessages), {
+  type: 'MATCHMAKING_JOIN', requestId: 'durable-simulated-cancel', format: 'casual', page: 'home'
+});
+await new Promise(resolve => setTimeout(resolve, 25));
+await durableCancellation.flushPersistence();
+const cancellationSnapshot = cancellationMessages.filter(message =>
+  message.type === 'MATCH_SNAPSHOT' && message.state.phase === 'ready-check'
+).at(-1);
+assert.ok(cancellationSnapshot && cancellationSnapshot.type === 'MATCH_SNAPSHOT');
+durableCancellation.leave('alpha', 'durable-ready-check-leave');
+await durableCancellation.flushPersistence();
+assert.equal(
+  cancellationMessages.filter(message => message.type === 'MATCH_SNAPSHOT').at(-1)?.state.phase,
+  'cancelled',
+  'A persisted QueueBot ready-check must publish its cancellation before finalization.'
+);
+assert.equal(cancellationPersistence.finalized.has(cancellationSnapshot.matchId), true);
+await durableCancellation.close();
+
 const failingPersistence = new MemoryAuthorityPersistence();
 failingPersistence.failNextSave = true;
 const failedAlphaMessages: GatewayServerMessage[] = [];

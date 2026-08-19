@@ -1,9 +1,19 @@
-# Skribbl Duels v0.51.0
+# Skribbl Duels v0.51.1
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v7, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.51.1
+
+v0.51.1 hardens the Versus ready-check controls against the QueueBot snapshot
+race. Ready and Cancel now commit on the primary pointer press before a
+server-driven re-render can replace the pressed DOM node, while keyboard clicks
+remain supported without double submission. Both actions expose an immediate
+busy label and recover from a missing server acknowledgement after four seconds
+instead of leaving the UI permanently locked. Ready-check cancellation is sent
+to the Gateway before local match state is reset.
 
 ## v0.51.0
 

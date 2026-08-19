@@ -13,6 +13,13 @@ with avatar components below `-1` remain blocked by the server-side RPC unless
 the authenticated profile owns a grant. Use the admin template with the exact
 new profile UUID rather than copying an older account ID.
 
+For v0.51.0, apply
+`202608190001_create_durable_match_authority.sql` before deploying the Gateway.
+It creates Gateway-private Match snapshots, an idempotency ledger, append-only
+revision history and two service-role-only RPCs. Configure the resulting
+Gateway deployment with `SUPABASE_SERVICE_ROLE_KEY`; never expose that key to
+the browser/userscript.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

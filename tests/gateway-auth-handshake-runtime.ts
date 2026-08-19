@@ -20,6 +20,7 @@ const config: GatewayServerConfig = {
   clientOrigin: 'https://skribbl.io',
   supabaseUrl: 'https://example.supabase.co',
   supabasePublishableKey: 'sb_publishable_test',
+  supabaseServiceRoleKey: null,
   helloTimeoutMs: 1_000,
   heartbeatIntervalMs: 25_000,
   matchmakingReadyTimeoutMs: 30_000,
@@ -105,7 +106,13 @@ assert.equal(response.status, 200);
 assert.deepEqual(await response.json(), {
   status: 'ok',
   service: 'skribbl-duels-gateway',
-  contractVersion: GATEWAY_CONTRACT_VERSION
+  contractVersion: GATEWAY_CONTRACT_VERSION,
+  matchAuthority: {
+    enabled: false,
+    healthy: true,
+    restoredMatches: 0,
+    error: null
+  }
 });
 
 const client = new SocketIoGatewayClient({

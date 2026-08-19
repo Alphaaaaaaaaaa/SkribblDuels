@@ -12,16 +12,29 @@ export interface BackToBackState {
   winningEvidenceEventIds: string[];
   observedGameStartEventIds: Record<string, string>;
   lastEndedGameKey: string | null;
+  currentScores: Array<{ playerId: number; totalScore: number; roundScore: number }>;
 }
 
 function winnerSummary(
   meId: number | null,
-  finalScores: readonly { playerId: number; totalScore: number; roundScore: number }[] | undefined
+  finalScores: readonly { playerId: number; totalScore: number; roundScore: number }[] | undefined,
+  trackedScores: readonly { playerId: number; totalScore: number; roundScore: number }[]
 ): { selfScore: number; winningScore: number; won: boolean } | null {
-  if (meId === null || !finalScores || finalScores.length === 0) return null;
+  if (meId === null) return null;
+  const coherent = new Map<number, { playerId: number; totalScore: number; roundScore: number }>();
+  for (const entry of trackedScores) coherent.set(entry.playerId, { ...entry });
+  for (const entry of finalScores ?? []) {
+    const previous = coherent.get(entry.playerId);
+    coherent.set(entry.playerId, {
+      playerId: entry.playerId,
+      totalScore: Math.max(previous?.totalScore ?? Number.NEGATIVE_INFINITY, entry.totalScore),
+      roundScore: Math.max(previous?.roundScore ?? Number.NEGATIVE_INFINITY, entry.roundScore)
+    });
+  }
+  if (coherent.size === 0) return null;
   let selfScore: number | null = null;
   let winningScore = Number.NEGATIVE_INFINITY;
-  for (const entry of finalScores) {
+  for (const entry of coherent.values()) {
     if (!Number.isFinite(entry.totalScore)) continue;
     winningScore = Math.max(winningScore, entry.totalScore);
     if (entry.playerId === meId) selfScore = entry.totalScore;
@@ -37,8 +50,20 @@ function emptyState(): BackToBackState {
     winningGameKeys: [],
     winningEvidenceEventIds: [],
     observedGameStartEventIds: {},
-    lastEndedGameKey: null
+    lastEndedGameKey: null,
+    currentScores: []
   };
+}
+
+function upsertScore(
+  scores: BackToBackState['currentScores'],
+  playerId: number,
+  totalScore: number,
+  roundScore: number
+): BackToBackState['currentScores'] {
+  const next = scores.filter(score => score.playerId !== playerId);
+  next.push({ playerId, totalScore, roundScore });
+  return next;
 }
 
 function gameKey(lobbyId: string, gameSessionId: string | null, eventId: string): string {
@@ -47,7 +72,7 @@ function gameKey(lobbyId: string, gameSessionId: string | null, eventId: string)
 
 export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBackParameters> = {
   id: 'back-to-back',
-  version: 4,
+  version: 5,
   metadata: {
     category: 'progress',
     localization: localization(
@@ -69,9 +94,24 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
     if (typeof value !== 'object' || value === null) return false;
     return isPositiveInteger((value as Partial<BackToBackParameters>).games);
   },
-  relevantEvents: ['GAME_STARTING', 'GAME_ENDED'],
+  relevantEvents: ['LOBBY_HYDRATED', 'GAME_STARTING', 'SCORE_CHANGED', 'ROUND_RESULTS_AVAILABLE', 'GAME_ENDED'],
   allowedLobbyTypes: [0],
   reduce({ event, runtime, parameters }) {
+    if (event.type === 'LOBBY_HYDRATED') {
+      if (!event.payload.players) return null;
+      return {
+        internalState: {
+          ...runtime.internalState,
+          currentScores: event.payload.players.map(player => ({
+            playerId: player.id,
+            totalScore: player.score,
+            roundScore: 0
+          }))
+        },
+        reason: 'back-to-back-scoreboard-hydrated'
+      };
+    }
+
     if (event.type === 'GAME_STARTING') {
       const lobbyId = event.context.lobbyId;
       if (lobbyId === null || event.context.gameSessionId === null) return null;
@@ -85,10 +125,39 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
       return {
         internalState: {
           ...runtime.internalState,
-          observedGameStartEventIds: Object.fromEntries(recent)
+          observedGameStartEventIds: Object.fromEntries(recent),
+          currentScores: []
         },
         reason: 'back-to-back-game-start-observed',
         evidenceEventIds: [event.eventId]
+      };
+    }
+
+    if (event.type === 'SCORE_CHANGED') {
+      const playerId = event.payload.playerId;
+      const totalScore = event.payload.totalScore;
+      if (playerId === null || totalScore === null) return null;
+      return {
+        internalState: {
+          ...runtime.internalState,
+          currentScores: upsertScore(
+            runtime.internalState.currentScores,
+            playerId,
+            totalScore,
+            event.payload.roundScore ?? 0
+          )
+        },
+        reason: 'back-to-back-score-snapshot-updated'
+      };
+    }
+
+    if (event.type === 'ROUND_RESULTS_AVAILABLE') {
+      return {
+        internalState: {
+          ...runtime.internalState,
+          currentScores: event.payload.scores.map(score => ({ ...score }))
+        },
+        reason: 'back-to-back-coherent-round-scores-recorded'
       };
     }
 
@@ -98,7 +167,11 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
     const endedGameKey = gameKey(lobbyId, event.context.gameSessionId, event.eventId);
     if (runtime.internalState.lastEndedGameKey === endedGameKey) return null;
 
-    const summary = winnerSummary(event.context.meId, event.payload.finalScores);
+    const summary = winnerSummary(
+      event.context.meId,
+      event.payload.finalScores,
+      runtime.internalState.currentScores
+    );
     const sameLobby = runtime.internalState.streakLobbyId === null || runtime.internalState.streakLobbyId === lobbyId;
     if (summary === null || !summary.won) {
       return {
@@ -136,7 +209,8 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
           : [endedGameKey],
         winningEvidenceEventIds: evidence,
         observedGameStartEventIds: runtime.internalState.observedGameStartEventIds,
-        lastEndedGameKey: endedGameKey
+        lastEndedGameKey: endedGameKey,
+        currentScores: []
       },
       progress: nextCount,
       complete: nextCount >= parameters.games,

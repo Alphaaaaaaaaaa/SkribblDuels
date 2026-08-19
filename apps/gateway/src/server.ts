@@ -15,6 +15,7 @@ import type {
   GatewayAccessAuthenticator
 } from './authenticate';
 import { GatewayMatchmaker } from './matchmaking';
+import type { GatewayMatchAuthorityPersistence } from './matchPersistence';
 
 interface ClientToServerEvents {
   'gateway:message': (message: unknown) => void;
@@ -34,6 +35,7 @@ interface GatewaySocketData {
 export interface CreateGatewayServerOptions {
   config: GatewayServerConfig;
   authenticate: GatewayAccessAuthenticator;
+  persistence?: GatewayMatchAuthorityPersistence;
 }
 
 export interface GatewayServerInstance {
@@ -63,13 +65,31 @@ function emitMessage(
 
 export function createGatewayServer(options: CreateGatewayServerOptions): GatewayServerInstance {
   const { config, authenticate } = options;
+  const matchmaker = new GatewayMatchmaker({
+    readyTimeoutMs: config.matchmakingReadyTimeoutMs,
+    simulatedPlayersEnabled: config.simulatedPlayersEnabled,
+    simulatedMatchDelayMs: config.simulatedMatchDelayMs,
+    simulatedReadyDelayMs: config.simulatedReadyDelayMs,
+    draftPickTimeoutMs: config.draftPickTimeoutMs,
+    simulatedDraftPickDelayMs: config.simulatedDraftPickDelayMs,
+    draftFinalRevealMs: config.draftFinalRevealMs,
+    matchCountdownMs: config.matchCountdownMs,
+    reconnectGraceMs: config.reconnectGraceMs,
+    drawProposalTimeoutMs: config.drawProposalTimeoutMs,
+    ...(options.persistence ? { persistence: options.persistence } : {}),
+    onPersistenceError(error) {
+      console.error('[Skribbl Duels Gateway] Durable authority persistence failed.', error);
+    }
+  });
+  const restorePromise = matchmaker.restoreFromPersistence();
   const httpServer = createServer((request, response) => {
     if (request.method === 'GET' && request.url === '/healthz') {
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify({
         status: 'ok',
         service: 'skribbl-duels-gateway',
-        contractVersion: GATEWAY_CONTRACT_VERSION
+        contractVersion: GATEWAY_CONTRACT_VERSION,
+        matchAuthority: matchmaker.persistenceStatus()
       }));
       return;
     }
@@ -87,19 +107,6 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     }
   });
   const activeConnections = new Map<string, string>();
-  const matchmaker = new GatewayMatchmaker({
-    readyTimeoutMs: config.matchmakingReadyTimeoutMs,
-    simulatedPlayersEnabled: config.simulatedPlayersEnabled,
-    simulatedMatchDelayMs: config.simulatedMatchDelayMs,
-    simulatedReadyDelayMs: config.simulatedReadyDelayMs,
-    draftPickTimeoutMs: config.draftPickTimeoutMs,
-    simulatedDraftPickDelayMs: config.simulatedDraftPickDelayMs,
-    draftFinalRevealMs: config.draftFinalRevealMs,
-    matchCountdownMs: config.matchCountdownMs,
-    reconnectGraceMs: config.reconnectGraceMs,
-    drawProposalTimeoutMs: config.drawProposalTimeoutMs
-  });
-
   io.use(async (socket, next) => {
     try {
       const decision = await authenticate(socket.handshake.auth?.accessToken);
@@ -281,7 +288,8 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
 
   return {
     httpServer,
-    listen(port = config.port, host = '0.0.0.0') {
+    async listen(port = config.port, host = '0.0.0.0') {
+      await restorePromise;
       return new Promise<number>((resolve, reject) => {
         const onError = (error: Error): void => reject(error);
         httpServer.once('error', onError);
@@ -292,9 +300,9 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         });
       });
     },
-    close() {
-      matchmaker.close();
-      return new Promise<void>(resolve => {
+    async close() {
+      await matchmaker.close();
+      await new Promise<void>(resolve => {
         io.close(() => resolve());
       });
     }

@@ -1,9 +1,35 @@
-# Skribbl Duels v0.50.0
+# Skribbl Duels v0.51.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v7, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.51.0
+
+- Moves live Match authority out of process-only maps into a private Supabase
+  aggregate. Gateway restarts now restore phase, deadlines, Draft, board,
+  participants, claims, result, private chat and per-player Challenge Engines.
+- Persists action, chat, claim and telemetry idempotency keys with every
+  authoritative revision. Duplicate client messages and candidates replay the
+  original decision after a process restart instead of being applied twice.
+- Re-arms ready, Draft, countdown, Draw and reconnect deadlines from their
+  absolute timestamps after restoration; invalid/outdated definition snapshots
+  are retired fail-closed.
+- Prevents restored Claim/Win history from being injected into Skribbl chat a
+  second time while reconstructing the missing result line in local Match Chat.
+- Reconciles an expired countdown on tab focus/visibility recovery so the modal
+  cannot strand the board after background timer throttling.
+- Fixes Deserved? by requiring a positive first-place score (ties remain valid),
+  preserves the last coherent positive scoreboard for Back to back, and adds a
+  `performDrawCommand` fallback for fully played legacy bare-array `.skd` files.
+- Restores the requested 48 px result visual, full-size inner Skribbl avatar,
+  smaller winner composition and non-overlapping Match Chat input padding.
+
+Challenge definitions are now v2.10.0. Apply
+`supabase/migrations/202608190001_create_durable_match_authority.sql`, configure
+the Gateway-only `SUPABASE_SERVICE_ROLE_KEY`, deploy the v0.51.0 Gateway, and
+only then publish the v0.51.0 userscript. Gateway Contract v7 is unchanged.
 
 ## v0.50.0
 
@@ -89,9 +115,10 @@ repository itself contains only the single stable Userscript entry point.
 
 ## Database migrations
 
-v0.50.0 adds no migration. Installations upgrading from before v0.48.0 must
-still apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`
-before deploying the current Gateway.
+v0.51.0 requires
+`supabase/migrations/202608190001_create_durable_match_authority.sql` before the
+Gateway is deployed. Installations upgrading from before v0.48.0 must also
+apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
 
 ## Local verification
 
@@ -106,7 +133,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/reliability-challenge-hardening-v0.50.0.md`,
+See `docs/durable-match-authority-v0.51.0.md`,
+`docs/reliability-challenge-hardening-v0.50.0.md`,
 `docs/full-build-roadmap-post-v0.50.0.md`,
 `docs/live-telemetry-ui-hotfix-v0.49.1.md`,
 `docs/challenge-recovery-match-ui-v0.49.0.md`,

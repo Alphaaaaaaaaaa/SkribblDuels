@@ -77,7 +77,7 @@ assert(source.includes('white-space:pre-wrap;overflow-wrap:anywhere;word-break:b
 assert(source.includes('if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join'), 'client-side Unicode chat limit is missing');
 assert(source.includes("element('span', 'scd-chat-characters', '0')"), 'compact chat character counter is missing');
 assert(source.includes('count.textContent = String(Array.from(input.value).length)'), 'chat counter still displays the maximum');
-assert(source.includes('padding-right:4.25em'), 'chat input does not reserve enough space for the counter');
+assert(source.includes('padding:.2em 3em .2em .5em'), 'chat input does not reserve enough space for the counter');
 assert(source.includes("log.classList.toggle('at-top', log.scrollTop <= 1)"), 'chat gradient scroll state is missing');
 assert(source.includes('background-color:var(--COLOR_PANEL_HI)'), 'Skribbl scrollbar thumb styling is missing');
 assert(source.includes('::-webkit-scrollbar-button') && source.includes('display:none;width:0;height:0'), 'scrollbar arrow buttons are not suppressed');
@@ -109,6 +109,11 @@ assert(source.includes("this.forfeitAfterReconnectMatchId ? 'Ending match…' : 
 assert(source.includes('.scd-card { background:var(--COLOR_PANEL_BG);border-radius:8px;padding:10px; }'), 'borderless panel card styling is missing');
 assert(source.includes('.scd-button.danger { background:#d68e27; }') && source.includes('background:#c4842a'), 'danger button palette is missing');
 assert(source.includes('text-align:center;justify-self:stretch'), 'finished result copy is not centered in its right column');
+assert(source.includes('.scd-result-visual { position:relative;grid-row:1/3;width:48px;aspect-ratio:1/1'), 'finished result visual is not restored to 48px');
+assert(source.includes('.scd-win-player.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }'), 'winner Skribbl avatar does not use the full player box');
+assert(source.includes("document.addEventListener('visibilitychange', this.visibilityRecovery, true)"), 'background-countdown visibility recovery is missing');
+assert(source.includes('}, false);') && source.includes('mirrorToSkribbl = true'), 'historical completion messages are still mirrored into Skribbl chat');
+assert(source.includes('suppressExternalConclusionForMatchIds'), 'historical result chat suppression is missing');
 assert(source.includes("this.checkbox('Show Match Chat toast notifications'"), 'chat notification toggle is missing');
 assert(source.includes("element('div', 'typo-toast scd-duel-toast')"), 'Typo-compatible chat toast is missing');
 assert(source.includes('private showConfirmToast('), 'Typo-compatible confirm toast is missing');

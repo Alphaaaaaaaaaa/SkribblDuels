@@ -32,6 +32,7 @@
 | Match result and Rematch UI | Complete | Crowned winner card/animation, human elapsed time, three result actions and Contract v7 Rematch readiness |
 | Match Chat polish | Complete | Unicode counter, submit auto-scroll, top fade, native scrollbars and optional Typo-compatible toast notifications |
 | v0.50 reliability hardening | Complete | Rematch queue isolation, WebSocket-first reconnect recovery, active-lobby action locks, `.skd` collection support and Challenge boundary tests |
+| v0.51 durable Match authority | Complete | Supabase snapshots, restart hydration, re-armed deadlines, durable action/chat/claim/telemetry idempotency and revision audit history |
 
 ## Active development sequence
 
@@ -41,12 +42,9 @@
 - Reuse the authoritative Ready, Draft, Countdown and reconnect lifecycle.
 - Prevent an invite token from revealing account data before it is accepted.
 
-### 2. Durable authority and production reliability
+### 2. Production reliability
 
-- Persist matches, participants, boards, claims and final results in Supabase.
-- Restore matches after Gateway process restarts and make actions/claims
-  durably idempotent.
-- Add multi-instance realtime coordination, health/readiness checks, metrics,
+- Add multi-instance realtime coordination, deeper readiness checks, metrics,
   alerting, rate limits and anti-replay/anti-cheat enforcement.
 
 ### 3. Ranked competition and history
@@ -67,10 +65,10 @@
 - Closed two-player tests, then Casual beta, then Ranked beta.
 
 Challenge recovery, the balance pass and Rematch readiness shipped in v0.49.0.
-v0.50.0 hardens the telemetry/reconnect boundary and the requested Challenge
-semantics without changing Contract v7. Invite links remain a parallel product
-workstream; durable authority and production reliability are the highest-risk
-remaining prerequisites.
+v0.50.0 hardened the telemetry/reconnect boundary. v0.51.0 adds restart-safe
+Match authority and durable idempotency without changing Contract v7. Invite
+links remain a parallel product workstream; multi-instance coordination,
+observability and anti-abuse controls are now the highest-risk prerequisites.
 The complete post-v0.50 build gate is recorded in
 `docs/full-build-roadmap-post-v0.50.0.md`.
 The complete approved UI direction is recorded in

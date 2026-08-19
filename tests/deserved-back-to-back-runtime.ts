@@ -131,7 +131,31 @@ deserved.register(deservedDefinition);
 deserved.activate({ instanceId: 'deserved', challengeId: 'deserved' });
 deserved.process(event('LOBBY_HYDRATED', 'deserved-mid-game-hydrate', 1, hydrationPayload, 'deserved-game', null, 'PROGRESS1', 4, 'DRAWING'));
 deserved.process(event('SCORE_CHANGED', 'deserved-self-catches-up', 10, scorePayload(21, 300, 901), 'deserved-game', self));
-assert(deserved.getInstance('deserved')?.status === 'completion-pending', 'Deserved should complete immediately after reaching sole first place in a game joined mid-progress.');
+assert(deserved.getInstance('deserved')?.status === 'completion-pending', 'Deserved should complete after reaching positive first place in a game joined mid-progress.');
+
+const zeroGuard = new ChallengeEngine({ autoPersist: false });
+zeroGuard.register(deservedDefinition);
+zeroGuard.activate({ instanceId: 'deserved', challengeId: 'deserved' });
+zeroGuard.process(event('LOBBY_HYDRATED', 'zero-reset-hydrate', 20, {
+  ...hydrationPayload,
+  players: midGamePlayers.map(player => ({ ...player, score: 0 }))
+}, 'zero-reset-game', null));
+zeroGuard.process(event('SCORE_CHANGED', 'zero-reset-self', 21, scorePayload(21, 300, 0), 'zero-reset-game', self));
+assert(zeroGuard.getInstance('deserved')?.status === 'active', 'A temporary all-zero scoreboard at round rollover must never complete Deserved.');
+
+const tieAllowed = new ChallengeEngine({ autoPersist: false });
+tieAllowed.register(deservedDefinition);
+tieAllowed.activate({ instanceId: 'deserved', challengeId: 'deserved' });
+tieAllowed.process(event('LOBBY_HYDRATED', 'tie-hydrate', 30, {
+  ...hydrationPayload,
+  players: [
+    { ...midGamePlayers[0]!, score: 300 },
+    { ...midGamePlayers[1]!, score: 500 },
+    { ...midGamePlayers[2]!, score: 400 }
+  ]
+}, 'tie-game', null));
+tieAllowed.process(event('SCORE_CHANGED', 'tie-self-reaches-first', 31, scorePayload(21, 300, 500), 'tie-game', self));
+assert(tieAllowed.getInstance('deserved')?.status === 'completion-pending', 'A positive tie for first place must count for Deserved.');
 
 const disqualified = new ChallengeEngine({ autoPersist: false });
 disqualified.register(deservedDefinition);
@@ -205,4 +229,4 @@ zeroScore.activate({ instanceId: 'b2b', challengeId: 'back-to-back' });
 zeroScore.process(event('GAME_ENDED', 'zero-score-tie', 500, finalPayload(0, 0), 'zero-score-game', null, 'PROGRESS1', 6, 'GAME_ENDED'));
 assert(zeroScore.getInstance('b2b')?.progress.current === 0, 'A 0-point first-place tie must not count as a win.');
 
-console.log('Deserved v2 and Back to back v4 runtime tests passed.');
+console.log('Deserved v3 and Back to back v5 runtime tests passed.');

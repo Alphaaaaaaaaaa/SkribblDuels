@@ -8,12 +8,12 @@ separate, already identified workstream.
 
 ### Durable match authority
 
-- Persist matches, participants, draft state, claims, conclusions and rematch
-  readiness in the database instead of process memory.
-- Restore running matches after a Gateway restart, not only after a browser
-  reconnect.
-- Make every client action and claim idempotent with durable action IDs and an
-  auditable event log.
+- **Delivered in v0.51.0:** persist Match participants, Draft, claims,
+  conclusions, chat, per-player Challenge authority and Rematch readiness.
+- **Delivered in v0.51.0:** restore live/finished matches and absolute timers
+  after a Gateway restart.
+- **Delivered in v0.51.0:** persist action/chat/claim/telemetry idempotency keys
+  and an auditable revision log.
 - Add retention rules for raw telemetry, derived evidence and chat.
 
 ### Realtime infrastructure
@@ -97,13 +97,11 @@ separate, already identified workstream.
 
 ## Recommended execution order
 
-1. Durable match authority and idempotency.
-2. Multi-instance realtime infrastructure, observability and abuse controls.
-3. Invite links on top of the durable authority.
-4. Ranked rating, history and leaderboards.
-5. Full Challenge live certification and balancing telemetry.
-6. Localization, accessibility, end-to-end/load testing and release automation.
+1. Multi-instance realtime infrastructure, observability and abuse controls.
+2. Invite links on top of the durable authority.
+3. Ranked rating, history and leaderboards.
+4. Full Challenge live certification and balancing telemetry.
+5. Localization, accessibility, end-to-end/load testing and release automation.
 
 The product should be considered a complete production build only after P0 and
 P1 are finished and the P2 release gates pass in staging.
-

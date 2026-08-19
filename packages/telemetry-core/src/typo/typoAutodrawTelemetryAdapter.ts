@@ -28,7 +28,7 @@ export interface TypoSkdPastedPayload {
 interface LoadedSkd {
   payload: TypoSkdLoadedPayload;
   commandSignatures: string[];
-  matchIndex: number;
+  matchIndices: Record<'telemetry' | 'performed', number>;
 }
 
 interface UnknownRecord {
@@ -147,11 +147,15 @@ export class TypoAutodrawTelemetryAdapter {
   private telemetrySubscription: Subscription | null = null;
   private originalFileInputClick: typeof HTMLInputElement.prototype.click | null = null;
   private patchedFileInputClick: typeof HTMLInputElement.prototype.click | null = null;
+  private ownDrawingActive = false;
 
   public constructor(private readonly telemetryStore: TelemetryStore) {}
 
   public start(): void {
-    if (typeof document !== 'undefined') document.addEventListener('change', this.handleFileInputChange, true);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('change', this.handleFileInputChange, true);
+      document.addEventListener('performDrawCommand', this.handlePerformedDrawCommand, true);
+    }
     this.patchDetachedFileInputs();
     if (typeof window !== 'undefined') {
       window.addEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
@@ -164,7 +168,10 @@ export class TypoAutodrawTelemetryAdapter {
   }
 
   public stop(): void {
-    if (typeof document !== 'undefined') document.removeEventListener('change', this.handleFileInputChange, true);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('change', this.handleFileInputChange, true);
+      document.removeEventListener('performDrawCommand', this.handlePerformedDrawCommand, true);
+    }
     if (typeof window !== 'undefined') {
       window.removeEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
       window.removeEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
@@ -178,6 +185,7 @@ export class TypoAutodrawTelemetryAdapter {
     this.loaded.clear();
     this.emittedPasteKeys.clear();
     this.recentLoadAt.clear();
+    this.ownDrawingActive = false;
   }
 
   private patchDetachedFileInputs(): void {
@@ -270,7 +278,7 @@ export class TypoAutodrawTelemetryAdapter {
     this.loaded.set(payload.fingerprint, {
       payload,
       commandSignatures,
-      matchIndex: 0
+      matchIndices: { telemetry: 0, performed: 0 }
     });
     const now = Date.now();
     const previousLoadAt = this.recentLoadAt.get(payload.fingerprint);
@@ -303,8 +311,14 @@ export class TypoAutodrawTelemetryAdapter {
   }
 
   private handleTelemetry(event: TelemetryEvent): void {
+    this.ownDrawingActive = event.context.meId !== null
+      && event.context.drawerId === event.context.meId
+      && event.context.roundSessionId !== null;
     if (event.type === 'LOBBY_CHANGED') {
-      for (const loaded of this.loaded.values()) loaded.matchIndex = 0;
+      for (const loaded of this.loaded.values()) {
+        loaded.matchIndices.telemetry = 0;
+        loaded.matchIndices.performed = 0;
+      }
       this.emittedPasteKeys.clear();
       return;
     }
@@ -313,20 +327,34 @@ export class TypoAutodrawTelemetryAdapter {
     for (const command of event.payload.commands) {
       const signature = commandSignature(command.raw);
       if (signature === null) continue;
-      for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, event);
+      for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, 'telemetry');
     }
   }
 
-  private consumeSignature(loaded: LoadedSkd, signature: string, event: TelemetryEvent): void {
+  private readonly handlePerformedDrawCommand = (event: Event): void => {
+    if (!this.ownDrawingActive || !(event instanceof CustomEvent)) return;
+    const detail = recordValue(event.detail);
+    const command = detail?.command ?? detail?.raw ?? event.detail;
+    const signature = commandSignature(command);
+    if (signature === null) return;
+    for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, 'performed');
+  };
+
+  private consumeSignature(
+    loaded: LoadedSkd,
+    signature: string,
+    source: 'telemetry' | 'performed'
+  ): void {
     if (loaded.commandSignatures.length === 0) return;
-    const expected = loaded.commandSignatures[loaded.matchIndex];
+    const matchIndex = loaded.matchIndices[source];
+    const expected = loaded.commandSignatures[matchIndex];
     if (signature === expected) {
-      loaded.matchIndex += 1;
+      loaded.matchIndices[source] += 1;
     } else {
-      loaded.matchIndex = signature === loaded.commandSignatures[0] ? 1 : 0;
+      loaded.matchIndices[source] = signature === loaded.commandSignatures[0] ? 1 : 0;
     }
-    if (loaded.matchIndex < loaded.commandSignatures.length) return;
-    loaded.matchIndex = 0;
+    if (loaded.matchIndices[source] < loaded.commandSignatures.length) return;
+    loaded.matchIndices[source] = 0;
     this.emitPasted({
       fileName: loaded.payload.fileName,
       fingerprint: loaded.payload.fingerprint,

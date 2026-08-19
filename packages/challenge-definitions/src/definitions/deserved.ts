@@ -58,12 +58,12 @@ function resetScores(players: readonly DeservedPlayerScore[]): DeservedPlayerSco
   return players.map(player => ({ ...player, score: 0, departed: false }));
 }
 
-function isStrictFirst(players: readonly DeservedPlayerScore[], selfPlayerId: number): boolean {
+function isPositiveFirst(players: readonly DeservedPlayerScore[], selfPlayerId: number): boolean {
   const active = players.filter(player => !player.departed);
   const self = active.find(player => player.playerId === selfPlayerId);
   const opponents = active.filter(player => player.playerId !== selfPlayerId);
-  if (!self || opponents.length === 0) return false;
-  return opponents.every(player => self.score > player.score);
+  if (!self || self.score <= 0 || opponents.length === 0) return false;
+  return opponents.every(player => self.score >= player.score);
 }
 
 function initialState(): DeservedState {
@@ -104,14 +104,14 @@ function startTracking(
 
 export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedParameters> = {
   id: 'deserved',
-  version: 2,
+  version: 3,
   metadata: {
     category: 'progress',
     localization: localization(
       'Deserved?',
-      'Reach sole first place in a public game without having been the first guesser since joining that game. Completion happens immediately when first place is reached.',
+      'Reach first place in a public game with a positive score, ties included, without having been the first guesser since joining that game.',
       'Deserved?',
-      'Erreiche in einem öffentlichen Spiel allein Platz 1, ohne seit deinem Beitritt zu diesem Spiel jemals First Guesser gewesen zu sein. Die Challenge wird sofort beim Erreichen von Platz 1 erfüllt.'
+      'Erreiche in einem öffentlichen Spiel mit positiver Punktzahl Platz 1, Gleichstand eingeschlossen, ohne seit deinem Beitritt zu diesem Spiel jemals First Guesser gewesen zu sein.'
     ),
     icon: 'deserved-first-place',
     rankedEligible: true,
@@ -131,6 +131,7 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
     'ROUND_STARTED',
     'SCORE_CHANGED',
     'FIRST_GUESS',
+    'ROUND_RESULTS_AVAILABLE',
     'GAME_ENDED'
   ],
   allowedLobbyTypes: [0],
@@ -281,7 +282,7 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
       }
 
       const players = upsertPlayer(active.players, playerId, totalScore, false);
-      const reachedFirst = !active.selfWasFirstGuesser && isStrictFirst(players, selfPlayerId);
+      const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
       const evidenceEventIds = [
         ...(active.trackingStartedEventId ? [active.trackingStartedEventId] : []),
         event.eventId
@@ -297,8 +298,43 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
         reason: explicitReset
           ? 'deserved-new-game-detected-by-score-reset'
           : reachedFirst
-            ? 'deserved-sole-first-place-reached-without-first-guess'
+            ? 'deserved-positive-first-place-reached-without-first-guess'
             : 'deserved-scoreboard-updated',
+        evidenceEventIds
+      };
+    }
+
+    if (event.type === 'ROUND_RESULTS_AVAILABLE') {
+      const gameSessionId = event.context.gameSessionId;
+      const selfPlayerId = event.context.meId;
+      if (gameSessionId === null || selfPlayerId === null || event.payload.scores.length === 0) return null;
+      const active = state.activeGameSessionId === gameSessionId
+        ? state
+        : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
+      const players = event.payload.scores.map(score => ({
+        playerId: score.playerId,
+        score: score.totalScore,
+        departed: false
+      }));
+      const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
+      const evidenceEventIds = [
+        ...(active.trackingStartedEventId ? [active.trackingStartedEventId] : []),
+        event.eventId
+      ];
+      return {
+        internalState: {
+          ...active,
+          selfPlayerId,
+          players,
+          lobbyPlayers: players
+        },
+        progress: reachedFirst ? 1 : 0,
+        complete: reachedFirst,
+        reason: reachedFirst
+          ? 'deserved-coherent-positive-first-place-without-first-guess'
+          : active.selfWasFirstGuesser
+            ? 'deserved-round-finished-after-self-first-guess'
+            : 'deserved-coherent-round-ranking-not-first',
         evidenceEventIds
       };
     }

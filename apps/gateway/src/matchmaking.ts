@@ -29,7 +29,14 @@ import type {
   GatewayTelemetryBatchMessage
 } from '@skribbl-duels/gateway-contracts';
 import { GatewayDraftAuthority } from './draftAuthority';
-import { GatewayPlayerTelemetryAuthority } from './telemetryAuthority';
+import type {
+  GatewayDurableMatchSnapshot,
+  GatewayMatchAuthorityPersistence
+} from './matchPersistence';
+import {
+  GatewayPlayerTelemetryAuthority,
+  type GatewayTelemetryAuthoritySnapshot
+} from './telemetryAuthority';
 
 type DuelFormat = GatewayMatchmakingJoinMessage['format'];
 
@@ -53,6 +60,9 @@ export interface GatewayMatchmakerOptions {
   now?: () => number;
   createId?: () => string;
   random?: () => number;
+  persistence?: GatewayMatchAuthorityPersistence;
+  durableRetentionMs?: number;
+  onPersistenceError?: (error: Error) => void;
 }
 
 interface QueueEntry extends MatchmakingPeer {
@@ -116,6 +126,43 @@ interface ActiveMatch {
   rematchReadyAccountIds: Set<string>;
 }
 
+interface DurableMatchParticipant {
+  identity: GatewayClientIdentity;
+  capabilities: GatewayClientCapability[];
+  ready: boolean;
+  simulated: boolean;
+  chatSentAt: number[];
+  claimSubmittedAt: number[];
+}
+
+interface DurableActiveMatchAggregate {
+  matchId: string;
+  format: DuelFormat;
+  phase: GatewayMatchmakingState['phase'];
+  participants: DurableMatchParticipant[];
+  readyDeadlineAt: number | null;
+  countdownEndsAt: number | null;
+  startedAt: number | null;
+  startingAccountId: string;
+  createdAt: number;
+  revision: number;
+  draft: ActiveDraft | null;
+  claims: GatewayAuthoritativeClaim[];
+  drawProposal: GatewayDrawProposal | null;
+  conclusion: GatewayMatchConclusion | null;
+  telemetryAuthorities: Array<[string, GatewayTelemetryAuthoritySnapshot]>;
+  chatMessages: GatewayDuelChatMessage[];
+  chatByClientId: Array<[string, GatewayDuelChatMessage]>;
+  claimResolutions: Array<[string, GatewayClaimResolutionMessage]>;
+  processedActions: Array<[string, string]>;
+  rematchReadyAccountIds: string[];
+}
+
+interface BufferedMatchOutbound {
+  accountId: string | null;
+  message: GatewayServerMessage;
+}
+
 export type ReadyDecision =
   | { ok: true }
   | { ok: false; code: string; message: string };
@@ -150,12 +197,50 @@ export class GatewayMatchmaker {
   private readonly createId: () => string;
   private readonly random: () => number;
   private readonly draftAuthority = new GatewayDraftAuthority();
+  private persistenceQueue: Promise<void> = Promise.resolve();
+  private persistenceError: Error | null = null;
+  private readonly bufferedOutbound = new Map<string, BufferedMatchOutbound[]>();
+  private restoredMatchCount = 0;
   private simulatedNameIndex = 0;
 
   public constructor(private readonly options: GatewayMatchmakerOptions) {
     this.now = options.now ?? Date.now;
     this.createId = options.createId ?? randomUUID;
     this.random = options.random ?? Math.random;
+  }
+
+  public async restoreFromPersistence(): Promise<number> {
+    const persistence = this.options.persistence;
+    if (!persistence) return 0;
+    const snapshots = await persistence.loadActiveMatches(this.now());
+    for (const snapshot of snapshots) {
+      try {
+        this.restoreMatch(snapshot);
+      } catch (error) {
+        const invalid = error instanceof Error ? error : new Error(String(error));
+        this.options.onPersistenceError?.(invalid);
+        try {
+          await persistence.finalizeMatch(snapshot.matchId, 'durable-snapshot-invalid', this.now());
+        } catch (finalizeError) {
+          this.reportPersistenceError(finalizeError);
+        }
+      }
+    }
+    this.restoredMatchCount = this.matches.size;
+    return this.restoredMatchCount;
+  }
+
+  public async flushPersistence(): Promise<void> {
+    await this.persistenceQueue;
+  }
+
+  public persistenceStatus(): { enabled: boolean; healthy: boolean; restoredMatches: number; error: string | null } {
+    return {
+      enabled: Boolean(this.options.persistence),
+      healthy: this.persistenceError === null,
+      restoredMatches: this.restoredMatchCount,
+      error: this.persistenceError?.message ?? null
+    };
   }
 
   public join(peer: MatchmakingPeer, request: GatewayMatchmakingJoinMessage): void {
@@ -239,6 +324,10 @@ export class GatewayMatchmaker {
     }
     if (participant.reconnectTimer) clearTimeout(participant.reconnectTimer);
     participant.reconnectTimer = null;
+    if (match.phase === 'finished' && match.expiryTimer) {
+      clearTimeout(match.expiryTimer);
+      match.expiryTimer = null;
+    }
     participant.identity = peer.identity;
     participant.capabilities = [...peer.capabilities];
     participant.send = peer.send;
@@ -378,6 +467,7 @@ export class GatewayMatchmaker {
       }
     }
     this.broadcast(match, outgoing);
+    this.persistMatch(match);
     return { ok: true };
   }
 
@@ -637,11 +727,17 @@ export class GatewayMatchmaker {
       return { ok: false, code: 'TELEMETRY_PARTICIPANT_INVALID', message: 'No telemetry authority exists for this participant.' };
     }
     const decision = authority.processBatch(message, this.now());
-    this.emitToAccount(match, accountId, {
+    const acknowledgement: GatewayServerMessage = {
       type: 'TELEMETRY_ACK',
       matchId: match.matchId,
       lastSequence: decision.lastSequence
-    });
+    };
+    if (decision.ok) {
+      this.bufferToAccount(match, accountId, acknowledgement);
+      this.persistMatch(match);
+    } else {
+      this.emitToAccount(match, accountId, acknowledgement);
+    }
     return decision.ok
       ? { ok: true }
       : { ok: false, code: decision.code, message: decision.message };
@@ -678,13 +774,15 @@ export class GatewayMatchmaker {
     if (match.phase !== 'running') {
       const resolution = this.rejectClaim(match, accountId, message, 'claim-match-not-running');
       this.rememberClaimResolution(match, dedupeKey, resolution);
-      this.emitToAccount(match, accountId, resolution);
+      this.bufferToAccount(match, accountId, resolution);
+      this.persistMatch(match);
       return { ok: true };
     }
     if (match.claims.some(claim => claim.challengeId === message.challengeId)) {
       const resolution = this.rejectClaim(match, accountId, message, 'challenge-already-claimed');
       this.rememberClaimResolution(match, dedupeKey, resolution);
-      this.emitToAccount(match, accountId, resolution);
+      this.bufferToAccount(match, accountId, resolution);
+      this.persistMatch(match);
       return { ok: true };
     }
     const authority = match.telemetryAuthorities.get(accountId);
@@ -695,7 +793,8 @@ export class GatewayMatchmaker {
     if (!validation.ok) {
       const resolution = this.rejectClaim(match, accountId, message, validation.code.toLowerCase());
       this.rememberClaimResolution(match, dedupeKey, resolution);
-      this.emitToAccount(match, accountId, resolution);
+      this.bufferToAccount(match, accountId, resolution);
+      this.persistMatch(match);
       return { ok: true };
     }
 
@@ -754,7 +853,7 @@ export class GatewayMatchmaker {
     return { ok: true };
   }
 
-  public close(): void {
+  public async close(): Promise<void> {
     for (const format of ['casual', 'ranked'] as const) {
       for (const entry of this.queues[format]) {
         if (entry.simulationTimer) clearTimeout(entry.simulationTimer);
@@ -763,11 +862,15 @@ export class GatewayMatchmaker {
     }
     for (const match of this.matches.values()) {
       this.clearMatchTimers(match);
+    }
+    await this.flushPersistence();
+    for (const match of this.matches.values()) {
       for (const authority of match.telemetryAuthorities.values()) authority.destroy();
       match.telemetryAuthorities.clear();
     }
     this.matches.clear();
     this.accountMatches.clear();
+    this.bufferedOutbound.clear();
   }
 
   private cancelAccount(accountId: string, reason: string): void {
@@ -1213,7 +1316,7 @@ export class GatewayMatchmaker {
     this.deleteMatch(match);
   }
 
-  private deleteMatch(match: ActiveMatch): void {
+  private deleteMatch(match: ActiveMatch, reason = 'match-removed'): void {
     this.clearMatchTimers(match);
     for (const authority of match.telemetryAuthorities.values()) authority.destroy();
     match.telemetryAuthorities.clear();
@@ -1222,6 +1325,10 @@ export class GatewayMatchmaker {
       if (this.accountMatches.get(participant.identity.accountId) === match.matchId) {
         this.accountMatches.delete(participant.identity.accountId);
       }
+    }
+    const persistence = this.options.persistence;
+    if (persistence) {
+      this.enqueuePersistence(() => persistence.finalizeMatch(match.matchId, reason, this.now()));
     }
   }
 
@@ -1246,6 +1353,7 @@ export class GatewayMatchmaker {
       accountId: null,
       reason: 'both-participants-requested-rematch'
     });
+    this.persistMatch(match);
     this.deleteMatch(match);
 
     const asQueueEntry = (participant: MatchParticipant): QueueEntry => ({
@@ -1423,9 +1531,7 @@ export class GatewayMatchmaker {
   }
 
   private broadcast(match: ActiveMatch, message: GatewayServerMessage): void {
-    for (const participant of match.participants) {
-      if (!participant.simulated && participant.connected) participant.send(message);
-    }
+    this.bufferMatchOutbound(match, { accountId: null, message });
   }
 
   private emitSnapshot(match: ActiveMatch): void {
@@ -1435,9 +1541,8 @@ export class GatewayMatchmaker {
       revision: match.revision,
       state: this.publicState(match)
     };
-    for (const participant of match.participants) {
-      if (!participant.simulated && participant.connected) participant.send(message);
-    }
+    this.bufferMatchOutbound(match, { accountId: null, message });
+    this.persistMatch(match);
   }
 
   private emitSnapshotToAccount(match: ActiveMatch, accountId: string): void {
@@ -1458,8 +1563,329 @@ export class GatewayMatchmaker {
       revision: match.revision,
       event
     };
+    this.bufferMatchOutbound(match, { accountId: null, message });
+  }
+
+  private bufferToAccount(match: ActiveMatch, accountId: string, message: GatewayServerMessage): void {
+    this.bufferMatchOutbound(match, { accountId, message });
+  }
+
+  private bufferMatchOutbound(match: ActiveMatch, outgoing: BufferedMatchOutbound): void {
+    const pending = this.bufferedOutbound.get(match.matchId) ?? [];
+    pending.push({ accountId: outgoing.accountId, message: structuredClone(outgoing.message) });
+    this.bufferedOutbound.set(match.matchId, pending);
+  }
+
+  private deliverBuffered(match: ActiveMatch, pending: readonly BufferedMatchOutbound[]): void {
+    for (const outgoing of pending) {
+      if (outgoing.accountId !== null) {
+        this.emitToAccount(match, outgoing.accountId, outgoing.message);
+        continue;
+      }
+      for (const participant of match.participants) {
+        if (!participant.simulated && participant.connected) participant.send(outgoing.message);
+      }
+    }
+  }
+
+  private persistMatch(match: ActiveMatch): void {
+    const persistence = this.options.persistence;
+    const pending = this.bufferedOutbound.get(match.matchId) ?? [];
+    this.bufferedOutbound.delete(match.matchId);
+    if (!persistence) {
+      this.deliverBuffered(match, pending);
+      return;
+    }
+    const savedAt = this.now();
+    const snapshot: GatewayDurableMatchSnapshot = {
+      snapshotVersion: 1,
+      matchId: match.matchId,
+      revision: match.revision,
+      phase: match.phase,
+      savedAt,
+      expiresAt: savedAt + (this.options.durableRetentionMs ?? 24 * 60 * 60 * 1_000),
+      aggregate: this.durableAggregate(match),
+      idempotency: this.durableIdempotency(match)
+    };
+    this.enqueuePersistence(
+      () => persistence.saveMatch(snapshot),
+      () => this.deliverBuffered(match, pending)
+    );
+  }
+
+  private durableAggregate(match: ActiveMatch): DurableActiveMatchAggregate {
+    return {
+      matchId: match.matchId,
+      format: match.format,
+      phase: match.phase,
+      participants: match.participants.map(participant => ({
+        identity: structuredClone(participant.identity),
+        capabilities: [...participant.capabilities],
+        ready: participant.ready,
+        simulated: participant.simulated,
+        chatSentAt: [...participant.chatSentAt],
+        claimSubmittedAt: [...participant.claimSubmittedAt]
+      })),
+      readyDeadlineAt: match.readyDeadlineAt,
+      countdownEndsAt: match.countdownEndsAt,
+      startedAt: match.startedAt,
+      startingAccountId: match.startingAccountId,
+      createdAt: match.createdAt,
+      revision: match.revision,
+      draft: match.draft ? structuredClone(match.draft) : null,
+      claims: structuredClone(match.claims),
+      drawProposal: match.drawProposal ? structuredClone(match.drawProposal) : null,
+      conclusion: match.conclusion ? structuredClone(match.conclusion) : null,
+      telemetryAuthorities: Array.from(match.telemetryAuthorities, ([accountId, authority]) => [
+        accountId,
+        authority.exportSnapshot()
+      ]),
+      chatMessages: structuredClone(match.chatMessages),
+      chatByClientId: Array.from(match.chatByClientId, ([key, message]) => [key, structuredClone(message)]),
+      claimResolutions: Array.from(match.claimResolutions, ([key, resolution]) => [key, structuredClone(resolution)]),
+      processedActions: Array.from(match.processedActions),
+      rematchReadyAccountIds: [...match.rematchReadyAccountIds]
+    };
+  }
+
+  private durableIdempotency(match: ActiveMatch): GatewayDurableMatchSnapshot['idempotency'] {
+    const rows: GatewayDurableMatchSnapshot['idempotency'] = [];
+    for (const [compositeKey, fingerprint] of match.processedActions) {
+      const separator = compositeKey.indexOf(':');
+      rows.push({
+        namespace: 'action',
+        accountId: separator >= 0 ? compositeKey.slice(0, separator) : '',
+        key: separator >= 0 ? compositeKey.slice(separator + 1) : compositeKey,
+        fingerprint,
+        result: null
+      });
+    }
+    for (const [compositeKey, message] of match.chatByClientId) {
+      const separator = compositeKey.indexOf(':');
+      rows.push({
+        namespace: 'chat',
+        accountId: separator >= 0 ? compositeKey.slice(0, separator) : message.authorAccountId,
+        key: separator >= 0 ? compositeKey.slice(separator + 1) : compositeKey,
+        fingerprint: message.message,
+        result: message
+      });
+    }
+    for (const [compositeKey, resolution] of match.claimResolutions) {
+      const separator = compositeKey.indexOf(':');
+      rows.push({
+        namespace: 'claim',
+        accountId: separator >= 0 ? compositeKey.slice(0, separator) : resolution.ownerAccountId,
+        key: separator >= 0 ? compositeKey.slice(separator + 1) : compositeKey,
+        fingerprint: `${resolution.challengeId}:${resolution.definitionVersion}`,
+        result: resolution
+      });
+    }
+    for (const [accountId, authority] of match.telemetryAuthorities) {
+      rows.push({
+        namespace: 'telemetry',
+        accountId,
+        key: String(authority.getLastSequence()),
+        fingerprint: `sequence:${authority.getLastSequence()}`,
+        result: { lastSequence: authority.getLastSequence() }
+      });
+    }
+    return rows;
+  }
+
+  private restoreMatch(snapshot: GatewayDurableMatchSnapshot): void {
+    const aggregate = snapshot.aggregate as Partial<DurableActiveMatchAggregate> | null;
+    if (!aggregate
+        || aggregate.matchId !== snapshot.matchId
+        || aggregate.revision !== snapshot.revision
+        || aggregate.phase !== snapshot.phase
+        || !Array.isArray(aggregate.participants)
+        || aggregate.participants.length !== 2
+        || typeof aggregate.startingAccountId !== 'string'
+        || typeof aggregate.createdAt !== 'number') {
+      throw new Error(`Durable Duel snapshot ${snapshot.matchId} is structurally invalid.`);
+    }
+    if (aggregate.phase === 'cancelled') {
+      throw new Error(`Durable Duel snapshot ${snapshot.matchId} is already cancelled.`);
+    }
+    for (const participant of aggregate.participants) {
+      const accountId = participant.identity?.accountId;
+      if (!accountId || (!participant.simulated && this.accountMatches.has(accountId))) {
+        throw new Error(`Durable Duel snapshot ${snapshot.matchId} has an invalid participant mapping.`);
+      }
+    }
+    const draft = aggregate.draft ? structuredClone(aggregate.draft) : null;
+    if (draft?.board) {
+      for (const field of draft.board.fields) {
+        if (this.draftAuthority.definitionVersion(field.challengeId) !== field.definitionVersion) {
+          throw new Error(`Durable Duel snapshot ${snapshot.matchId} uses an unsupported challenge definition.`);
+        }
+      }
+    }
+    const participants: MatchParticipant[] = aggregate.participants.map(participant => ({
+      identity: structuredClone(participant.identity),
+      capabilities: [...participant.capabilities],
+      ready: participant.ready,
+      simulated: participant.simulated,
+      connected: participant.simulated,
+      reconnectTimer: null,
+      chatSentAt: [...participant.chatSentAt],
+      claimSubmittedAt: [...participant.claimSubmittedAt],
+      send() {}
+    }));
+    const match: ActiveMatch = {
+      matchId: aggregate.matchId,
+      format: aggregate.format as DuelFormat,
+      phase: aggregate.phase,
+      participants,
+      readyDeadlineAt: aggregate.readyDeadlineAt ?? null,
+      countdownEndsAt: aggregate.countdownEndsAt ?? null,
+      startedAt: aggregate.startedAt ?? null,
+      startingAccountId: aggregate.startingAccountId,
+      createdAt: aggregate.createdAt,
+      revision: aggregate.revision,
+      expiryTimer: null,
+      simulatedReadyTimer: null,
+      draftTimer: null,
+      simulatedDraftTimer: null,
+      countdownTimer: null,
+      drawProposalTimer: null,
+      draft,
+      claims: structuredClone(aggregate.claims ?? []),
+      drawProposal: aggregate.drawProposal ? structuredClone(aggregate.drawProposal) : null,
+      conclusion: aggregate.conclusion ? structuredClone(aggregate.conclusion) : null,
+      telemetryAuthorities: new Map(),
+      chatMessages: structuredClone(aggregate.chatMessages ?? []),
+      chatByClientId: new Map(aggregate.chatByClientId ?? []),
+      claimResolutions: new Map(aggregate.claimResolutions ?? []),
+      processedActions: new Map(aggregate.processedActions ?? []),
+      rematchReadyAccountIds: new Set(aggregate.rematchReadyAccountIds ?? [])
+    };
+    if (aggregate.telemetryAuthorities?.length) {
+      if (!draft?.board || match.startedAt === null) {
+        throw new Error(`Durable Duel snapshot ${snapshot.matchId} has telemetry without a running board.`);
+      }
+      for (const [accountId, authoritySnapshot] of aggregate.telemetryAuthorities) {
+        match.telemetryAuthorities.set(accountId, new GatewayPlayerTelemetryAuthority(
+          accountId,
+          draft.board,
+          match.startedAt,
+          authoritySnapshot
+        ));
+      }
+    }
+    this.matches.set(match.matchId, match);
+    for (const participant of participants) {
+      if (!participant.simulated) this.accountMatches.set(participant.identity.accountId, match.matchId);
+    }
+    this.rearmRestoredMatch(match);
+  }
+
+  private rearmRestoredMatch(match: ActiveMatch): void {
+    const now = this.now();
+    const reconnectGraceMs = this.options.reconnectGraceMs ?? 30_000;
     for (const participant of match.participants) {
-      if (!participant.simulated && participant.connected) participant.send(message);
+      if (participant.simulated) continue;
+      const accountId = participant.identity.accountId;
+      participant.reconnectTimer = setTimeout(() => {
+        participant.reconnectTimer = null;
+        const current = this.matches.get(match.matchId);
+        const currentParticipant = current?.participants.find(item => item.identity.accountId === accountId);
+        if (!current || !currentParticipant || currentParticipant.connected) return;
+        if (current.phase === 'finished') this.deleteMatch(current, 'durable-finished-reconnect-timeout');
+        else this.abortMatch(current.matchId, accountId, 'durable-player-reconnect-timeout');
+      }, reconnectGraceMs);
+      participant.reconnectTimer.unref?.();
+    }
+
+    if (match.phase === 'ready-check' && match.readyDeadlineAt !== null) {
+      match.expiryTimer = setTimeout(
+        () => this.expireReadyCheck(match.matchId),
+        Math.max(0, match.readyDeadlineAt - now)
+      );
+      match.expiryTimer.unref?.();
+      const simulated = match.participants.find(participant => participant.simulated && !participant.ready);
+      if (simulated) {
+        match.simulatedReadyTimer = setTimeout(() => {
+          match.simulatedReadyTimer = null;
+          if (match.phase !== 'ready-check') return;
+          simulated.ready = true;
+          match.revision += 1;
+          this.emitEvent(match, { type: 'READY_CHANGED', accountId: simulated.identity.accountId, reason: 'simulated-ready' });
+          this.emitSnapshot(match);
+          this.completeReadyCheckIfPossible(match);
+        }, Math.min(this.options.simulatedReadyDelayMs, Math.max(0, match.readyDeadlineAt - now)));
+        match.simulatedReadyTimer.unref?.();
+      }
+      return;
+    }
+
+    const draft = match.draft;
+    if (match.phase === 'draft' && draft?.status === 'selecting' && draft.turnAccountId) {
+      const accountId = draft.turnAccountId;
+      const remaining = Math.max(0, (draft.selectionDeadlineAt ?? now) - now);
+      match.draftTimer = setTimeout(
+        () => this.makeAutomaticDraftPick(match.matchId, accountId, 'selection-timeout'),
+        remaining
+      );
+      match.draftTimer.unref?.();
+      if (match.participants.find(item => item.identity.accountId === accountId)?.simulated) {
+        match.simulatedDraftTimer = setTimeout(
+          () => this.makeAutomaticDraftPick(match.matchId, accountId, 'simulated-selection'),
+          Math.min(this.options.simulatedDraftPickDelayMs, remaining)
+        );
+        match.simulatedDraftTimer.unref?.();
+      }
+      return;
+    }
+    if (match.phase === 'draft' && draft?.status === 'finalizing' && draft.finalRevealAt !== null) {
+      const revealAt = draft.finalRevealAt;
+      match.draftTimer = setTimeout(
+        () => this.revealFinalRandomSelection(match.matchId, revealAt),
+        Math.max(0, revealAt - now)
+      );
+      match.draftTimer.unref?.();
+      return;
+    }
+    if (match.phase === 'countdown' && match.countdownEndsAt !== null) {
+      const startAt = match.countdownEndsAt;
+      match.countdownTimer = setTimeout(
+        () => this.startRunningMatch(match.matchId, startAt),
+        Math.max(0, startAt - now)
+      );
+      match.countdownTimer.unref?.();
+      return;
+    }
+    if (match.phase === 'running' && match.drawProposal) {
+      this.armDrawProposalTimeout(match, match.drawProposal);
+    }
+  }
+
+  private enqueuePersistence(operation: () => Promise<void>, onSuccess?: () => void): void {
+    this.persistenceQueue = this.persistenceQueue
+      .then(async () => {
+        if (this.persistenceError) throw this.persistenceError;
+        await operation();
+      })
+      .then(() => onSuccess?.())
+      .catch(error => this.reportPersistenceError(error));
+  }
+
+  private reportPersistenceError(value: unknown): void {
+    const error = value instanceof Error ? value : new Error(String(value));
+    const firstFailure = this.persistenceError === null;
+    this.persistenceError = error;
+    this.options.onPersistenceError?.(error);
+    if (!firstFailure) return;
+    const message: GatewayServerMessage = {
+      type: 'ERROR',
+      code: 'MATCH_AUTHORITY_PERSISTENCE_UNAVAILABLE',
+      message: 'The durable Match authority is temporarily unavailable. No uncommitted transition was published.',
+      recoverable: false
+    };
+    for (const match of this.matches.values()) {
+      for (const participant of match.participants) {
+        if (!participant.simulated && participant.connected) participant.send(message);
+      }
     }
   }
 

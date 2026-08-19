@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { ChallengeEngine, type CompletionCandidate } from '@skribbl-duels/challenge-engine';
+import {
+  ChallengeEngine,
+  type ChallengeEngineSnapshot,
+  type CompletionCandidate
+} from '@skribbl-duels/challenge-engine';
 import {
   registerStarterChallengeDefinitions
 } from '@skribbl-duels/challenge-definitions';
@@ -17,6 +21,15 @@ export type ClaimValidationDecision =
   | { ok: true; instanceId: string; candidate: CompletionCandidate }
   | { ok: false; code: string; message: string };
 
+export interface GatewayTelemetryAuthoritySnapshot {
+  snapshotVersion: 1;
+  accountId: string;
+  startedAt: number;
+  eventClock: number;
+  lastSequence: number;
+  engine: ChallengeEngineSnapshot;
+}
+
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
   const expected = new Set(left);
@@ -32,7 +45,8 @@ export class GatewayPlayerTelemetryAuthority {
   public constructor(
     private readonly accountId: string,
     board: GatewayDraftBoardSnapshot,
-    private readonly startedAt: number
+    private readonly startedAt: number,
+    snapshot?: GatewayTelemetryAuthoritySnapshot
   ) {
     this.eventClock = startedAt;
     this.engine = new ChallengeEngine({
@@ -51,10 +65,31 @@ export class GatewayPlayerTelemetryAuthority {
         activatedAt: startedAt
       });
     }
+    if (snapshot) {
+      if (snapshot.snapshotVersion !== 1
+          || snapshot.accountId !== accountId
+          || snapshot.startedAt !== startedAt) {
+        throw new Error('Durable telemetry authority snapshot does not match the participant or match start.');
+      }
+      this.eventClock = Math.max(startedAt, snapshot.eventClock);
+      this.lastSequence = snapshot.lastSequence;
+      this.engine.importSnapshot(snapshot.engine);
+    }
   }
 
   public getLastSequence(): number {
     return this.lastSequence;
+  }
+
+  public exportSnapshot(): GatewayTelemetryAuthoritySnapshot {
+    return {
+      snapshotVersion: 1,
+      accountId: this.accountId,
+      startedAt: this.startedAt,
+      eventClock: this.eventClock,
+      lastSequence: this.lastSequence,
+      engine: this.engine.exportSnapshot()
+    };
   }
 
   public processBatch(

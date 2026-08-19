@@ -153,7 +153,7 @@ export class HomeInteractionTelemetryAdapter {
     this.logoAvatarContainerSelector = options.logoAvatarContainerSelector ??
       '#home > div.logo-big > div.avatar-container';
     this.creditsLinkSelector = options.creditsLinkSelector ??
-      '#home .tos a[href="/credits"], #home .tos a[href$="/credits"]';
+      '#home a[href="/credits"], #home a[href$="/credits"]';
     this.specialPollIntervalMs = options.specialPollIntervalMs ?? 50;
     this.creditsNavigationStorageKey = options.creditsNavigationStorageKey ??
       'skribblDuelsCreditsNavigationV1';

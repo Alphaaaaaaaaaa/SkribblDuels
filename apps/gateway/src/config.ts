@@ -4,6 +4,7 @@ export interface GatewayServerConfig {
   clientOrigin: string;
   supabaseUrl: string;
   supabasePublishableKey: string;
+  supabaseServiceRoleKey: string | null;
   helloTimeoutMs: number;
   heartbeatIntervalMs: number;
   matchmakingReadyTimeoutMs: number;
@@ -47,6 +48,10 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
   const nodeEnv = nodeEnvValue === 'production' || nodeEnvValue === 'test'
     ? nodeEnvValue
     : 'development';
+  const supabaseServiceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
+  if (nodeEnv === 'production' && !supabaseServiceRoleKey) {
+    throw new Error('Missing Gateway environment variable: SUPABASE_SERVICE_ROLE_KEY.');
+  }
 
   return {
     nodeEnv,
@@ -54,6 +59,7 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
     clientOrigin: validUrl(requiredValue(env, 'CLIENT_ORIGIN'), 'CLIENT_ORIGIN'),
     supabaseUrl: validUrl(requiredValue(env, 'SUPABASE_URL'), 'SUPABASE_URL'),
     supabasePublishableKey: requiredValue(env, 'SUPABASE_PUBLISHABLE_KEY'),
+    supabaseServiceRoleKey,
     helloTimeoutMs: 10_000,
     heartbeatIntervalMs: 25_000,
     matchmakingReadyTimeoutMs: 30_000,

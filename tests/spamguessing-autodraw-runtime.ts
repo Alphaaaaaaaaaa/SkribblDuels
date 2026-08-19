@@ -244,3 +244,55 @@ assert(adapterEmitted.some(entry => entry.type === 'TYPO_SKD_PASTED'), 'The fall
 adapter.stop();
 
 console.log('Autodraw command-sequence fallback test passed.');
+
+const anythingCommands = [
+  [0, 4, 40, 113, 291, 113, 291],
+  [0, 6, 40, 133, 294, 133, 294],
+  [0, 8, 40, 153, 295, 153, 295],
+  [0, 12, 40, 172, 297, 172, 297],
+  [0, 10, 40, 192, 298, 192, 298],
+  [0, 14, 40, 213, 302, 213, 302],
+  [0, 16, 40, 238, 302, 238, 302],
+  [0, 18, 40, 262, 306, 262, 306],
+  [0, 20, 40, 281, 305, 281, 305]
+];
+assert(parseSkdCommandSequences(anythingCommands)[0]?.length === 9, 'The reported bare-array Anything.skd format must parse as one complete drawing.');
+const performedEvents$ = new Subject<TelemetryEvent>();
+const performedEmitted: { type: TelemetryEventType; payload: unknown }[] = [];
+const performedAdapter = new TypoAutodrawTelemetryAdapter({
+  events$: performedEvents$.asObservable(),
+  emitDomEvent(type: TelemetryEventType, payload: unknown) {
+    performedEmitted.push({ type, payload });
+  }
+} as never);
+performedAdapter.start();
+const anythingPayload: TypoSkdLoadedPayload = {
+  fileName: 'Anything.skd',
+  fingerprint: fingerprintSkdCommands(anythingCommands),
+  commandCount: anythingCommands.length,
+  loadedFromFile: true,
+  method: 'file-input-fallback'
+};
+(performedAdapter as unknown as {
+  registerLoaded(payload: TypoSkdLoadedPayload, commands: unknown[][], confidence: 'confirmed'): void;
+}).registerLoaded(anythingPayload, anythingCommands, 'confirmed');
+performedEvents$.next(event('DRAW_COMMAND_BATCH_SUBMITTED', 'performed-context', 6200, {
+  commandCount: 0,
+  tools: [],
+  colors: [],
+  brushSizes: [],
+  commands: []
+}, 'anything-autodraw-turn', 21, self));
+const performedInternals = performedAdapter as unknown as {
+  handlePerformedDrawCommand(event: Event): void;
+};
+for (const command of anythingCommands) {
+  performedInternals.handlePerformedDrawCommand(new CustomEvent('performDrawCommand', { detail: command }));
+}
+assert(
+  performedEmitted.some(entry => entry.type === 'TYPO_SKD_PASTED'),
+  'A fully executed performDrawCommand sequence from Anything.skd must emit TYPO_SKD_PASTED even when socket batching differs.'
+);
+performedAdapter.stop();
+
+console.log('Autodraw performDrawCommand fallback test passed.');

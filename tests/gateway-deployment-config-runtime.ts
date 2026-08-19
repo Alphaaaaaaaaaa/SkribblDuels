@@ -16,6 +16,7 @@ const serverConfig = readGatewayServerConfig({
   CLIENT_ORIGIN: 'https://skribbl.io',
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
+  SUPABASE_SERVICE_ROLE_KEY: 'sb_service_role_test',
   MATCHMAKING_SIMULATED_PLAYERS: 'true'
 });
 assert.equal(serverConfig.matchmakingReadyTimeoutMs, 30_000);
@@ -24,6 +25,14 @@ assert.equal(serverConfig.draftPickTimeoutMs, 15_000);
 assert.equal(serverConfig.draftFinalRevealMs, 3_200);
 assert.equal(serverConfig.matchCountdownMs, 10_000);
 assert.equal(serverConfig.reconnectGraceMs, 30_000);
+assert.equal(serverConfig.supabaseServiceRoleKey, 'sb_service_role_test');
+assert.throws(() => readGatewayServerConfig({
+  NODE_ENV: 'production',
+  PORT: '3000',
+  CLIENT_ORIGIN: 'https://skribbl.io',
+  SUPABASE_URL: 'https://example.supabase.co',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test'
+}), /SUPABASE_SERVICE_ROLE_KEY/);
 
 console.log(JSON.stringify({
   gatewayConfigured: true,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.50.0
+// @version      0.51.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with restored live telemetry, authoritative Challenges and Rematches.
 // @match        https://skribbl.io/*
@@ -4394,7 +4394,7 @@ var HomeInteractionTelemetryAdapter = class {
 	constructor(telemetryStore, options = {}) {
 		this.telemetryStore = telemetryStore;
 		this.logoAvatarContainerSelector = options.logoAvatarContainerSelector ?? "#home > div.logo-big > div.avatar-container";
-		this.creditsLinkSelector = options.creditsLinkSelector ?? "#home .tos a[href=\"/credits\"], #home .tos a[href$=\"/credits\"]";
+		this.creditsLinkSelector = options.creditsLinkSelector ?? "#home a[href=\"/credits\"], #home a[href$=\"/credits\"]";
 		this.specialPollIntervalMs = options.specialPollIntervalMs ?? 50;
 		this.creditsNavigationStorageKey = options.creditsNavigationStorageKey ?? "skribblDuelsCreditsNavigationV1";
 		this.creditsNavigationMaxAgeMs = options.creditsNavigationMaxAgeMs ?? 6e4;
@@ -5121,11 +5121,15 @@ var TypoAutodrawTelemetryAdapter = class {
 	telemetrySubscription = null;
 	originalFileInputClick = null;
 	patchedFileInputClick = null;
+	ownDrawingActive = false;
 	constructor(telemetryStore) {
 		this.telemetryStore = telemetryStore;
 	}
 	start() {
-		if (typeof document !== "undefined") document.addEventListener("change", this.handleFileInputChange, true);
+		if (typeof document !== "undefined") {
+			document.addEventListener("change", this.handleFileInputChange, true);
+			document.addEventListener("performDrawCommand", this.handlePerformedDrawCommand, true);
+		}
 		this.patchDetachedFileInputs();
 		if (typeof window !== "undefined") {
 			window.addEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded, true);
@@ -5137,7 +5141,10 @@ var TypoAutodrawTelemetryAdapter = class {
 		this.telemetrySubscription = this.telemetryStore.events$.subscribe((event) => this.handleTelemetry(event));
 	}
 	stop() {
-		if (typeof document !== "undefined") document.removeEventListener("change", this.handleFileInputChange, true);
+		if (typeof document !== "undefined") {
+			document.removeEventListener("change", this.handleFileInputChange, true);
+			document.removeEventListener("performDrawCommand", this.handlePerformedDrawCommand, true);
+		}
 		if (typeof window !== "undefined") {
 			window.removeEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded, true);
 			window.removeEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded, true);
@@ -5151,6 +5158,7 @@ var TypoAutodrawTelemetryAdapter = class {
 		this.loaded.clear();
 		this.emittedPasteKeys.clear();
 		this.recentLoadAt.clear();
+		this.ownDrawingActive = false;
 	}
 	patchDetachedFileInputs() {
 		if (typeof HTMLInputElement === "undefined" || this.originalFileInputClick) return;
@@ -5221,7 +5229,10 @@ var TypoAutodrawTelemetryAdapter = class {
 		this.loaded.set(payload.fingerprint, {
 			payload,
 			commandSignatures,
-			matchIndex: 0
+			matchIndices: {
+				telemetry: 0,
+				performed: 0
+			}
 		});
 		const now = Date.now();
 		const previousLoadAt = this.recentLoadAt.get(payload.fingerprint);
@@ -5257,8 +5268,12 @@ var TypoAutodrawTelemetryAdapter = class {
 		});
 	}
 	handleTelemetry(event) {
+		this.ownDrawingActive = event.context.meId !== null && event.context.drawerId === event.context.meId && event.context.roundSessionId !== null;
 		if (event.type === "LOBBY_CHANGED") {
-			for (const loaded of this.loaded.values()) loaded.matchIndex = 0;
+			for (const loaded of this.loaded.values()) {
+				loaded.matchIndices.telemetry = 0;
+				loaded.matchIndices.performed = 0;
+			}
 			this.emittedPasteKeys.clear();
 			return;
 		}
@@ -5267,15 +5282,23 @@ var TypoAutodrawTelemetryAdapter = class {
 		for (const command of event.payload.commands) {
 			const signature = commandSignature(command.raw);
 			if (signature === null) continue;
-			for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, event);
+			for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, "telemetry");
 		}
 	}
-	consumeSignature(loaded, signature, event) {
+	handlePerformedDrawCommand = (event) => {
+		if (!this.ownDrawingActive || !(event instanceof CustomEvent)) return;
+		const detail = recordValue(event.detail);
+		const signature = commandSignature(detail?.command ?? detail?.raw ?? event.detail);
+		if (signature === null) return;
+		for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, "performed");
+	};
+	consumeSignature(loaded, signature, source) {
 		if (loaded.commandSignatures.length === 0) return;
-		if (signature === loaded.commandSignatures[loaded.matchIndex]) loaded.matchIndex += 1;
-		else loaded.matchIndex = signature === loaded.commandSignatures[0] ? 1 : 0;
-		if (loaded.matchIndex < loaded.commandSignatures.length) return;
-		loaded.matchIndex = 0;
+		const matchIndex = loaded.matchIndices[source];
+		if (signature === loaded.commandSignatures[matchIndex]) loaded.matchIndices[source] += 1;
+		else loaded.matchIndices[source] = signature === loaded.commandSignatures[0] ? 1 : 0;
+		if (loaded.matchIndices[source] < loaded.commandSignatures.length) return;
+		loaded.matchIndices[source] = 0;
 		this.emitPasted({
 			fileName: loaded.payload.fileName,
 			fingerprint: loaded.payload.fingerprint,
@@ -6200,9 +6223,12 @@ var ChallengeEngine = class {
 			recentProcessedEventIds: [...this.processedEventOrder]
 		};
 	}
-	async restore() {
-		const snapshot = await this.options.persistence?.load() ?? null;
-		if (!snapshot) return null;
+	/**
+	* Restore an already loaded snapshot synchronously. Server-side authorities
+	* use this during process startup after their durable aggregate has been
+	* fetched from the backing store.
+	*/
+	importSnapshot(snapshot) {
 		if (snapshot.snapshotVersion !== 1) throw new Error(`Unsupported challenge snapshot version ${snapshot.snapshotVersion}.`);
 		this.instances.clear();
 		for (const stored of snapshot.instances) {
@@ -6220,6 +6246,11 @@ var ChallengeEngine = class {
 		}
 		this.publishState();
 		return clone(snapshot);
+	}
+	async restore() {
+		const snapshot = await this.options.persistence?.load() ?? null;
+		if (!snapshot) return null;
+		return this.importSnapshot(snapshot);
 	}
 	async clearPersistence() {
 		await this.options.persistence?.clear();
@@ -10261,12 +10292,12 @@ function resetScores(players) {
 		departed: false
 	}));
 }
-function isStrictFirst(players, selfPlayerId) {
+function isPositiveFirst(players, selfPlayerId) {
 	const active = players.filter((player) => !player.departed);
 	const self = active.find((player) => player.playerId === selfPlayerId);
 	const opponents = active.filter((player) => player.playerId !== selfPlayerId);
-	if (!self || opponents.length === 0) return false;
-	return opponents.every((player) => self.score > player.score);
+	if (!self || self.score <= 0 || opponents.length === 0) return false;
+	return opponents.every((player) => self.score >= player.score);
 }
 function initialState$1() {
 	return {
@@ -10300,10 +10331,10 @@ function startTracking(state, gameSessionId, selfPlayerId, eventId, players) {
 }
 var deservedDefinition = {
 	id: "deserved",
-	version: 2,
+	version: 3,
 	metadata: {
 		category: "progress",
-		localization: localization("Deserved?", "Reach sole first place in a public game without having been the first guesser since joining that game. Completion happens immediately when first place is reached.", "Deserved?", "Erreiche in einem \u00F6ffentlichen Spiel allein Platz 1, ohne seit deinem Beitritt zu diesem Spiel jemals First Guesser gewesen zu sein. Die Challenge wird sofort beim Erreichen von Platz 1 erf\u00FCllt."),
+		localization: localization("Deserved?", "Reach first place in a public game with a positive score, ties included, without having been the first guesser since joining that game.", "Deserved?", "Erreiche in einem \u00F6ffentlichen Spiel mit positiver Punktzahl Platz 1, Gleichstand eingeschlossen, ohne seit deinem Beitritt zu diesem Spiel jemals First Guesser gewesen zu sein."),
 		icon: "deserved-first-place",
 		rankedEligible: true,
 		difficulty: 4
@@ -10322,6 +10353,7 @@ var deservedDefinition = {
 		"ROUND_STARTED",
 		"SCORE_CHANGED",
 		"FIRST_GUESS",
+		"ROUND_RESULTS_AVAILABLE",
 		"GAME_ENDED"
 	],
 	allowedLobbyTypes: [0],
@@ -10449,7 +10481,7 @@ var deservedDefinition = {
 				firstGuesserEventId: null
 			};
 			const players = upsertPlayer(active.players, playerId, totalScore, false);
-			const reachedFirst = !active.selfWasFirstGuesser && isStrictFirst(players, selfPlayerId);
+			const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
 			const evidenceEventIds = [...active.trackingStartedEventId ? [active.trackingStartedEventId] : [], event.eventId];
 			return {
 				internalState: {
@@ -10459,7 +10491,32 @@ var deservedDefinition = {
 				},
 				progress: reachedFirst ? 1 : 0,
 				complete: reachedFirst,
-				reason: explicitReset ? "deserved-new-game-detected-by-score-reset" : reachedFirst ? "deserved-sole-first-place-reached-without-first-guess" : "deserved-scoreboard-updated",
+				reason: explicitReset ? "deserved-new-game-detected-by-score-reset" : reachedFirst ? "deserved-positive-first-place-reached-without-first-guess" : "deserved-scoreboard-updated",
+				evidenceEventIds
+			};
+		}
+		if (event.type === "ROUND_RESULTS_AVAILABLE") {
+			const gameSessionId = event.context.gameSessionId;
+			const selfPlayerId = event.context.meId;
+			if (gameSessionId === null || selfPlayerId === null || event.payload.scores.length === 0) return null;
+			const active = state.activeGameSessionId === gameSessionId ? state : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
+			const players = event.payload.scores.map((score) => ({
+				playerId: score.playerId,
+				score: score.totalScore,
+				departed: false
+			}));
+			const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
+			const evidenceEventIds = [...active.trackingStartedEventId ? [active.trackingStartedEventId] : [], event.eventId];
+			return {
+				internalState: {
+					...active,
+					selfPlayerId,
+					players,
+					lobbyPlayers: players
+				},
+				progress: reachedFirst ? 1 : 0,
+				complete: reachedFirst,
+				reason: reachedFirst ? "deserved-coherent-positive-first-place-without-first-guess" : active.selfWasFirstGuesser ? "deserved-round-finished-after-self-first-guess" : "deserved-coherent-round-ranking-not-first",
 				evidenceEventIds
 			};
 		}
@@ -10482,11 +10539,22 @@ var deservedDefinition = {
 		return null;
 	}
 };
-function winnerSummary(meId, finalScores) {
-	if (meId === null || !finalScores || finalScores.length === 0) return null;
+function winnerSummary(meId, finalScores, trackedScores) {
+	if (meId === null) return null;
+	const coherent = /* @__PURE__ */ new Map();
+	for (const entry of trackedScores) coherent.set(entry.playerId, { ...entry });
+	for (const entry of finalScores ?? []) {
+		const previous = coherent.get(entry.playerId);
+		coherent.set(entry.playerId, {
+			playerId: entry.playerId,
+			totalScore: Math.max(previous?.totalScore ?? Number.NEGATIVE_INFINITY, entry.totalScore),
+			roundScore: Math.max(previous?.roundScore ?? Number.NEGATIVE_INFINITY, entry.roundScore)
+		});
+	}
+	if (coherent.size === 0) return null;
 	let selfScore = null;
 	let winningScore = Number.NEGATIVE_INFINITY;
-	for (const entry of finalScores) {
+	for (const entry of coherent.values()) {
 		if (!Number.isFinite(entry.totalScore)) continue;
 		winningScore = Math.max(winningScore, entry.totalScore);
 		if (entry.playerId === meId) selfScore = entry.totalScore;
@@ -10505,15 +10573,25 @@ function emptyState$2() {
 		winningGameKeys: [],
 		winningEvidenceEventIds: [],
 		observedGameStartEventIds: {},
-		lastEndedGameKey: null
+		lastEndedGameKey: null,
+		currentScores: []
 	};
+}
+function upsertScore(scores, playerId, totalScore, roundScore) {
+	const next = scores.filter((score) => score.playerId !== playerId);
+	next.push({
+		playerId,
+		totalScore,
+		roundScore
+	});
+	return next;
 }
 function gameKey(lobbyId, gameSessionId, eventId) {
 	return `${lobbyId}:${gameSessionId ?? eventId}`;
 }
 var backToBackDefinition = {
 	id: "back-to-back",
-	version: 4,
+	version: 5,
 	metadata: {
 		category: "progress",
 		localization: localization("Back to back", "Win two consecutive public skribbl games in the same lobby with a positive score. The first win may be joined late; the second game must be observed from its start.", "Back to back", "Gewinne zwei \u00F6ffentliche Skribbl-Spiele mit positiver Punktzahl direkt hintereinander in derselben Lobby. Dem ersten Spiel darfst du sp\u00E4ter beitreten; das zweite muss ab Spielstart beobachtet werden."),
@@ -10528,9 +10606,29 @@ var backToBackDefinition = {
 		if (typeof value !== "object" || value === null) return false;
 		return isPositiveInteger(value.games);
 	},
-	relevantEvents: ["GAME_STARTING", "GAME_ENDED"],
+	relevantEvents: [
+		"LOBBY_HYDRATED",
+		"GAME_STARTING",
+		"SCORE_CHANGED",
+		"ROUND_RESULTS_AVAILABLE",
+		"GAME_ENDED"
+	],
 	allowedLobbyTypes: [0],
 	reduce({ event, runtime, parameters }) {
+		if (event.type === "LOBBY_HYDRATED") {
+			if (!event.payload.players) return null;
+			return {
+				internalState: {
+					...runtime.internalState,
+					currentScores: event.payload.players.map((player) => ({
+						playerId: player.id,
+						totalScore: player.score,
+						roundScore: 0
+					}))
+				},
+				reason: "back-to-back-scoreboard-hydrated"
+			};
+		}
 		if (event.type === "GAME_STARTING") {
 			const lobbyId = event.context.lobbyId;
 			if (lobbyId === null || event.context.gameSessionId === null) return null;
@@ -10544,18 +10642,38 @@ var backToBackDefinition = {
 			return {
 				internalState: {
 					...runtime.internalState,
-					observedGameStartEventIds: Object.fromEntries(recent)
+					observedGameStartEventIds: Object.fromEntries(recent),
+					currentScores: []
 				},
 				reason: "back-to-back-game-start-observed",
 				evidenceEventIds: [event.eventId]
 			};
 		}
+		if (event.type === "SCORE_CHANGED") {
+			const playerId = event.payload.playerId;
+			const totalScore = event.payload.totalScore;
+			if (playerId === null || totalScore === null) return null;
+			return {
+				internalState: {
+					...runtime.internalState,
+					currentScores: upsertScore(runtime.internalState.currentScores, playerId, totalScore, event.payload.roundScore ?? 0)
+				},
+				reason: "back-to-back-score-snapshot-updated"
+			};
+		}
+		if (event.type === "ROUND_RESULTS_AVAILABLE") return {
+			internalState: {
+				...runtime.internalState,
+				currentScores: event.payload.scores.map((score) => ({ ...score }))
+			},
+			reason: "back-to-back-coherent-round-scores-recorded"
+		};
 		if (event.type !== "GAME_ENDED") return null;
 		const lobbyId = event.context.lobbyId;
 		if (lobbyId === null) return null;
 		const endedGameKey = gameKey(lobbyId, event.context.gameSessionId, event.eventId);
 		if (runtime.internalState.lastEndedGameKey === endedGameKey) return null;
-		const summary = winnerSummary(event.context.meId, event.payload.finalScores);
+		const summary = winnerSummary(event.context.meId, event.payload.finalScores, runtime.internalState.currentScores);
 		const sameLobby = runtime.internalState.streakLobbyId === null || runtime.internalState.streakLobbyId === lobbyId;
 		if (summary === null || !summary.won) return {
 			internalState: {
@@ -10582,7 +10700,8 @@ var backToBackDefinition = {
 				winningGameKeys: continuesStreak ? [...runtime.internalState.winningGameKeys, endedGameKey] : [endedGameKey],
 				winningEvidenceEventIds: evidence,
 				observedGameStartEventIds: runtime.internalState.observedGameStartEventIds,
-				lastEndedGameKey: endedGameKey
+				lastEndedGameKey: endedGameKey,
+				currentScores: []
 			},
 			progress: nextCount,
 			complete: nextCount >= parameters.games,
@@ -11095,7 +11214,7 @@ var deafGuessDefinition = createTypoActiveGuessDefinition({
 	icon: "typo-deaf-guess",
 	difficulty: 3
 });
-var CHALLENGE_DEFINITIONS_VERSION = "2.9.0";
+var CHALLENGE_DEFINITIONS_VERSION = "2.10.0";
 var starterChallengeDefinitions = [
 	quickscopeDefinition,
 	bulletSkribblIoDefinition,
@@ -12523,7 +12642,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.50.0";
+var GATEWAY_CLIENT_VERSION = "0.51.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -37556,7 +37675,7 @@ var CompletionChatAdapter = class {
 .scd-avatar-skribbl { overflow:visible !important;border-radius:0; }
 .scd-versus-avatar.scd-avatar-skribbl { box-shadow:none; }
 .scd-versus-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:72%;height:72%; }
-.scd-result-avatar.scd-avatar-skribbl .scd-skribbl-avatar,.scd-win-player.scd-avatar-skribbl .scd-skribbl-avatar { width:60%;height:60%; }
+.scd-result-avatar.scd-avatar-skribbl .scd-skribbl-avatar,.scd-win-player.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }
 .scd-draft-picks { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px; }
 .scd-draft-pick { min-width:0;padding:5px 7px;border-radius:6px;background:rgba(255,255,255,.06);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-draft-pick.self { border-left:3px solid var(--SCD_SELF); }
@@ -37573,13 +37692,13 @@ var CompletionChatAdapter = class {
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
 .scd-chat-characters.visible { top:.5em;opacity:1; }
-.scd-chat-form input { height:2.2em;width:100%;padding:.2em;padding-right:4.25em; }
+#skribbl-duels-panel .scd-chat-form input { height:2.2em;width:100%;padding:.2em 3em .2em .5em; }
 .scd-match-actions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .scd-draw-proposal { border-left:3px solid var(--SCD_ACCENT); }
 .scd-result-card { display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:16px;row-gap:8px;overflow:hidden; }
-.scd-result-visual { position:relative;grid-row:1/3;width:70px;height:70px;display:grid;place-items:center;isolation:isolate; }
-.scd-result-visual > .scd-icon { width:56px;height:56px; }
-.scd-result-avatar { position:relative;z-index:1;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:900; }
+.scd-result-visual { position:relative;grid-row:1/3;width:48px;aspect-ratio:1/1;display:grid;place-items:center;isolation:isolate; }
+.scd-result-visual > .scd-icon { width:48px;height:48px; }
+.scd-result-avatar { position:relative;z-index:1;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:900; }
 .avatar .owner { position:absolute;width:50%;height:50%;left:-5%;top:-22%;z-index:2;background-image:url('/img/crown.gif');background-position:center;background-size:contain;background-repeat:no-repeat; }
 .scd-result-trophy,.scd-win-trophy { z-index:-1;position:absolute;width:100%;height:100%;left:50%;background-image:url('/img/trophy.gif');background-size:cover;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
 .scd-result-title { width:100%;color:var(--COLOR_CHAT_TEXT_OWNER,#ffa844);font-size:1.15em;text-align:center;justify-self:stretch; }
@@ -37590,7 +37709,7 @@ var CompletionChatAdapter = class {
 .scd-result-actions .scd-button:active:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_ACTIVE,#1d40b4); }
 .scd-win-animation { position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none;overflow:hidden;background:radial-gradient(circle,rgba(42,81,209,.28),rgba(0,0,0,.7));animation:scd-win-fade 3.4s both; }
 .scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35); }
-.scd-win-visual { position:relative;width:clamp(120px,24vw,240px);height:clamp(120px,24vw,240px);display:grid;place-items:center;isolation:isolate; }
+.scd-win-visual { position:relative;width:clamp(96px,18vw,170px);height:clamp(96px,18vw,170px);display:grid;place-items:center;isolation:isolate; }
 .scd-win-player { position:relative;z-index:1;width:68%;height:68%;border-radius:50%;display:grid;place-items:center;font-size:clamp(34px,7vw,72px);animation:player_winner 3.2s both;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
 .typo-toast-container { position:fixed;left:0;right:0;top:0;height:0;overflow:visible;z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:1rem;padding-top:1rem; }
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
@@ -37829,6 +37948,9 @@ var DuelProductFoundation = class {
 	chatNotificationStartedAt = Date.now();
 	draftKeydown = (event) => this.handleDraftKeydown(event);
 	duelChatKeydown = (event) => this.handleDuelChatKeydown(event);
+	visibilityRecovery = () => this.reconcileAfterVisibilityRecovery();
+	pendingRestoredMatchId;
+	suppressExternalConclusionForMatchIds = /* @__PURE__ */ new Set();
 	destroyed = false;
 	constructor(options) {
 		this.options = options;
@@ -37838,6 +37960,7 @@ var DuelProductFoundation = class {
 			definitions: options.challengeDefinitions
 		}, "en");
 		const persisted = this.loadPersistedMatch();
+		this.pendingRestoredMatchId = persisted?.state.matchId ?? null;
 		this.currentBoard = persisted?.board ?? null;
 		this.matchStore = new MatchStateStore(persisted?.state);
 		this.awaitingTelemetryResumeCursor = persisted?.state.phase === "running" && persisted.state.matchId !== null;
@@ -37864,7 +37987,9 @@ var DuelProductFoundation = class {
 		this.chatAdapter.start();
 		this.tooltips.start();
 		document.addEventListener("keydown", this.draftKeydown, true);
+		document.addEventListener("visibilitychange", this.visibilityRecovery, true);
 		window.addEventListener("keydown", this.duelChatKeydown, true);
+		window.addEventListener("focus", this.visibilityRecovery, true);
 		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
 			const previous = this.gatewayState;
 			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
@@ -37922,7 +38047,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.50.0",
+			version: "0.51.0",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 7,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -38003,7 +38128,9 @@ var DuelProductFoundation = class {
 		this.chatAdapter.stop();
 		this.tooltips.stop();
 		document.removeEventListener("keydown", this.draftKeydown, true);
+		document.removeEventListener("visibilitychange", this.visibilityRecovery, true);
 		window.removeEventListener("keydown", this.duelChatKeydown, true);
+		window.removeEventListener("focus", this.visibilityRecovery, true);
 		this.gatewayClient.stop();
 		this.authClient.stop();
 		this.launcher?.remove();
@@ -38036,7 +38163,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.50.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.51.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38368,7 +38495,35 @@ var DuelProductFoundation = class {
 	currentStagePhase() {
 		const phase = this.gatewayState.match?.state.phase;
 		if (phase === "running" && this.serverNow() < this.countdownGoUntil) return "countdown";
+		if (phase === "countdown") {
+			const endsAt = this.gatewayState.match?.state.countdownEndsAt;
+			if (endsAt !== null && endsAt !== void 0 && this.serverNow() >= endsAt + 950) return null;
+		}
 		return phase === "ready-check" || phase === "draft" || phase === "countdown" ? phase : null;
+	}
+	reconcileAfterVisibilityRecovery() {
+		if (document.hidden || this.destroyed) return;
+		const snapshot = this.gatewayState.match;
+		const board = snapshot?.state.draft?.board ? structuredClone(snapshot.state.draft.board) : this.currentBoard;
+		if (snapshot && board) {
+			const phase = snapshot.state.phase;
+			const countdownEndsAt = snapshot.state.countdownEndsAt;
+			if (phase === "countdown" && countdownEndsAt !== null && this.serverNow() >= countdownEndsAt) this.startGatewayMatchLocally(snapshot, board, countdownEndsAt);
+			else if ((phase === "running" || phase === "finished") && snapshot.state.startedAt !== null) this.startGatewayMatchLocally(snapshot, board, snapshot.state.startedAt);
+			if ((phase === "running" || phase === "finished") && this.serverNow() >= this.countdownGoUntil) {
+				this.countdownGoUntil = 0;
+				this.stopCountdownAnimation();
+				this.settingsStore.update({
+					panelOpen: false,
+					panelTab: "match"
+				});
+			}
+		}
+		if (this.gatewayState.status === "error") this.gatewayClient.reconnect();
+		this.ensureMounted();
+		this.renderVisibility();
+		this.renderStage();
+		this.renderBoard();
 	}
 	handleLauncherClick() {
 		if (this.currentStagePhase()) return;
@@ -39535,6 +39690,10 @@ var DuelProductFoundation = class {
 			}
 			return;
 		}
+		if (snapshot.matchId === this.pendingRestoredMatchId) {
+			if (snapshot.state.phase === "finished") this.suppressExternalConclusionForMatchIds.add(snapshot.matchId);
+			this.pendingRestoredMatchId = null;
+		}
 		if (snapshot.matchId !== this.lastGatewayMatchId) {
 			if (!(snapshot.matchId === this.matchState.matchId && this.currentBoard?.boardId === snapshot.state.draft?.board?.boardId)) this.abortLocalMatch("gateway-match-superseded-local-state");
 			this.lastGatewayMatchId = snapshot.matchId;
@@ -39708,7 +39867,7 @@ var DuelProductFoundation = class {
 				challengeId: claim.challengeId,
 				challengeName: challengeName(this.manifest, claim.challengeId),
 				occurredAt: claim.occurredAt
-			});
+			}, false);
 			const runtime = this.options.challengeEngine.getInstances().find((item) => item.challengeId === claim.challengeId);
 			if (runtime) this.options.challengeEngine.deactivate(runtime.instanceId, "gateway-snapshot-field-claimed");
 		}
@@ -39719,6 +39878,7 @@ var DuelProductFoundation = class {
 				const winner = conclusion.winnerAccountId === selfAccountId ? "self" : "opponent";
 				this.matchStore.finishMatch(winner, conclusion.reason, conclusion.occurredAt);
 			}
+			this.scheduleConclusionPresentation(this.matchStore.getState(), conclusion.occurredAt);
 		}
 	}
 	flushForfeitAfterReconnect(state) {
@@ -39945,6 +40105,8 @@ var DuelProductFoundation = class {
 		this.matchActionError = null;
 		this.lastConclusionMessageMatchId = null;
 		this.pendingConclusionMessageMatchId = null;
+		this.pendingRestoredMatchId = null;
+		this.suppressExternalConclusionForMatchIds.clear();
 		this.forfeitAfterReconnectMatchId = null;
 		if (this.conclusionPresentationTimer !== null) window.clearTimeout(this.conclusionPresentationTimer);
 		this.conclusionPresentationTimer = null;
@@ -40076,6 +40238,7 @@ var DuelProductFoundation = class {
 		if (!matchId || this.lastConclusionMessageMatchId === matchId || this.pendingConclusionMessageMatchId === matchId) return;
 		this.pendingConclusionMessageMatchId = matchId;
 		const snapshot = structuredClone(state);
+		const suppressExternal = this.suppressExternalConclusionForMatchIds.has(matchId);
 		this.conclusionPresentationTimer = window.setTimeout(() => {
 			this.conclusionPresentationTimer = null;
 			this.pendingConclusionMessageMatchId = null;
@@ -40083,7 +40246,8 @@ var DuelProductFoundation = class {
 			const elapsedMs = Math.max(0, occurredAt - (snapshot.startedAt ?? occurredAt));
 			this.lastConclusionMessageMatchId = matchId;
 			this.insertConclusionMessage(snapshot, elapsedMs, occurredAt);
-			if (snapshot.outcome !== "win" || !snapshot.winner) return;
+			this.suppressExternalConclusionForMatchIds.delete(matchId);
+			if (suppressExternal || snapshot.outcome !== "win" || !snapshot.winner) return;
 			const winner = snapshot.participants.find((participant) => participant.side === snapshot.winner);
 			this.chatAdapter.insertWin({
 				matchId,
@@ -40140,8 +40304,8 @@ var DuelProductFoundation = class {
 			if (this.winAnimation === overlay) this.winAnimation = null;
 		}, 3500);
 	}
-	insertCompletion(message) {
-		this.chatAdapter.insert(message);
+	insertCompletion(message, mirrorToSkribbl = true) {
+		if (mirrorToSkribbl) this.chatAdapter.insert(message);
 		this.duelChatMessages.push({
 			id: `completion-${message.claimId}`,
 			side: message.side,
@@ -40151,12 +40315,12 @@ var DuelProductFoundation = class {
 		});
 		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
 	}
-	insertCompletionOnce(message) {
+	insertCompletionOnce(message, mirrorToSkribbl = true) {
 		if (this.duelChatMessages.some((item) => item.id === `completion-${message.claimId}`)) return;
-		this.insertCompletion(message);
+		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.50.0";
+var BUILD_VERSION = "0.51.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

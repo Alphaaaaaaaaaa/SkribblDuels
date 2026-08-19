@@ -237,6 +237,7 @@ export interface ChallengeEnginePublicApi {
   getInstances(): ChallengeRuntimeSnapshot[];
   getStats(): ChallengeEngineStats;
   exportSnapshot(): ChallengeEngineSnapshot;
+  importSnapshot(snapshot: ChallengeEngineSnapshot): ChallengeEngineSnapshot;
   restore(): Promise<ChallengeEngineSnapshot | null>;
   clearPersistence(): Promise<void>;
   attachProvider(provider: TelemetryProvider, sourceName?: string): Unsubscribe;

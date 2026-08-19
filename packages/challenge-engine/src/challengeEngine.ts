@@ -380,9 +380,12 @@ export class ChallengeEngine {
     };
   }
 
-  public async restore(): Promise<ChallengeEngineSnapshot | null> {
-    const snapshot = await this.options.persistence?.load() ?? null;
-    if (!snapshot) return null;
+  /**
+   * Restore an already loaded snapshot synchronously. Server-side authorities
+   * use this during process startup after their durable aggregate has been
+   * fetched from the backing store.
+   */
+  public importSnapshot(snapshot: ChallengeEngineSnapshot): ChallengeEngineSnapshot {
     if (snapshot.snapshotVersion !== CHALLENGE_ENGINE_SNAPSHOT_VERSION) {
       throw new Error(`Unsupported challenge snapshot version ${snapshot.snapshotVersion}.`);
     }
@@ -404,6 +407,12 @@ export class ChallengeEngine {
     }
     this.publishState();
     return clone(snapshot);
+  }
+
+  public async restore(): Promise<ChallengeEngineSnapshot | null> {
+    const snapshot = await this.options.persistence?.load() ?? null;
+    if (!snapshot) return null;
+    return this.importSnapshot(snapshot);
   }
 
   public async clearPersistence(): Promise<void> {

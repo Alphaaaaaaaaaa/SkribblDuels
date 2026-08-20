@@ -73,6 +73,7 @@ function errorMessage(error: Error & { data?: unknown }): string {
 export class SocketIoGatewayClient {
   private state: GatewayConnectionSnapshot;
   private listeners = new Set<(state: GatewayConnectionSnapshot) => void>();
+  private dismissedMatchIds = new Set<string>();
   private socket: GatewaySocket | null = null;
   private accessToken: string | null = null;
   private resumeCursor: GatewayResumeCursor | null;
@@ -171,6 +172,39 @@ export class SocketIoGatewayClient {
     this.clearResumeCursor();
     this.clearTelemetryQueue();
     return requestId;
+  }
+
+  /**
+   * Forget a terminal Match locally after the player leaves its result view.
+   * The server remains authoritative and still receives MATCHMAKING_LEAVE; this
+   * guard merely prevents a late terminal snapshot from reopening the old UI.
+   */
+  public dismissMatch(matchId: string): void {
+    this.dismissedMatchIds.add(matchId);
+    while (this.dismissedMatchIds.size > 16) {
+      const oldest = this.dismissedMatchIds.values().next().value as string | undefined;
+      if (!oldest) break;
+      this.dismissedMatchIds.delete(oldest);
+    }
+    if (this.state.match?.matchId !== matchId) return;
+    this.clearResumeCursor();
+    this.clearTelemetryQueue();
+    this.update({
+      ...this.state,
+      queue: null,
+      match: null,
+      lastMatchEvent: null,
+      duelChatMessages: [],
+      lastClaimResolution: null,
+      telemetryAck: null,
+      error: null
+    });
+  }
+
+  /** Remove a no-longer-actionable invite from the local matchmaking view. */
+  public dismissInvite(inviteId: string): void {
+    if (this.state.invite?.inviteId !== inviteId) return;
+    this.update({ ...this.state, invite: null, error: null });
   }
 
   public createInvite(format: GatewayInviteCreateMessage['format']): string {
@@ -405,6 +439,7 @@ export class SocketIoGatewayClient {
       return;
     }
     if (value.type === 'MATCH_SNAPSHOT') {
+      if (this.dismissedMatchIds.has(value.matchId)) return;
       if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
       const sameMatch = this.state.match?.matchId === value.matchId;
       const transportMatchId = this.pendingTransportMatchId();
@@ -427,6 +462,17 @@ export class SocketIoGatewayClient {
         telemetryAck: sameTelemetryMatch ? this.state.telemetryAck : null,
         error: null
       });
+      // Consumers synchronously receive the terminal snapshot above, then the
+      // transport releases it so cancelled Ready checks cannot trap the UI.
+      if (value.state.phase === 'cancelled' && this.state.match?.matchId === value.matchId) {
+        this.update({
+          ...this.state,
+          match: null,
+          duelChatMessages: [],
+          lastClaimResolution: null,
+          telemetryAck: null
+        });
+      }
       return;
     }
     if (value.type === 'MATCH_EVENT') {

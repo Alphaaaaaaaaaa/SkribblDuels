@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
         userscript: {
           name: 'Skribbl Duels',
           namespace: 'https://github.com/skribbl-duels',
-          version: '0.52.0',
+          version: '0.52.1',
           description: 'Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.',
           author: 'Alpha',
           match: ['https://skribbl.io/*'],

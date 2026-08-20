@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.52.0
+// @version      0.52.1
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @match        https://skribbl.io/*
@@ -12643,7 +12643,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.52.0";
+var GATEWAY_CLIENT_VERSION = "0.52.1";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15902,6 +15902,7 @@ var SocketIoGatewayClient = class {
 	options;
 	state;
 	listeners = /* @__PURE__ */ new Set();
+	dismissedMatchIds = /* @__PURE__ */ new Set();
 	socket = null;
 	accessToken = null;
 	resumeCursor;
@@ -15993,6 +15994,41 @@ var SocketIoGatewayClient = class {
 		this.clearResumeCursor();
 		this.clearTelemetryQueue();
 		return requestId;
+	}
+	/**
+	* Forget a terminal Match locally after the player leaves its result view.
+	* The server remains authoritative and still receives MATCHMAKING_LEAVE; this
+	* guard merely prevents a late terminal snapshot from reopening the old UI.
+	*/
+	dismissMatch(matchId) {
+		this.dismissedMatchIds.add(matchId);
+		while (this.dismissedMatchIds.size > 16) {
+			const oldest = this.dismissedMatchIds.values().next().value;
+			if (!oldest) break;
+			this.dismissedMatchIds.delete(oldest);
+		}
+		if (this.state.match?.matchId !== matchId) return;
+		this.clearResumeCursor();
+		this.clearTelemetryQueue();
+		this.update({
+			...this.state,
+			queue: null,
+			match: null,
+			lastMatchEvent: null,
+			duelChatMessages: [],
+			lastClaimResolution: null,
+			telemetryAck: null,
+			error: null
+		});
+	}
+	/** Remove a no-longer-actionable invite from the local matchmaking view. */
+	dismissInvite(inviteId) {
+		if (this.state.invite?.inviteId !== inviteId) return;
+		this.update({
+			...this.state,
+			invite: null,
+			error: null
+		});
 	}
 	createInvite(format) {
 		const requestId = this.createRequestId("invite-create");
@@ -16248,6 +16284,7 @@ var SocketIoGatewayClient = class {
 			return;
 		}
 		if (value.type === "MATCH_SNAPSHOT") {
+			if (this.dismissedMatchIds.has(value.matchId)) return;
 			if (this.state.match?.matchId === value.matchId && this.state.match.revision > value.revision) return;
 			const sameMatch = this.state.match?.matchId === value.matchId;
 			const transportMatchId = this.pendingTransportMatchId();
@@ -16263,6 +16300,13 @@ var SocketIoGatewayClient = class {
 				lastClaimResolution: sameMatch ? this.state.lastClaimResolution : null,
 				telemetryAck: sameTelemetryMatch ? this.state.telemetryAck : null,
 				error: null
+			});
+			if (value.state.phase === "cancelled" && this.state.match?.matchId === value.matchId) this.update({
+				...this.state,
+				match: null,
+				duelChatMessages: [],
+				lastClaimResolution: null,
+				telemetryAck: null
 			});
 			return;
 		}
@@ -37791,10 +37835,19 @@ var CompletionChatAdapter = class {
 .scd-queue-ranked { min-height:54px;background:#53e237;font-size:1.45em; }
 .scd-queue-ranked:hover:not(:disabled) { background:#38c41c; }
 .scd-queue-ranked:active:not(:disabled) { background:#30aa19;padding-top:2px; }
-.scd-invite-button { min-height:54px;background:#2c8de7;display:flex;align-items:center;justify-content:center;gap:.25em;font-size:1em; }
+.scd-invite-button { min-height:54px;background:#2c8de7;display:flex;align-items:center;justify-content:center;gap:.25em;font-size:1.45em; }
 .scd-invite-button:hover:not(:disabled) { background:#1671c5; }
 .scd-invite-button:active:not(:disabled) { background:#1361a9;padding-top:2px; }
 .scd-invite-button img { width:1.2em;height:1.2em;filter:var(--DROPSHADOW); }
+.scd-invite-info { display:flex;align-items:baseline;justify-content:flex-start;gap:12px;min-width:0;flex-wrap:wrap; }
+.scd-invite-controls { display:grid;grid-template-columns:minmax(0,1fr) 44px auto;align-items:stretch;gap:8px;min-width:0; }
+#skribbl-duels-panel .scd-invite-link { height:42px;min-width:0;padding:.35em .6em;resize:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text; }
+.scd-copy-button { width:44px;height:42px;border:0;border-radius:7px;background:var(--COLOR_BUTTON_NORMAL_BG,#2c8de7);color:white;padding:7px;cursor:pointer;display:grid;place-items:center; }
+.scd-copy-button:hover:not(:disabled) { background:var(--COLOR_BUTTON_NORMAL_BG_HOVER,#1671c5); }
+.scd-copy-button:active:not(:disabled) { background:var(--COLOR_BUTTON_NORMAL_BG_ACTIVE,#1361a9);padding-top:9px; }
+.scd-copy-button:disabled { opacity:.45;cursor:not-allowed; }
+.scd-copy-button img { width:1.2em;height:1.2em;filter:var(--DROPSHADOW); }
+.scd-invite-cancel { height:42px;min-height:42px;font-size:1.45em;line-height:1; }
 .scd-queue-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-stack { display: flex; flex-direction: column; gap: 9px; }
 .scd-card { background:var(--COLOR_PANEL_BG);border-radius:8px;padding:10px; }
@@ -37886,6 +37939,9 @@ var CompletionChatAdapter = class {
   .scd-versus-avatar { width:min(68px,19vw); }
   .scd-queue-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .scd-invite-button { grid-column:1 / -1; }
+  .scd-invite-controls { grid-template-columns:44px minmax(0,1fr); }
+  .scd-invite-link { grid-column:1 / -1; }
+  .scd-invite-cancel { min-width:0; }
   .scd-label { grid-template-columns:minmax(0,1fr); }
   .scd-label input[type='checkbox'] { justify-self:start; }
 }
@@ -38205,7 +38261,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.52.0",
+			version: "0.52.1",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 8,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -38326,7 +38382,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.52.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.52.1") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -39207,7 +39263,7 @@ var DuelProductFoundation = class {
 		gatewayConnection.appendChild(element("strong", "", "Authenticated Gateway"));
 		const gatewayCopy = this.gatewayState.status === "not-configured" ? "Server code is ready, but this userscript does not contain a public Gateway URL yet." : this.gatewayState.status === "signed-out" ? "Sign in with Discord before connecting to the Gateway." : this.gatewayState.status === "connecting" ? "Verifying the Supabase session and loading your server profile\u2026" : this.gatewayState.status === "connected" ? `Connected as ${this.gatewayState.identity?.displayName ?? "Discord user"} \u00B7 ${this.gatewayState.connectionId?.slice(0, 8) ?? "-"}` : "The Gateway connection could not be established.";
 		gatewayConnection.appendChild(element("div", "scd-muted", gatewayCopy));
-		if (this.gatewayState.error) gatewayConnection.appendChild(element("div", "scd-auth-error", this.gatewayState.error));
+		if (this.gatewayState.error && this.gatewayState.status !== "connected") gatewayConnection.appendChild(element("div", "scd-auth-error", this.gatewayState.error));
 		if (this.gatewayState.endpoint && this.authState.status === "signed-in") {
 			const reconnect = element("button", "scd-button", "Reconnect Gateway");
 			reconnect.type = "button";
@@ -39231,6 +39287,7 @@ var DuelProductFoundation = class {
 		const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 		if (!homepage) card.appendChild(element("div", "scd-muted", "Matchmaking is available only on the Skribbl homepage. Return home before entering a queue."));
 		if (this.matchmakingError) card.appendChild(element("div", "scd-auth-error", this.matchmakingError));
+		if (connected && this.gatewayState.error && this.gatewayState.error !== this.matchmakingError) card.appendChild(element("div", "scd-auth-error", this.gatewayState.error));
 		if (gatewayMatch) {
 			const state = gatewayMatch.state;
 			const opponent = state.participants.find((participant) => participant.accountId !== selfAccountId);
@@ -39266,17 +39323,43 @@ var DuelProductFoundation = class {
 			return card;
 		}
 		if (invite?.status === "waiting") {
-			card.append(element("div", "", `${invite.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} invite is ready`), element("div", "scd-muted", `Single-use link \u00B7 expires at ${formatTime(invite.expiresAt)}`));
-			const actions = element("div", "scd-row");
-			const copy = element("button", "scd-button primary", "Copy link");
+			const info = element("div", "scd-invite-info");
+			info.append(element("div", "", `${invite.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"} invite is ready`), element("div", "scd-muted", `Single-use link \u00B7 expires at ${formatTime(invite.expiresAt)}`));
+			const actions = element("div", "scd-invite-controls");
+			const link = element("input", "scd-invite-link");
+			link.type = "text";
+			link.readOnly = true;
+			link.value = invite.token ? this.inviteUrl(invite.token) : "";
+			link.placeholder = invite.token ? "" : "Invite link unavailable after Gateway restart";
+			link.setAttribute("aria-label", "Single-use Duel invite link");
+			const selectLink = () => link.select();
+			link.addEventListener("focus", selectLink);
+			link.addEventListener("click", selectLink);
+			link.addEventListener("mouseup", (event) => {
+				event.preventDefault();
+				link.select();
+			});
+			const copy = element("button", "scd-copy-button");
 			copy.type = "button";
 			copy.disabled = !invite.token;
 			copy.addEventListener("click", () => void this.copyInviteLink(invite));
-			const cancel = element("button", "scd-button danger", "Cancel invite");
+			copy.setAttribute("aria-label", "Copy invite link");
+			const copyIcon = document.createElement("img");
+			copyIcon.src = "/img/link.svg";
+			copyIcon.alt = "";
+			copy.appendChild(copyIcon);
+			this.tooltips.register(copy, "Copy the single-use Duel invite link");
+			const cancel = element("button", "scd-button danger scd-invite-cancel", "Cancel");
 			cancel.type = "button";
-			cancel.addEventListener("click", () => this.gatewayClient.cancelInvite(invite.inviteId));
-			actions.append(copy, cancel);
-			card.appendChild(actions);
+			cancel.addEventListener("click", () => {
+				if (invite.expiresAt <= this.serverNow()) {
+					this.gatewayClient.dismissInvite(invite.inviteId);
+					return;
+				}
+				this.gatewayClient.cancelInvite(invite.inviteId);
+			});
+			actions.append(link, copy, cancel);
+			card.append(info, actions);
 			if (!invite.token) card.appendChild(element("div", "scd-muted", "The Gateway restored this invite after a restart. Cancel it and create a fresh link to copy its token again."));
 			return card;
 		}
@@ -39930,15 +40013,14 @@ var DuelProductFoundation = class {
 	}
 	async copyInviteLink(invite) {
 		if (!invite.token) return;
-		const url = new URL("/", window.location.origin);
-		url.searchParams.set("scd-invite", invite.token);
+		const inviteUrl = this.inviteUrl(invite.token);
 		let copied = false;
 		try {
-			await navigator.clipboard.writeText(url.toString());
+			await navigator.clipboard.writeText(inviteUrl);
 			copied = true;
 		} catch {
 			const input = document.createElement("textarea");
-			input.value = url.toString();
+			input.value = inviteUrl;
 			input.style.position = "fixed";
 			input.style.opacity = "0";
 			document.body.appendChild(input);
@@ -39947,6 +40029,11 @@ var DuelProductFoundation = class {
 			input.remove();
 		}
 		this.showSimpleToast(copied ? "Duel invite copied" : "Duel invite ready", copied ? "Send the single-use link to one authenticated friend." : "Automatic clipboard access was blocked. Use Copy link in the Duels Hub.");
+	}
+	inviteUrl(token) {
+		const url = new URL("/", window.location.origin);
+		url.searchParams.set("scd-invite", token);
+		return url.toString();
 	}
 	cancelMatchmaking() {
 		this.matchmakingError = null;
@@ -40391,6 +40478,8 @@ var DuelProductFoundation = class {
 		const snapshot = this.gatewayState.match;
 		const deadline = snapshot?.state.phase === "ready-check" ? snapshot.state.readyDeadlineAt : null;
 		const now = this.serverNow();
+		const invite = this.gatewayState.invite;
+		if (invite?.status === "waiting" && now >= invite.expiresAt) this.gatewayClient.dismissInvite(invite.inviteId);
 		if (snapshot?.state.phase === "ready-check" && deadline !== null && deadline !== void 0 && now >= deadline + 1e3 && now >= this.readyDeadlineRecoveryAt) {
 			this.readyDeadlineRecoveryAt = now + 5e3;
 			this.clearReadySubmission();
@@ -40541,9 +40630,11 @@ var DuelProductFoundation = class {
 		return state;
 	}
 	resetMatch() {
+		const matchId = this.gatewayState.match?.matchId ?? null;
 		if (this.gatewayState.status === "connected" && (this.gatewayState.queue || this.gatewayState.match)) try {
 			this.gatewayClient.leaveMatchmaking();
 		} catch {}
+		if (matchId) this.gatewayClient.dismissMatch(matchId);
 		return this.abortLocalMatch("manual-reset");
 	}
 	openPanel(tab) {
@@ -40736,7 +40827,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.52.0";
+var BUILD_VERSION = "0.52.1";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

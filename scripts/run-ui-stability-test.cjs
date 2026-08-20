@@ -99,7 +99,13 @@ assert(source.includes("avatar.classList.add('scd-avatar-skribbl')"), 'Skribbl a
 assert(source.includes('.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1'), 'Challenge icon sizing was not restored');
 assert(source.includes('.scd-versus-avatar { width:min(88px,15vw)'), 'Versus avatars were not reduced to the requested compact size');
 assert(source.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(70px,.5fr)'), 'Invite button does not use the compact third queue column');
+assert(source.includes('.scd-invite-button { min-height:54px') && source.includes('font-size:1.45em; }'), 'Invite button font size does not match the other matchmaking buttons');
 assert(source.includes("inviteIcon.src = '/img/link.svg'"), 'Skribbl-style invite link icon is missing');
+assert(source.includes("const info = element('div', 'scd-invite-info')"), 'Invite metadata is not grouped into one responsive row');
+assert(source.includes("const actions = element('div', 'scd-invite-controls')"), 'Invite link controls do not use the refined grid');
+assert(source.includes('link.readOnly = true') && source.includes('link.select()'), 'Invite link is not read-only with click-to-select behavior');
+assert(source.includes("copyIcon.src = '/img/link.svg'"), 'Invite Copy control does not use the link icon');
+assert(source.includes("invite?.status === 'waiting' && now >= invite.expiresAt"), 'Expired invites are not dismissed by the stable Gateway clock');
 assert(source.includes('max-height:75vh;overflow:auto'), 'Versus ready-check height is not capped at 75% of the viewport');
 assert(source.includes('.scd-avatar-skribbl { overflow:visible !important;border-radius:0; }'), 'Skribbl special layers can still be clipped');
 assert(source.includes('this.createFinishedMatchSummary('), 'finished-match result card is missing');

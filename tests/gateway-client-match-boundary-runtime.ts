@@ -53,6 +53,13 @@ function snapshot(matchId: string, revision: number): GatewayMatchSnapshotMessag
   };
 }
 
+function cancelledSnapshot(matchId: string, revision: number): GatewayMatchSnapshotMessage {
+  const value = snapshot(matchId, revision);
+  value.state.phase = 'cancelled';
+  value.state.readyDeadlineAt = null;
+  return value;
+}
+
 type ClientInternals = {
   state: GatewayConnectionSnapshot;
   telemetryQueue: GatewayTelemetryEnvelope[];
@@ -138,5 +145,32 @@ internals.telemetryQueue = [{ matchId: 'rematch', sequence: 1 } as GatewayTeleme
 internals.receive(snapshot('rematch', 2));
 assert.equal(internals.telemetryQueue.length, 1, 'A newer snapshot for the same match must preserve queued telemetry.');
 
+client.dismissMatch('rematch');
+assert.equal(client.getState().match, null, 'Return must immediately release the terminal Gateway match locally.');
+internals.receive(snapshot('rematch', 3));
+assert.equal(client.getState().match, null, 'A late snapshot must not reopen a locally dismissed result.');
+
+internals.state = {
+  ...client.getState(),
+  status: 'connected',
+  match: snapshot('cancelled-ready-check', 4),
+  invite: {
+    type: 'INVITE_STATUS',
+    requestId: 'invite-request',
+    inviteId: 'expired-invite',
+    format: 'casual',
+    status: 'waiting',
+    token: 'invite-token',
+    expiresAt: 10_000,
+    matchId: null,
+    reason: null
+  }
+};
+client.dismissInvite('expired-invite');
+assert.equal(client.getState().invite, null, 'An expired invite must be locally dismissible without a server round trip.');
+
+internals.receive(cancelledSnapshot('cancelled-ready-check', 5));
+assert.equal(client.getState().match, null, 'A cancelled Ready check must be released after its terminal snapshot is published.');
+
 client.stop();
-console.log('Gateway client match-boundary telemetry reset passed.');
+console.log('Gateway client match-boundary and terminal dismissal runtime passed.');

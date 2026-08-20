@@ -1,9 +1,28 @@
-# Skribbl Duels v0.52.0
+# Skribbl Duels v0.52.1
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v8, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.52.1
+
+- Refines the invite-ready card into a compact metadata row plus an equal-height
+  link, icon-only Copy and Cancel control row. The read-only link selects in
+  full on click/focus and the main Invite button now uses the requested 1.45em
+  type size.
+- Releases a finished Gateway Match immediately after Return and ignores late
+  terminal snapshots, so the next invite is no longer rejected as an already
+  active Match.
+- Removes expired invites locally at their authoritative timestamp. Copy and
+  Cancel therefore disappear without sending a stale cancellation request or
+  leaving the user trapped outside normal Homepage matchmaking.
+- Shows connected Gateway action errors only in the relevant matchmaking card
+  instead of duplicating them below the connection status.
+
+This is a userscript/client-only maintenance release. The v0.52.0 Gateway,
+Contract v8 and existing invite migration remain compatible; no Railway
+redeployment or database migration is required.
 
 ## v0.52.0
 

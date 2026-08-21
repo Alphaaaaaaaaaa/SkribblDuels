@@ -16,15 +16,23 @@ interface AuthorityPeerPayload {
   identity: GatewayClientIdentity;
   capabilities: GatewayClientCapability[];
   connectionId: string;
+  connectionEpoch: number;
 }
 
 export type GatewayAuthorityPayload =
   | ({ kind: 'connect'; clientVersion: string; resumeMatchId?: string } & AuthorityPeerPayload)
-  | { kind: 'disconnect'; accountId: string; connectionId: string }
-  | { kind: 'message'; accountId: string; connectionId: string; message: GatewayClientMessage };
+  | { kind: 'disconnect'; accountId: string; connectionId: string; connectionEpoch: number }
+  | {
+      kind: 'message';
+      accountId: string;
+      connectionId: string;
+      connectionEpoch: number;
+      message: GatewayClientMessage;
+    };
 
 interface ActiveAuthorityConnection {
   connectionId: string;
+  connectionEpoch: number;
   peer: MatchmakingPeer;
 }
 
@@ -53,13 +61,18 @@ function payload(value: unknown): GatewayAuthorityPayload | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Partial<GatewayAuthorityPayload>;
   if (candidate.kind === 'disconnect') {
-    return typeof candidate.accountId === 'string' && typeof candidate.connectionId === 'string'
+    return typeof candidate.accountId === 'string'
+      && typeof candidate.connectionId === 'string'
+      && Number.isSafeInteger(candidate.connectionEpoch)
+      && (candidate.connectionEpoch ?? 0) > 0
       ? candidate as GatewayAuthorityPayload
       : null;
   }
   if (candidate.kind === 'message') {
     return typeof candidate.accountId === 'string'
       && typeof candidate.connectionId === 'string'
+      && Number.isSafeInteger(candidate.connectionEpoch)
+      && (candidate.connectionEpoch ?? 0) > 0
       && typeof candidate.message === 'object'
       ? candidate as GatewayAuthorityPayload
       : null;
@@ -67,6 +80,8 @@ function payload(value: unknown): GatewayAuthorityPayload | null {
   if (candidate.kind === 'connect') {
     const peer = candidate as Partial<AuthorityPeerPayload>;
     return typeof peer.connectionId === 'string'
+      && Number.isSafeInteger(peer.connectionEpoch)
+      && (peer.connectionEpoch ?? 0) > 0
       && typeof peer.identity === 'object'
       && peer.identity !== null
       && Array.isArray(peer.capabilities)
@@ -129,14 +144,17 @@ export class GatewayAuthorityController {
     }
     if (commandPayload.kind === 'disconnect') {
       const current = this.connections.get(commandPayload.accountId);
-      if (current?.connectionId !== commandPayload.connectionId) return;
+      if (current?.connectionId !== commandPayload.connectionId
+          || current.connectionEpoch !== commandPayload.connectionEpoch) return;
       this.connections.delete(commandPayload.accountId);
       this.options.metrics.gauge('skribbl_duels_gateway_authority_connections', this.connections.size);
       this.matchmaker.disconnect(commandPayload.accountId);
       return;
     }
     const connection = this.connections.get(commandPayload.accountId);
-    if (!connection || connection.connectionId !== commandPayload.connectionId) {
+    if (!connection
+        || connection.connectionId !== commandPayload.connectionId
+        || connection.connectionEpoch !== commandPayload.connectionEpoch) {
       this.options.sendToConnection(commandPayload.connectionId, errorMessage(
         'STALE_CONNECTION',
         'This Gateway connection has been superseded. Reconnect and try again.'
@@ -186,12 +204,24 @@ export class GatewayAuthorityController {
     const matchmaker = this.matchmaker;
     if (!matchmaker) return;
     const accountId = command.identity.accountId;
+    const current = this.connections.get(accountId);
+    if (current && current.connectionEpoch >= command.connectionEpoch) {
+      this.options.sendToConnection(command.connectionId, errorMessage(
+        'STALE_CONNECTION',
+        'This Gateway connection has been superseded. Reconnect and try again.'
+      ));
+      return;
+    }
     const peer: MatchmakingPeer = {
       identity: command.identity,
       capabilities: command.capabilities,
       send: outgoing => this.sendAccount(accountId, outgoing)
     };
-    this.connections.set(accountId, { connectionId: command.connectionId, peer });
+    this.connections.set(accountId, {
+      connectionId: command.connectionId,
+      connectionEpoch: command.connectionEpoch,
+      peer
+    });
     this.options.metrics.gauge('skribbl_duels_gateway_authority_connections', this.connections.size);
     const resume = matchmaker.resume(peer, command.resumeMatchId);
     this.options.metrics.increment('skribbl_duels_gateway_reconnects_total', { status: resume.status });

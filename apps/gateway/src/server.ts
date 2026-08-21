@@ -49,6 +49,7 @@ interface GatewaySocketData {
   helloAccepted: boolean;
   clientVersion: string | null;
   capabilities: readonly GatewayClientCapability[];
+  connectionEpoch: number | null;
 }
 
 export interface CreateGatewayServerOptions {
@@ -144,6 +145,8 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       : new InMemoryGatewayRateLimiter());
   let shuttingDown = false;
   let started = false;
+  let localConnectionEpoch = 0;
+  const localConnectionOwners = new Map<string, { connectionId: string; epoch: number }>();
 
   const log = (event: string, details: Record<string, unknown>): void => {
     console.info(JSON.stringify({
@@ -307,6 +310,25 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     return true;
   };
 
+  const claimConnection = async (accountId: string, connectionId: string) => {
+    if (realtime) return realtime.claimConnection(accountId, connectionId);
+    const previous = localConnectionOwners.get(accountId);
+    const claim = { previousConnectionId: previous?.connectionId ?? null, epoch: ++localConnectionEpoch };
+    localConnectionOwners.set(accountId, { connectionId, epoch: claim.epoch });
+    return claim;
+  };
+
+  const releaseConnection = async (accountId: string, connectionId: string, epoch: number): Promise<void> => {
+    if (realtime) {
+      await realtime.releaseConnection(accountId, connectionId, epoch);
+      return;
+    }
+    const current = localConnectionOwners.get(accountId);
+    if (current?.connectionId === connectionId && current.epoch === epoch) {
+      localConnectionOwners.delete(accountId);
+    }
+  };
+
   const recordAbuseSignal = (signal: GatewayAbuseSignal): void => {
     void options.persistence?.recordAbuseSignal?.(signal).catch(error => {
       log('abuse-signal-persistence-error', { error: error instanceof Error ? error.message : String(error) });
@@ -348,6 +370,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       socket.data.helloAccepted = false;
       socket.data.clientVersion = null;
       socket.data.capabilities = [];
+      socket.data.connectionEpoch = null;
       next();
     } catch (error) {
       log('connection-middleware-error', { error: error instanceof Error ? error.message : String(error) });
@@ -423,19 +446,24 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
             socket.disconnect(true);
             return;
           }
+          const accountId = socket.data.account.identity.accountId;
+          const claim = await claimConnection(accountId, socket.id);
           clearTimeout(helloTimer);
           socket.data.helloAccepted = true;
           socket.data.clientVersion = message.clientVersion;
           socket.data.capabilities = [...message.capabilities];
-          const accountId = socket.data.account.identity.accountId;
-          io.in(accountRoom(accountId)).disconnectSockets(true);
+          socket.data.connectionEpoch = claim.epoch;
           await socket.join(accountRoom(accountId));
           await socket.join(connectionRoom(socket.id));
+          if (claim.previousConnectionId && claim.previousConnectionId !== socket.id) {
+            io.in(connectionRoom(claim.previousConnectionId)).disconnectSockets(true);
+          }
           const accepted = await dispatch({
             kind: 'connect',
             identity: socket.data.account.identity,
             capabilities: [...socket.data.capabilities],
             connectionId: socket.id,
+            connectionEpoch: claim.epoch,
             clientVersion: message.clientVersion,
             ...(message.resumeMatchId ? { resumeMatchId: message.resumeMatchId } : {})
           });
@@ -505,6 +533,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
           kind: 'message',
           accountId: socket.data.account.identity.accountId,
           connectionId: socket.id,
+          connectionEpoch: socket.data.connectionEpoch!,
           message
         });
         if (!accepted) {
@@ -534,11 +563,20 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       if (expiryTimer) clearTimeout(expiryTimer);
       metrics.increment('skribbl_duels_gateway_transport_disconnects_total', { reason });
       metrics.gauge('skribbl_duels_gateway_socket_connections', Math.max(0, io.engine.clientsCount));
-      if (socket.data.helloAccepted) {
+      if (socket.data.helloAccepted && socket.data.connectionEpoch !== null) {
+        const accountId = socket.data.account.identity.accountId;
+        const connectionEpoch = socket.data.connectionEpoch;
+        void releaseConnection(accountId, socket.id, connectionEpoch).catch(error => {
+          log('connection-owner-release-error', {
+            connectionId: socket.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        });
         void dispatch({
           kind: 'disconnect',
-          accountId: socket.data.account.identity.accountId,
-          connectionId: socket.id
+          accountId,
+          connectionId: socket.id,
+          connectionEpoch
         });
       }
     });

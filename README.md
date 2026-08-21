@@ -1,9 +1,25 @@
-# Skribbl Duels v0.54.0
+# Skribbl Duels v0.54.1
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v9, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.54.1
+
+- Fixes the production `io server disconnect` loop introduced by the Redis
+  Streams rollout. Account reconnect takeover is now an atomic Redis claim and
+  disconnects only the exact superseded connection instead of its account room.
+- Adds a monotonically fenced connection epoch to internal Authority commands.
+  Delayed Connect, Message or Disconnect commands from an older socket can no
+  longer replace or remove the current authenticated session.
+- Keeps `/metrics` and `/diagnostics` bearer-protected. Opening either URL in a
+  browser address bar therefore still returns `operations-auth-required`; send
+  the `Authorization: Bearer <OBSERVABILITY_TOKEN>` header to verify them.
+
+Deploy the v0.54.1 Gateway over v0.54.0. Contract v9, the Supabase migration,
+Redis and the existing userscript configuration remain compatible; no new
+migration is required.
 
 ## v0.54.0
 

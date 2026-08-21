@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createAdapter } from '@socket.io/redis-streams-adapter';
 import { createClient } from 'redis';
 
@@ -16,6 +16,11 @@ export interface GatewayRealtimeCommand {
   commandId: string;
   sentAt: number;
   payload: unknown;
+}
+
+export interface GatewayConnectionClaim {
+  previousConnectionId: string | null;
+  epoch: number;
 }
 
 export interface GatewayRedisCommandClient {
@@ -47,6 +52,23 @@ end
 return 0
 `;
 
+const CLAIM_CONNECTION_SCRIPT = `
+local epoch = redis.call('INCR', KEYS[2])
+local previous = redis.call('GET', KEYS[1])
+local owner = tostring(epoch) .. ':' .. ARGV[1]
+redis.call('SET', KEYS[1], owner, 'PX', ARGV[2])
+return { previous or '', epoch }
+`;
+
+const RELEASE_CONNECTION_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+const CONNECTION_OWNER_TTL_MS = 30 * 24 * 60 * 60_000;
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -55,6 +77,16 @@ function leaseInstanceId(value: string | null): string | null {
   if (!value) return null;
   const separator = value.indexOf(':');
   return separator < 1 ? null : value.slice(0, separator);
+}
+
+function connectionOwnerKey(accountId: string): string {
+  const accountHash = createHash('sha256').update(accountId).digest('hex');
+  return `skd:v1:connection-owner:${accountHash}`;
+}
+
+function connectionIdFromOwner(owner: string): string | null {
+  const separator = owner.indexOf(':');
+  return separator > 0 && separator < owner.length - 1 ? owner.slice(separator + 1) : null;
 }
 
 function validCommand(value: unknown): value is GatewayRealtimeCommand {
@@ -129,6 +161,32 @@ export class GatewayRealtimeInfrastructure {
 
   public rateLimitClient(): GatewayRedisCommandClient {
     return this.commandClient;
+  }
+
+  public async claimConnection(accountId: string, connectionId: string): Promise<GatewayConnectionClaim> {
+    const result = await this.commandClient.eval(CLAIM_CONNECTION_SCRIPT, {
+      keys: [connectionOwnerKey(accountId), 'skd:v1:connection-owner-sequence'],
+      arguments: [connectionId, String(CONNECTION_OWNER_TTL_MS)]
+    });
+    if (!Array.isArray(result) || result.length !== 2) {
+      throw new Error('Redis returned an invalid connection claim.');
+    }
+    const previousOwner = typeof result[0] === 'string' ? result[0] : '';
+    const epoch = Number(result[1]);
+    if (!Number.isSafeInteger(epoch) || epoch < 1) {
+      throw new Error('Redis returned an invalid connection epoch.');
+    }
+    return {
+      previousConnectionId: connectionIdFromOwner(previousOwner),
+      epoch
+    };
+  }
+
+  public async releaseConnection(accountId: string, connectionId: string, epoch: number): Promise<void> {
+    await this.commandClient.eval(RELEASE_CONNECTION_SCRIPT, {
+      keys: [connectionOwnerKey(accountId)],
+      arguments: [`${epoch}:${connectionId}`]
+    });
   }
 
   public async start(roleHandler: RoleHandler, commandHandler: CommandHandler): Promise<void> {

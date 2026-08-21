@@ -1,5 +1,10 @@
 # Multi-instance Gateway operations — v0.54.0
 
+> **v0.54.1 hotfix:** Deploy v0.54.1 or newer. v0.54.0 used an account-room
+> disconnect during HELLO; Redis Streams could deliver it after the new socket
+> joined and disconnect that socket. v0.54.1 uses an atomic Redis owner claim,
+> exact connection-room takeover and Authority fencing epochs.
+
 v0.54.0 makes the Gateway horizontally deployable on Railway without allowing
 two processes to mutate the same live Duel.
 
@@ -48,6 +53,17 @@ and the [Redis Streams adapter](https://socket.io/docs/v4/redis-streams-adapter/
 `/healthz` is process liveness and deliberately does not query dependencies.
 `/readyz` checks Supabase, Redis, the shared adapter and Match Authority and
 returns HTTP 503 if any production dependency is unavailable.
+
+The browser address bar cannot attach an Authorization header, so
+`operations-auth-required` from a direct `/metrics` or `/diagnostics` visit is
+the expected secure response. Verify from PowerShell without sharing the token:
+
+```powershell
+$token = 'YOUR_RAILWAY_OBSERVABILITY_TOKEN'
+$base = 'https://YOUR-GATEWAY.up.railway.app'
+Invoke-RestMethod "$base/diagnostics" -Headers @{ Authorization = "Bearer $token" }
+(Invoke-WebRequest "$base/metrics" -Headers @{ Authorization = "Bearer $token" }).Content
+```
 
 ## Metrics and alerts
 

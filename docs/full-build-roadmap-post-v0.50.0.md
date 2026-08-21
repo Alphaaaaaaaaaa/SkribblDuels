@@ -33,8 +33,9 @@ the production realtime/abuse foundation are now complete.
 
 ### Security and anti-cheat
 
-- **Delivered in v0.54.0:** shared rate limits for connection, matchmaking,
-  Invite, chat, Match action, telemetry and Claim budgets.
+- **Delivered in v0.54.0/v0.54.2:** shared fixed-window limits for connection,
+  matchmaking, Invite, Match action, telemetry and Claim budgets; Duel Chat
+  uses the authoritative Skribbl spam-score model instead.
 - **Delivered in v0.54.0:** timestamp, sequence, cross-batch replay and evidence
   cursor validation.
 - **Delivered in v0.54.0:** scoped operator sanctions and private signals for

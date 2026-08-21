@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.54.1
+// @version      0.54.2
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif
@@ -12667,12 +12667,51 @@ function isGatewayConnectErrorData(value) {
 	const message = record(value);
 	return Boolean(message && (message.type === "AUTH_REQUIRED" || message.type === "ERROR") && isGatewayServerMessage(message));
 }
+var DUEL_CHAT_SPAM_MESSAGE = "Spam detected! You're sending messages too quickly.";
+var DUEL_CHAT_SPAM_POLICY = {
+	minimumIntervalMs: 100,
+	scoringIntervalMs: 900,
+	reductionIntervalMs: 2e3,
+	reductionAmount: 4,
+	kickScore: 6,
+	toleranceScore: 3
+};
+function emptyDuelChatSpamState() {
+	return {
+		score: 0,
+		lastSentAt: null
+	};
+}
+function evaluateDuelChatSpam(previous, now) {
+	const lastSentAt = typeof previous.lastSentAt === "number" && Number.isFinite(previous.lastSentAt) ? previous.lastSentAt : null;
+	const elapsed = lastSentAt === null ? Number.POSITIVE_INFINITY : Math.max(0, now - lastSentAt);
+	const previousScore = Number.isFinite(previous.score) ? Math.floor(previous.score) : 0;
+	let score = Math.max(0, Math.min(DUEL_CHAT_SPAM_POLICY.kickScore, previousScore));
+	if (elapsed >= DUEL_CHAT_SPAM_POLICY.reductionIntervalMs) score = Math.max(0, score - DUEL_CHAT_SPAM_POLICY.reductionAmount);
+	const blockedScore = DUEL_CHAT_SPAM_POLICY.toleranceScore + 1;
+	if (elapsed < DUEL_CHAT_SPAM_POLICY.scoringIntervalMs && score > blockedScore) return {
+		allowed: false,
+		state: {
+			score,
+			lastSentAt
+		}
+	};
+	if (elapsed < DUEL_CHAT_SPAM_POLICY.minimumIntervalMs) score += 3;
+	else if (elapsed < DUEL_CHAT_SPAM_POLICY.scoringIntervalMs) score += 1;
+	return {
+		allowed: true,
+		state: {
+			score: Math.min(DUEL_CHAT_SPAM_POLICY.kickScore, score),
+			lastSentAt: now
+		}
+	};
+}
 function configuredValue$1(value) {
 	if (value.trim().length === 0) return null;
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.54.1";
+var GATEWAY_CLIENT_VERSION = "0.54.2";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -37934,6 +37973,14 @@ var CompletionChatAdapter = class {
 .scd-chat-log.has-overflow:not(.at-top) { mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%); }
 .scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
 .scd-chat-line.system { padding:6px 8px;border-left:3px solid var(--SCD_ACCENT);background:rgba(255,255,255,.055); }
+.scd-chat-line.spam { color:var(--COLOR_CHAT_TEXT_LEAVE);border-left-color:var(--COLOR_CHAT_TEXT_LEAVE);font-weight:700; }
+.scd-chat-rematch-request { width:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px;border-radius:7px;background:rgba(255,255,255,.055);box-sizing:border-box; }
+.scd-chat-rematch-request-row { display:flex;justify-content:center;align-items:center;gap:8px;min-width:0; }
+.scd-chat-rematch-avatar { position:relative;width:48px !important;height:48px !important;flex:none;display:grid;place-items:center; }
+.scd-chat-rematch-request-row strong,.scd-chat-rematch-request-row span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-chat-rematch-accept { width:100%;background:#2c8de7; }
+.scd-chat-rematch-accept:hover:not(:disabled) { background:#1671c5; }
+.scd-chat-rematch-accept:active:not(:disabled) { background:#1361a9; }
 .scd-chat-form { position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:0 .2em; }
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
@@ -37950,6 +37997,7 @@ var CompletionChatAdapter = class {
 .scd-result-title { width:100%;color:var(--COLOR_CHAT_TEXT_OWNER,#ffa844);font-size:1.15em;text-align:center;justify-self:stretch; }
 .scd-result-score { width:100%;font-weight:700;text-align:center;justify-self:stretch; }
 .scd-result-actions { grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
+.scd-result-actions.without-rematch { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .scd-result-actions .scd-button { background:var(--COLOR_PANEL_BUTTON,#2a51d1);border-color:transparent;color:#fff;font-weight:700; }
 .scd-result-actions .scd-button:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
 .scd-result-actions .scd-button:active:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_ACTIVE,#1d40b4); }
@@ -37971,6 +38019,9 @@ var CompletionChatAdapter = class {
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
 .scd-duel-toast.clickable { cursor:pointer;transition:background-color 80ms; }
 .scd-duel-toast.clickable:hover { background:var(--COLOR_BUTTON_NORMAL_BG); }
+.scd-chat-toast { width:min(32rem,calc(100vw - 2rem));min-width:0;max-width:calc(100vw - 2rem);overflow:hidden;box-sizing:border-box; }
+.scd-chat-toast > span:not(.close-toast) { display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-chat-toast .scd-toast-profile { display:flex;max-width:100%;overflow:hidden;white-space:nowrap; }
 .scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
@@ -38215,6 +38266,10 @@ var DuelProductFoundation = class {
 	restoreDuelChatFocus = false;
 	duelChatScrollTop = 0;
 	duelChatStickToBottom = true;
+	duelChatDraft = "";
+	duelChatSpam = emptyDuelChatSpamState();
+	pendingDuelChatMessage = null;
+	notifiedRematchRequestKey = null;
 	matchActionError = null;
 	chatNotificationStartedAt = Date.now();
 	draftKeydown = (event) => this.handleDraftKeydown(event);
@@ -38272,8 +38327,14 @@ var DuelProductFoundation = class {
 			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName;
 			if (matchChanged) this.matchActionError = null;
 			this.gatewayState = state;
+			if (state.error && state.error !== previous.error && this.pendingDuelChatMessage) {
+				if (!this.duelChatDraft) this.duelChatDraft = this.pendingDuelChatMessage;
+				this.pendingDuelChatMessage = null;
+			}
+			if (state.error === "Spam detected! You're sending messages too quickly." && state.error !== previous.error) this.insertDuelChatSpamWarning();
 			this.handleInviteGatewayState(previous, state);
 			this.handleGatewayMatchState(state);
+			this.handleOpponentRematchRequest(previous, state);
 			this.handleGatewayRealtimeState(state);
 			this.flushForfeitAfterReconnect(state);
 			if (presentationChanged) this.renderVisibility();
@@ -38325,7 +38386,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.54.1",
+			version: "0.54.2",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 9,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -38447,7 +38508,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.54.1") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.54.2") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -39395,7 +39456,8 @@ var DuelProductFoundation = class {
 		const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 		if (!homepage) card.appendChild(element("div", "scd-muted", "Matchmaking is available only on the Skribbl homepage. Return home before entering a queue."));
 		if (this.matchmakingError) card.appendChild(element("div", "scd-auth-error", this.matchmakingError));
-		if (connected && this.gatewayState.error && this.gatewayState.error !== this.matchmakingError) card.appendChild(element("div", "scd-auth-error", this.gatewayState.error));
+		const gatewayError = this.visibleGatewayError();
+		if (connected && gatewayError && gatewayError !== this.matchmakingError) card.appendChild(element("div", "scd-auth-error", gatewayError));
 		if (gatewayMatch) {
 			const state = gatewayMatch.state;
 			const opponent = state.participants.find((participant) => participant.accountId !== selfAccountId);
@@ -39569,7 +39631,7 @@ var DuelProductFoundation = class {
 			});
 			actions.append(reconnect, endMatch);
 			recovery.appendChild(actions);
-			const actionError = this.matchActionError ?? this.gatewayState.error;
+			const actionError = this.matchActionError ?? this.visibleGatewayError();
 			if (actionError) recovery.appendChild(element("div", "scd-auth-error", actionError));
 			stack.appendChild(recovery);
 		} else if (gatewayMatch?.state.phase === "running") {
@@ -39619,7 +39681,7 @@ var DuelProductFoundation = class {
 				proposalCard.appendChild(actions);
 				controls.appendChild(proposalCard);
 			}
-			const actionError = this.matchActionError ?? this.gatewayState.error;
+			const actionError = this.matchActionError ?? this.visibleGatewayError();
 			if (actionError) controls.appendChild(element("div", "scd-auth-error", actionError));
 			stack.appendChild(controls);
 		} else if (this.matchState.matchId?.startsWith("demo-") && this.matchState.phase === "running") {
@@ -39673,6 +39735,7 @@ var DuelProductFoundation = class {
 		const rematch = element("button", "scd-button primary scd-result-rematch", "Rematch");
 		rematch.type = "button";
 		const ownRematchReady = Boolean(selfAccountId && gatewayMatch?.state.rematchReadyAccountIds.includes(selfAccountId));
+		const opponentRematchReady = this.opponentRematchRequester() !== null;
 		rematch.disabled = !gatewayMatch || gatewayMatch.state.phase !== "finished" || ownRematchReady || !homepageAvailable || this.gatewayState.status !== "connected";
 		if (!homepageAvailable) rematch.title = "Leave the active Skribbl lobby and return to the homepage first.";
 		if (ownRematchReady) rematch.textContent = "Rematch requested";
@@ -39680,9 +39743,11 @@ var DuelProductFoundation = class {
 			if (!gatewayMatch || !this.isHomepageVisible()) return;
 			this.runMatchAction(() => this.gatewayClient.requestRematch(gatewayMatch.matchId), rematch);
 		});
-		actions.append(returnButton, newMatch, rematch);
+		actions.append(returnButton, newMatch);
+		if (opponentRematchReady) actions.classList.add("without-rematch");
+		else actions.appendChild(rematch);
 		card.append(visual, title, score, actions);
-		const error = this.matchActionError ?? this.gatewayState.error;
+		const error = this.matchActionError ?? this.visibleGatewayError();
 		if (error) card.appendChild(element("div", "scd-auth-error", error));
 		return card;
 	}
@@ -39705,11 +39770,39 @@ var DuelProductFoundation = class {
 		if (this.duelChatMessages.length === 0) log.appendChild(element("div", "scd-muted", "Private Duel channel. Messages are visible only to both matched players."));
 		else for (const message of this.duelChatMessages) {
 			const winnerMessage = message.side === "system" && message.id.startsWith("conclusion-") && this.matchState.outcome === "win";
-			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}${winnerMessage ? " winner" : ""}`);
+			const spamMessage = message.side === "system" && message.id.startsWith("spam-");
+			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}${winnerMessage ? " winner" : ""}${spamMessage ? " spam" : ""}`);
+			if (spamMessage) {
+				line.append(element("strong", "", message.message), element("small", "scd-muted", ` \u00B7 ${formatTime(message.occurredAt)}`));
+				log.appendChild(line);
+				continue;
+			}
 			const author = element("strong", "", `${message.author} `);
 			author.style.color = winnerMessage ? "var(--COLOR_CHAT_TEXT_OWNER,#ffa844)" : message.side === "self" ? "var(--SCD_SELF)" : message.side === "opponent" ? "var(--SCD_OPPONENT)" : "var(--SCD_ACCENT)";
 			line.append(author, document.createTextNode(message.message), element("small", "scd-muted", ` \u00B7 ${formatTime(message.occurredAt)}`));
 			log.appendChild(line);
+		}
+		const rematchRequester = this.opponentRematchRequester();
+		if (rematchRequester) {
+			const request = element("div", "scd-chat-rematch-request");
+			const row = element("div", "scd-chat-rematch-request-row");
+			const avatar = this.createParticipantAvatar(rematchRequester.displayName, rematchRequester, "scd-chat-rematch-avatar");
+			if (this.gatewayState.match?.state.conclusion?.winnerAccountId === rematchRequester.accountId) avatar.appendChild(element("span", "owner"));
+			const name = element("strong", "", rematchRequester.displayName);
+			name.style.color = "var(--SCD_OPPONENT)";
+			row.append(avatar, name, element("span", "", "requests a Rematch."));
+			const accept = element("button", "scd-button scd-chat-rematch-accept", "Rematch");
+			accept.type = "button";
+			const snapshot = this.gatewayState.match;
+			const homepageAvailable = this.isHomepageVisible();
+			accept.disabled = !snapshot || !homepageAvailable || this.gatewayState.status !== "connected";
+			if (!homepageAvailable) accept.title = "Leave the active Skribbl lobby and return to the homepage first.";
+			accept.addEventListener("click", () => {
+				if (!snapshot || !this.isHomepageVisible()) return;
+				this.runMatchAction(() => this.gatewayClient.requestRematch(snapshot.matchId), accept);
+			});
+			request.append(row, accept);
+			log.appendChild(request);
 		}
 		log.addEventListener("scroll", () => {
 			this.duelChatScrollTop = log.scrollTop;
@@ -39724,17 +39817,20 @@ var DuelProductFoundation = class {
 		const gatewayChatActive = this.gatewayState.status === "connected" && this.gatewayState.match?.matchId === this.matchState.matchId && this.gatewayState.match.state.phase !== "cancelled";
 		input.placeholder = gatewayChatActive ? "Private Duel message\u2026" : "Duel chat requires an active Gateway match";
 		input.disabled = !gatewayChatActive;
+		input.value = this.duelChatDraft;
 		input.maxLength = 600;
 		const count = element("span", "scd-chat-characters", "0");
 		const updateCount = () => {
 			const codePoints = Array.from(input.value);
 			if (codePoints.length > 300) input.value = codePoints.slice(0, 300).join("");
+			this.duelChatDraft = input.value;
 			count.textContent = String(Array.from(input.value).length);
 			count.classList.toggle("visible", document.activeElement === input || input.value.length > 0);
 		};
 		input.addEventListener("input", updateCount);
 		input.addEventListener("focus", updateCount);
 		input.addEventListener("blur", updateCount);
+		updateCount();
 		inputShell.append(input, count);
 		const send = element("button", "scd-button primary", "Send");
 		send.type = "submit";
@@ -39747,13 +39843,24 @@ var DuelProductFoundation = class {
 			const matchId = this.gatewayState.match?.matchId;
 			if (!message || !gatewayChatActive || !matchId) return;
 			this.restoreDuelChatFocus = document.activeElement === input;
+			const previousSpam = this.duelChatSpam;
+			const spam = evaluateDuelChatSpam(previousSpam, Date.now());
+			this.duelChatSpam = spam.state;
+			if (!spam.allowed) {
+				this.insertDuelChatSpamWarning();
+				return;
+			}
 			try {
 				this.duelChatStickToBottom = true;
+				this.pendingDuelChatMessage = message;
 				this.gatewayClient.sendDuelChat(matchId, message);
+				this.duelChatDraft = "";
 				input.value = "";
 				updateCount();
 				log.scrollTop = log.scrollHeight;
 			} catch (error) {
+				this.duelChatSpam = previousSpam;
+				this.pendingDuelChatMessage = null;
 				this.restoreDuelChatFocus = false;
 				this.matchmakingError = error instanceof Error ? error.message : String(error);
 				this.renderPanel();
@@ -40270,7 +40377,7 @@ var DuelProductFoundation = class {
 	}
 	handleGatewayMatchState(state) {
 		const snapshot = state.match;
-		if (state.error) {
+		if (state.error && state.error !== "Spam detected! You're sending messages too quickly.") {
 			this.clearReadySubmission();
 			this.clearCancellationSubmission();
 			this.matchmakingError = state.error;
@@ -40357,24 +40464,40 @@ var DuelProductFoundation = class {
 				message: message.message,
 				occurredAt: message.occurredAt
 			});
-			if (ownMessage) this.duelChatStickToBottom = true;
+			if (ownMessage) {
+				this.pendingDuelChatMessage = null;
+				this.duelChatStickToBottom = true;
+			}
 			if (!ownMessage && this.settings.chatNotifications && message.occurredAt >= this.chatNotificationStartedAt - 5e3 && (!this.settings.panelOpen || this.mainPanelTab() !== "match" || document.hidden)) this.showChatToast(message.authorAccountId, message.authorDisplayName, message.message);
 		}
 		const resolution = state.lastClaimResolution;
 		if (resolution) this.handleGatewayClaimResolution(resolution);
 	}
+	handleOpponentRematchRequest(previous, state) {
+		const requester = this.opponentRematchRequester();
+		const match = state.match;
+		if (!requester || !match) return;
+		const alreadyRequested = previous.match?.matchId === match.matchId && previous.match.state.rematchReadyAccountIds.includes(requester.accountId);
+		const key = `${match.matchId}:${requester.accountId}`;
+		if (alreadyRequested || this.notifiedRematchRequestKey === key) return;
+		this.notifiedRematchRequestKey = key;
+		if (!this.settings.chatNotifications || this.settings.panelOpen && this.mainPanelTab() === "match" && !document.hidden) return;
+		this.showChatToast(requester.accountId, requester.displayName, "requests a Rematch.");
+	}
 	showChatToast(authorAccountId, author, message) {
 		const participant = this.gatewayState.match?.state.participants.find((item) => item.accountId === authorAccountId) ?? null;
 		const profile = element("div", "scd-toast-profile");
-		profile.append(this.createParticipantAvatar(author, participant, "scd-toast-avatar"), element("strong", "", author));
+		const authorName = element("strong", "", author);
+		authorName.title = author;
+		profile.append(this.createParticipantAvatar(author, participant, "scd-toast-avatar"), authorName);
 		this.showSimpleToast(profile, message, 3500, () => {
 			this.openPanel("match");
 			queueMicrotask(() => {
 				this.panel?.querySelector("[data-scd-duel-chat-input=\"true\"]")?.focus();
 			});
-		});
+		}, "scd-chat-toast");
 	}
-	showSimpleToast(title, message, timeout = 3500, onClick) {
+	showSimpleToast(title, message, timeout = 3500, onClick, className) {
 		let container = document.querySelector(".typo-toast-container");
 		if (!container) {
 			container = element("div", "typo-toast-container");
@@ -40382,6 +40505,7 @@ var DuelProductFoundation = class {
 			(document.body ?? document.documentElement).prepend(container);
 		}
 		const toast = element("div", "typo-toast scd-duel-toast");
+		if (className) toast.classList.add(className);
 		toast.dataset.scdRuntimeId = this.options.runtimeId;
 		const close = () => {
 			if (!toast.isConnected || toast.classList.contains("closing")) return;
@@ -40394,7 +40518,9 @@ var DuelProductFoundation = class {
 			close();
 		});
 		const titleNode = typeof title === "string" ? element("h3", "", title) : title;
-		toast.append(titleNode, closeButton, element("span", "", message));
+		const messageNode = element("span", "", message);
+		if (className === "scd-chat-toast") messageNode.title = message;
+		toast.append(titleNode, closeButton, messageNode);
 		if (onClick) {
 			toast.classList.add("clickable");
 			toast.addEventListener("click", () => {
@@ -40617,6 +40743,12 @@ var DuelProductFoundation = class {
 		if (side === "self") return this.gatewayState.identity?.displayName ?? this.authState.profile?.displayName ?? this.options.getSelfName();
 		return "Opponent";
 	}
+	opponentRematchRequester() {
+		const snapshot = this.gatewayState.match;
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		if (!snapshot || snapshot.matchId !== this.matchState.matchId || snapshot.state.phase !== "finished" || !selfAccountId) return null;
+		return snapshot.state.participants.find((participant) => participant.accountId !== selfAccountId && snapshot.state.rematchReadyAccountIds.includes(participant.accountId)) ?? null;
+	}
 	gatewayParticipants(snapshot) {
 		const selfAccountId = this.gatewayState.identity?.accountId;
 		return snapshot.state.participants.map((participant) => ({
@@ -40742,6 +40874,9 @@ var DuelProductFoundation = class {
 	serverNow() {
 		return Date.now() + (this.gatewayState.serverTimeOffsetMs ?? 0);
 	}
+	visibleGatewayError() {
+		return this.gatewayState.error === "Spam detected! You're sending messages too quickly." ? null : this.gatewayState.error;
+	}
 	clearMatchStartTimer() {
 		if (this.matchStartTimer !== null) window.clearTimeout(this.matchStartTimer);
 		this.matchStartTimer = null;
@@ -40777,6 +40912,10 @@ var DuelProductFoundation = class {
 		this.restoreDuelChatFocus = false;
 		this.duelChatScrollTop = 0;
 		this.duelChatStickToBottom = true;
+		this.duelChatDraft = "";
+		this.duelChatSpam = emptyDuelChatSpamState();
+		this.pendingDuelChatMessage = null;
+		this.notifiedRematchRequestKey = null;
 		this.matchActionError = null;
 		this.lastConclusionMessageMatchId = null;
 		this.pendingConclusionMessageMatchId = null;
@@ -40960,6 +41099,18 @@ var DuelProductFoundation = class {
 		this.duelChatStickToBottom = true;
 		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
 	}
+	insertDuelChatSpamWarning() {
+		const occurredAt = Date.now();
+		this.duelChatMessages.push({
+			id: `spam-${occurredAt}-${this.duelChatMessages.length}`,
+			side: "system",
+			author: "Skribbl Duels",
+			message: DUEL_CHAT_SPAM_MESSAGE,
+			occurredAt
+		});
+		this.duelChatStickToBottom = true;
+		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
+	}
 	showWinAnimation(playerName, participant) {
 		if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 		this.winAnimation?.remove();
@@ -40997,7 +41148,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.54.1";
+var BUILD_VERSION = "0.54.2";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

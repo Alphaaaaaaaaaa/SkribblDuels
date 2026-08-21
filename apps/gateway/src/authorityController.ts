@@ -313,6 +313,9 @@ export class GatewayAuthorityController {
       decision = matchmaker.submitClaimCandidate(accountId, message);
     }
     if (!decision || decision.ok) return;
+    if (decision.code === 'CHAT_SPAM_DETECTED') {
+      this.options.metrics.increment('skribbl_duels_gateway_chat_spam_detected_total');
+    }
     this.options.sendToConnection(peer.identity.accountId === accountId
       ? this.connections.get(accountId)?.connectionId ?? ''
       : '', errorMessage(decision.code, decision.message, true, requestId(message)));

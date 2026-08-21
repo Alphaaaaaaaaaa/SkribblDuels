@@ -117,7 +117,7 @@ export function policyForMessage(message: GatewayClientMessage): GatewayRateLimi
     case 'INVITE_CANCEL':
       return { scope: 'invite', limit: 15, windowMs: 60_000 };
     case 'DUEL_CHAT_SEND':
-      return { scope: 'chat', limit: 24, windowMs: 10_000 };
+      return null;
     case 'TELEMETRY_BATCH':
       return { scope: 'telemetry', limit: 40, windowMs: 10_000 };
     case 'CLAIM_CANDIDATE':

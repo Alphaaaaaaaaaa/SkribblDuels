@@ -1,9 +1,33 @@
-# Skribbl Duels v0.54.1
+# Skribbl Duels v0.54.2
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v9, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.54.2
+
+- Replaces the eight-messages-per-ten-seconds Duel Chat window with Skribbl's
+  score model: 100 ms minimum interval, score growth below 900 ms, four-point
+  reduction after two idle seconds, tolerance three and kick boundary six.
+  Browser and Match Authority use the same shared policy; a blocked submission
+  stays in the input and appears as the leave-colored `Spam detected!` line.
+- Persists the live Chat input across authoritative rerenders, so typing the
+  next message immediately no longer gets erased when the previous message is
+  confirmed by the Gateway.
+- Bounds Match Chat notification toasts to the viewport and truncates long
+  sender/message text with an ellipsis while retaining the full text as a
+  native title.
+- Shows an opponent's Rematch request with Duel avatar in Match Chat and as an
+  optional clickable Chat toast. While waiting for the local response, the
+  Rematch action moves from the result buttons into the request card.
+- Corrects the per-instance active-socket gauge on disconnect and removes one
+  byte-identical legacy fixture. Generated release archives are now excluded
+  from source deployments.
+
+Deploy the v0.54.2 Gateway before testing the authoritative Chat spam score,
+then reload the v0.54.2 userscript. Contract v9 and the existing Supabase/Redis
+configuration remain compatible; no migration is required.
 
 ## v0.54.1
 

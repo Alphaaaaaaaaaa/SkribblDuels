@@ -562,7 +562,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       clearTimeout(helloTimer);
       if (expiryTimer) clearTimeout(expiryTimer);
       metrics.increment('skribbl_duels_gateway_transport_disconnects_total', { reason });
-      metrics.gauge('skribbl_duels_gateway_socket_connections', Math.max(0, io.engine.clientsCount));
+      metrics.gauge('skribbl_duels_gateway_socket_connections', Math.max(0, io.engine.clientsCount - 1));
       if (socket.data.helloAccepted && socket.data.connectionEpoch !== null) {
         const accountId = socket.data.account.identity.accountId;
         const connectionEpoch = socket.data.connectionEpoch;

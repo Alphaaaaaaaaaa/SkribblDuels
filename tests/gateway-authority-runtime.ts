@@ -157,19 +157,31 @@ assert.equal(matchmaker.sendDuelChat('alpha', {
   type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-1', message: 'changed replay'
 }).ok, true);
 assert.equal(betaMessages.filter(message => message.type === 'DUEL_CHAT_MESSAGE').length, betaChatCount);
-for (let chatIndex = 2; chatIndex <= 8; chatIndex += 1) {
-  assert.equal(matchmaker.sendDuelChat('alpha', {
-    type: 'DUEL_CHAT_SEND',
-    matchId: ready.matchId,
-    clientMessageId: `chat-${chatIndex}`,
-    message: `message ${chatIndex}`
-  }).ok, true);
-}
+now += 50;
+assert.equal(matchmaker.sendDuelChat('alpha', {
+  type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-2', message: 'message 2'
+}).ok, true);
+now += 50;
+assert.equal(matchmaker.sendDuelChat('alpha', {
+  type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-3', message: 'message 3'
+}).ok, true);
+now += 50;
 const rateLimited = matchmaker.sendDuelChat('alpha', {
-  type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-9', message: 'too fast'
+  type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-4', message: 'too fast'
 });
 assert.equal(rateLimited.ok, false);
-if (!rateLimited.ok) assert.equal(rateLimited.code, 'CHAT_RATE_LIMITED');
+if (!rateLimited.ok) {
+  assert.equal(rateLimited.code, 'CHAT_SPAM_DETECTED');
+  assert.equal(rateLimited.message, 'Spam detected! You\'re sending messages too quickly.');
+}
+now += 900;
+assert.equal(matchmaker.sendDuelChat('alpha', {
+  type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-5', message: 'after cooldown'
+}).ok, true);
+now += 2_000;
+assert.equal(matchmaker.sendDuelChat('alpha', {
+  type: 'DUEL_CHAT_SEND', matchId: ready.matchId, clientMessageId: 'chat-6', message: 'after score reduction'
+}).ok, true);
 
 matchmaker.disconnect('alpha');
 assert.equal(matchmaker.resume(peer('alpha', resumedAlphaMessages), ready.matchId).status, 'resumed');
@@ -296,7 +308,7 @@ console.log(JSON.stringify({
   privateGatewayChat: true,
   chatSanitization: true,
   chatMessageIdDeduplication: true,
-  chatRateLimit: true,
+  skribblStyleChatSpam: true,
   reconnectChatHistory: true,
   telemetrySequenceAcks: true,
   telemetryGapRejected: true,

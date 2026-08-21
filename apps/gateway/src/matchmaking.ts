@@ -1,5 +1,11 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import {
+  DUEL_CHAT_SPAM_MESSAGE,
+  emptyDuelChatSpamState,
+  evaluateDuelChatSpam
+} from '@skribbl-duels/gateway-contracts';
 import type {
+  DuelChatSpamState,
   GatewayClientCapability,
   GatewayClientIdentity,
   GatewayAuthoritativeClaim,
@@ -83,7 +89,7 @@ interface MatchParticipant extends MatchmakingPeer {
   simulated: boolean;
   connected: boolean;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
-  chatSentAt: number[];
+  chatSpam: DuelChatSpamState;
   claimSubmittedAt: number[];
 }
 
@@ -144,7 +150,8 @@ interface DurableMatchParticipant {
   capabilities: GatewayClientCapability[];
   ready: boolean;
   simulated: boolean;
-  chatSentAt: number[];
+  chatSpam?: DuelChatSpamState;
+  chatSentAt?: number[];
   claimSubmittedAt: number[];
 }
 
@@ -630,11 +637,11 @@ export class GatewayMatchmaker {
       return { ok: false, code: 'CHAT_MESSAGE_EMPTY', message: 'The Duel message is empty after sanitization.' };
     }
     const now = this.now();
-    participant.chatSentAt = participant.chatSentAt.filter(timestamp => now - timestamp < 10_000);
-    if (participant.chatSentAt.length >= 8) {
-      return { ok: false, code: 'CHAT_RATE_LIMITED', message: 'Too many Duel messages were sent. Try again shortly.' };
+    const spam = evaluateDuelChatSpam(participant.chatSpam, now);
+    participant.chatSpam = spam.state;
+    if (!spam.allowed) {
+      return { ok: false, code: 'CHAT_SPAM_DETECTED', message: DUEL_CHAT_SPAM_MESSAGE };
     }
-    participant.chatSentAt.push(now);
     const outgoing: GatewayDuelChatMessage = {
       type: 'DUEL_CHAT_MESSAGE',
       matchId: match.matchId,
@@ -1652,7 +1659,7 @@ export class GatewayMatchmaker {
       capabilities: [...participant.capabilities],
       ready: false,
       reconnectTimer: null,
-      chatSentAt: [],
+      chatSpam: emptyDuelChatSpamState(),
       claimSubmittedAt: []
     }));
     const firstParticipant = participants[0];
@@ -1979,7 +1986,7 @@ export class GatewayMatchmaker {
         capabilities: [...participant.capabilities],
         ready: participant.ready,
         simulated: participant.simulated,
-        chatSentAt: [...participant.chatSentAt],
+        chatSpam: { ...participant.chatSpam },
         claimSubmittedAt: [...participant.claimSubmittedAt]
       })),
       readyDeadlineAt: match.readyDeadlineAt,
@@ -2085,7 +2092,12 @@ export class GatewayMatchmaker {
       simulated: participant.simulated,
       connected: participant.simulated,
       reconnectTimer: null,
-      chatSentAt: [...participant.chatSentAt],
+      chatSpam: participant.chatSpam
+        ? { ...participant.chatSpam }
+        : {
+            score: 0,
+            lastSentAt: participant.chatSentAt?.at(-1) ?? null
+          },
       claimSubmittedAt: [...participant.claimSubmittedAt],
       send() {}
     }));
@@ -2297,7 +2309,7 @@ export class GatewayMatchmaker {
       simulated,
       connected: true,
       reconnectTimer: null,
-      chatSentAt: [],
+      chatSpam: emptyDuelChatSpamState(),
       claimSubmittedAt: []
     };
   }
@@ -2331,7 +2343,7 @@ export class GatewayMatchmaker {
       simulated: true,
       connected: true,
       reconnectTimer: null,
-      chatSentAt: [],
+      chatSpam: emptyDuelChatSpamState(),
       claimSubmittedAt: [],
       send() {}
     };

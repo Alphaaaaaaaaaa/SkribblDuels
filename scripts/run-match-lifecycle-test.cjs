@@ -52,6 +52,7 @@ assert(gateway.includes('public respondToDraw('), 'explicit Draw response is mis
 assert(gateway.includes('public withdrawDraw('), 'Draw withdrawal is missing');
 assert(gateway.includes('public requestRematch('), 'server-authoritative Rematch request is missing');
 assert(gateway.includes('private startRematch('), 'server Rematch lifecycle is missing');
+assert(gateway.includes('evaluateDuelChatSpam(participant.chatSpam, now)'), 'server Duel Chat does not use the shared Skribbl spam score');
 assert(gateway.includes("reason: 'player-forfeit'"), 'Forfeit result reason is missing');
 assert(gateway.includes("reason: 'player-disconnect'"), 'Reconnect timeout does not award the connected opponent');
 assert(gateway.includes('private detachFinishedParticipant('), 'finished results are not retained for a disconnected participant');

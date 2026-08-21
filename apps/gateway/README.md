@@ -66,9 +66,11 @@ ready, Draft, countdown, Draw and reconnect deadlines. Snapshots whose frozen
 Challenge definition versions are no longer supported are retired fail-closed.
 
 Private chat is normalized and sanitized on the server, limited to 300 code
-points, burst-rate-limited and retained in a bounded authoritative history. Client
-message IDs make resends idempotent; only both match participants receive live
-or replayed messages.
+points and retained in a bounded authoritative history. Its shared Skribbl-style
+spam score adds three below 100 ms, one below 900 ms and removes four after two
+idle seconds; submissions are blocked before the score can exceed Skribbl's
+kick boundary. Client message IDs make resends idempotent; only both match
+participants receive live or replayed messages.
 
 During a running match, each real participant sends contiguous normalized
 telemetry batches. The Gateway acknowledges the last accepted sequence and

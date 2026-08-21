@@ -2,6 +2,7 @@ node_modules/
 .npm-cache/
 dist/
 coverage/
+deliverables/
 *.log
 
 .env

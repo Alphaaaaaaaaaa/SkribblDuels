@@ -21,7 +21,7 @@ assert.equal(policyForMessage({
   matchId: 'match-1',
   clientMessageId: 'chat-1',
   message: 'hello'
-})?.scope, 'chat');
+}), null, 'Duel Chat uses the authoritative Skribbl-style spam score instead of a fixed window.');
 assert.equal(policyForMessage({ type: 'PING', sentAt: 1 }), null);
 assert.equal(requestIdForMessage({
   type: 'MATCH_FORFEIT',

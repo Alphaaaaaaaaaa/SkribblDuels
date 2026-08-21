@@ -85,6 +85,10 @@ const normalizedSettings = normalizeProductUiSettings({
 assert.equal(normalizedSettings.board.scale, 1.6);
 assert.equal(normalizedSettings.board.opacity, 0.35);
 assert.equal(normalizedSettings.board.mode, 'custom');
+assert.equal(normalizedSettings.launcher.anchor, 'center-right');
+const normalizedLauncher = normalizeProductUiSettings({ launcher: { mode: 'custom', x: 123, y: 456, size: 999 } });
+assert.equal(normalizedLauncher.launcher.mode, 'custom');
+assert.equal(normalizedLauncher.launcher.size, 120);
 assert.equal(normalizedSettings.panelTab, 'settings');
 
 void (async () => {

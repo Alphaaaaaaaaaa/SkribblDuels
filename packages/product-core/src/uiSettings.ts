@@ -1,4 +1,4 @@
-import type { BoardUiSettings, ProductUiSettings } from './types';
+import type { BoardUiSettings, LauncherUiSettings, ProductUiSettings } from './types';
 import { UI_SETTINGS_VERSION } from './types';
 
 type SettingsListener = (settings: ProductUiSettings) => void;
@@ -18,6 +18,13 @@ export const DEFAULT_PRODUCT_UI_SETTINGS: ProductUiSettings = {
     clickThroughWhenLocked: false,
     showNames: true
   },
+  launcher: {
+    mode: 'anchor',
+    anchor: 'center-right',
+    x: 12,
+    y: 120,
+    size: 60
+  },
   panelOpen: false,
   panelTab: 'duel',
   completionMessages: true,
@@ -35,6 +42,9 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
     : {};
   const boardInput: Partial<BoardUiSettings> = input.board && typeof input.board === 'object'
     ? input.board
+    : {};
+  const launcherInput: Partial<LauncherUiSettings> = input.launcher && typeof input.launcher === 'object'
+    ? input.launcher
     : {};
   const validTabs = new Set(['duel', 'match', 'chat', 'settings', 'about']);
   const validAnchors = new Set([
@@ -68,6 +78,15 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
       showNames: typeof boardInput.showNames === 'boolean'
         ? boardInput.showNames
         : DEFAULT_PRODUCT_UI_SETTINGS.board.showNames
+    },
+    launcher: {
+      mode: launcherInput.mode === 'custom' ? 'custom' : 'anchor',
+      anchor: validAnchors.has(String(launcherInput.anchor))
+        ? launcherInput.anchor as ProductUiSettings['launcher']['anchor']
+        : DEFAULT_PRODUCT_UI_SETTINGS.launcher.anchor,
+      x: Number.isFinite(launcherInput.x) ? Number(launcherInput.x) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.x,
+      y: Number.isFinite(launcherInput.y) ? Number(launcherInput.y) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.y,
+      size: clamp(Number(launcherInput.size) || DEFAULT_PRODUCT_UI_SETTINGS.launcher.size, 36, 120)
     },
     panelOpen: typeof input.panelOpen === 'boolean'
       ? input.panelOpen
@@ -123,7 +142,10 @@ export class LocalStorageProductUiSettingsStore {
       ...update,
       board: update.board
         ? { ...this.value.board, ...update.board }
-        : this.value.board
+        : this.value.board,
+      launcher: update.launcher
+        ? { ...this.value.launcher, ...update.launcher }
+        : this.value.launcher
     });
   }
 
@@ -131,6 +153,13 @@ export class LocalStorageProductUiSettingsStore {
     return this.set({
       ...this.value,
       board: { ...this.value.board, ...update }
+    });
+  }
+
+  public updateLauncher(update: Partial<ProductUiSettings['launcher']>): ProductUiSettings {
+    return this.set({
+      ...this.value,
+      launcher: { ...this.value.launcher, ...update }
     });
   }
 

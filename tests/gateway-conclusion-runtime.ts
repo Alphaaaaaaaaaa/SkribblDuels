@@ -227,6 +227,37 @@ assert.equal(afterDrawForfeit.ok, false, 'The first terminal action must make th
 if (!afterDrawForfeit.ok) assert.equal(afterDrawForfeit.code, 'MATCH_ALREADY_FINISHED');
 draw.matchmaker.close();
 
+const disconnected = await runningFixture('disconnect');
+disconnected.matchmaker.disconnect('beta');
+await waitFor(
+  () => latest(disconnected.alphaMessages).state.phase === 'finished',
+  'disconnect result'
+);
+const disconnectResult = latest(disconnected.alphaMessages);
+assert.deepEqual(disconnectResult.state.conclusion, {
+  outcome: 'win',
+  reason: 'player-disconnect',
+  winnerAccountId: 'alpha',
+  loserAccountId: 'beta',
+  initiatedByAccountId: null,
+  occurredAt: disconnectResult.state.conclusion?.occurredAt
+});
+assert.ok(disconnected.alphaMessages.some(message =>
+  message.type === 'MATCH_EVENT'
+  && message.event.type === 'MATCH_FINISHED'
+  && message.event.reason === 'player-disconnect'
+));
+disconnected.matchmaker.leave('alpha', 'winner-returned');
+const lateDisconnectMessages: GatewayServerMessage[] = [];
+assert.deepEqual(
+  disconnected.matchmaker.resume(disconnected.peer('beta', lateDisconnectMessages), disconnected.matchId),
+  { status: 'resumed', matchId: disconnected.matchId },
+  'The disconnected player must still be able to restore the result after the winner returns.'
+);
+disconnected.matchmaker.publishResumeSnapshot('beta');
+assert.equal(latest(lateDisconnectMessages).state.conclusion?.reason, 'player-disconnect');
+disconnected.matchmaker.close();
+
 const timeout = await runningFixture('timeout', 12);
 assert.equal(timeout.matchmaker.proposeDraw('alpha', {
   type: 'DRAW_PROPOSE', matchId: timeout.matchId, actionId: 'timeout-proposal'
@@ -247,5 +278,7 @@ console.log(JSON.stringify({
   reconnectProposalRestore: true,
   idempotentActions: true,
   immutableFirstConclusion: true,
-  authoritativeRematchReadyCheck: true
+  authoritativeRematchReadyCheck: true,
+  disconnectAwardsConnectedOpponent: true,
+  lateDisconnectResultRestore: true
 }, null, 2));

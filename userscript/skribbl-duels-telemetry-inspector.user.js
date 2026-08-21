@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.52.1
+// @version      0.53.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
+// @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -12389,7 +12390,7 @@ var MatchTelemetryGateway = class {
 	}
 };
 var DEFAULT_PRODUCT_UI_SETTINGS = {
-	version: 3,
+	version: 4,
 	board: {
 		visible: true,
 		mode: "anchor",
@@ -12403,6 +12404,13 @@ var DEFAULT_PRODUCT_UI_SETTINGS = {
 		clickThroughWhenLocked: false,
 		showNames: true
 	},
+	launcher: {
+		mode: "anchor",
+		anchor: "center-right",
+		x: 12,
+		y: 120,
+		size: 60
+	},
 	panelOpen: false,
 	panelTab: "duel",
 	completionMessages: true,
@@ -12415,6 +12423,7 @@ function clamp(value, min, max) {
 function normalizeProductUiSettings(value) {
 	const input = value && typeof value === "object" ? value : {};
 	const boardInput = input.board && typeof input.board === "object" ? input.board : {};
+	const launcherInput = input.launcher && typeof input.launcher === "object" ? input.launcher : {};
 	const validTabs = /* @__PURE__ */ new Set([
 		"duel",
 		"match",
@@ -12433,7 +12442,7 @@ function normalizeProductUiSettings(value) {
 		"bottom-right"
 	]);
 	return {
-		version: 3,
+		version: 4,
 		board: {
 			visible: typeof boardInput.visible === "boolean" ? boardInput.visible : DEFAULT_PRODUCT_UI_SETTINGS.board.visible,
 			mode: boardInput.mode === "custom" ? "custom" : "anchor",
@@ -12446,6 +12455,13 @@ function normalizeProductUiSettings(value) {
 			collapsed: typeof boardInput.collapsed === "boolean" ? boardInput.collapsed : DEFAULT_PRODUCT_UI_SETTINGS.board.collapsed,
 			clickThroughWhenLocked: typeof boardInput.clickThroughWhenLocked === "boolean" ? boardInput.clickThroughWhenLocked : DEFAULT_PRODUCT_UI_SETTINGS.board.clickThroughWhenLocked,
 			showNames: typeof boardInput.showNames === "boolean" ? boardInput.showNames : DEFAULT_PRODUCT_UI_SETTINGS.board.showNames
+		},
+		launcher: {
+			mode: launcherInput.mode === "custom" ? "custom" : "anchor",
+			anchor: validAnchors.has(String(launcherInput.anchor)) ? launcherInput.anchor : DEFAULT_PRODUCT_UI_SETTINGS.launcher.anchor,
+			x: Number.isFinite(launcherInput.x) ? Number(launcherInput.x) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.x,
+			y: Number.isFinite(launcherInput.y) ? Number(launcherInput.y) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.y,
+			size: clamp(Number(launcherInput.size) || DEFAULT_PRODUCT_UI_SETTINGS.launcher.size, 36, 120)
 		},
 		panelOpen: typeof input.panelOpen === "boolean" ? input.panelOpen : DEFAULT_PRODUCT_UI_SETTINGS.panelOpen,
 		panelTab: validTabs.has(String(input.panelTab)) ? input.panelTab : DEFAULT_PRODUCT_UI_SETTINGS.panelTab,
@@ -12487,7 +12503,11 @@ var LocalStorageProductUiSettingsStore = class {
 			board: update.board ? {
 				...this.value.board,
 				...update.board
-			} : this.value.board
+			} : this.value.board,
+			launcher: update.launcher ? {
+				...this.value.launcher,
+				...update.launcher
+			} : this.value.launcher
 		});
 	}
 	updateBoard(update) {
@@ -12495,6 +12515,15 @@ var LocalStorageProductUiSettingsStore = class {
 			...this.value,
 			board: {
 				...this.value.board,
+				...update
+			}
+		});
+	}
+	updateLauncher(update) {
+		return this.set({
+			...this.value,
+			launcher: {
+				...this.value.launcher,
 				...update
 			}
 		});
@@ -12560,7 +12589,7 @@ function drawProposal(value) {
 }
 function matchConclusion(value) {
 	const conclusion = record(value);
-	return Boolean(conclusion && (conclusion.outcome === "win" || conclusion.outcome === "draw") && (conclusion.reason === "win-target-reached" || conclusion.reason === "player-forfeit" || conclusion.reason === "mutual-draw") && (conclusion.winnerAccountId === null || nonEmptyString(conclusion.winnerAccountId)) && (conclusion.loserAccountId === null || nonEmptyString(conclusion.loserAccountId)) && (conclusion.initiatedByAccountId === null || nonEmptyString(conclusion.initiatedByAccountId)) && finiteNumber(conclusion.occurredAt));
+	return Boolean(conclusion && (conclusion.outcome === "win" || conclusion.outcome === "draw") && (conclusion.reason === "win-target-reached" || conclusion.reason === "player-forfeit" || conclusion.reason === "player-disconnect" || conclusion.reason === "mutual-draw") && (conclusion.winnerAccountId === null || nonEmptyString(conclusion.winnerAccountId)) && (conclusion.loserAccountId === null || nonEmptyString(conclusion.loserAccountId)) && (conclusion.initiatedByAccountId === null || nonEmptyString(conclusion.initiatedByAccountId)) && finiteNumber(conclusion.occurredAt));
 }
 function draftPick(value) {
 	const pick = record(value);
@@ -12619,7 +12648,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 8 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 9 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -12643,7 +12672,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.52.1";
+var GATEWAY_CLIENT_VERSION = "0.53.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -16181,7 +16210,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 8,
+				contractVersion: 9,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -16220,7 +16249,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v8 message.`
+				error: `Gateway sent an invalid Contract v9 message.`
 			});
 			return;
 		}
@@ -37740,11 +37769,13 @@ var CompletionChatAdapter = class {
 .scd-icon-image { display:block;width:100%;height:100%;object-fit:contain; }
 .scd-icon-button { display:grid;place-items:center;border:0;background:transparent;padding:0;cursor:pointer; }
 .scd-icon-fallback { display:grid;place-items:center;font-weight:900; }
-.button-skribbl-duels { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:40px;margin-top:10px;border:0;border-radius:var(--BORDER_RADIUS,7px);background:#e74c3c;color:white;font-size:1.2em;font-weight:700;text-shadow:2px 2px 0 #0000002b;transition:background-color 80ms;cursor:pointer; }
-.button-skribbl-duels:hover:not(:disabled) { background:#c9362a; }
-.button-skribbl-duels:active:not(:disabled) { background:#ac2d24;padding-top:2px; }
+.button-skribbl-duels { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:40px;margin-top:10px;border:0;border-radius:var(--BORDER_RADIUS,7px);background:var(--SCD_ACCENT);color:white;font-size:1.2em;font-weight:700;text-shadow:2px 2px 0 #0000002b;transition:background-color 80ms;cursor:pointer; }
+.button-skribbl-duels:hover:not(:disabled) { background:var(--SCD_ACCENT_HOVER); }
+.button-skribbl-duels:active:not(:disabled) { background:var(--SCD_ACCENT_ACTIVE);padding-top:2px; }
 .button-skribbl-duels .scd-icon { width:32px;height:32px; }
 .button-skribbl-duels .scd-icon,.scd-ready-state .scd-icon,.scd-ready-action .scd-icon { filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+#skribbl-duels-launcher { position:fixed;z-index:2147483644;border:0;background:transparent; }
+#skribbl-duels-launcher .scd-icon { width:100%;height:100%;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-modal-overlay { position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.55);animation:scd-modal-opacity .21s ease-in-out; }
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
@@ -37906,16 +37937,31 @@ var CompletionChatAdapter = class {
 .scd-result-actions .scd-button { background:var(--COLOR_PANEL_BUTTON,#2a51d1);border-color:transparent;color:#fff;font-weight:700; }
 .scd-result-actions .scd-button:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
 .scd-result-actions .scd-button:active:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_ACTIVE,#1d40b4); }
+.scd-result-actions .scd-result-return { background:#d68e27; }
+.scd-result-actions .scd-result-return:hover:not(:disabled) { background:#c4842a; }
+.scd-result-actions .scd-result-return:active:not(:disabled) { background:#b87824; }
+.scd-result-actions .scd-result-new { background:#53e237; }
+.scd-result-actions .scd-result-new:hover:not(:disabled) { background:#38c41c; }
+.scd-result-actions .scd-result-new:active:not(:disabled) { background:#30aa19; }
+.scd-result-actions .scd-result-rematch { background:#2c8de7; }
+.scd-result-actions .scd-result-rematch:hover:not(:disabled) { background:#1671c5; }
+.scd-result-actions .scd-result-rematch:active:not(:disabled) { background:#1361a9; }
+.scd-result-actions .scd-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-win-animation { position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;pointer-events:none;overflow:hidden;background:radial-gradient(circle,rgba(42,81,209,.28),rgba(0,0,0,.7));animation:scd-win-fade 3.4s both; }
 .scd-win-card { position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;color:white;font-size:clamp(28px,6vw,58px);font-weight:900;text-align:center;text-shadow:3px 3px 0 rgba(0,0,0,.35); }
 .scd-win-visual { position:relative;width:clamp(96px,18vw,170px);height:clamp(96px,18vw,170px);display:grid;place-items:center;isolation:isolate; }
 .scd-win-player { position:relative;z-index:1;width:68%;height:68%;border-radius:50%;display:grid;place-items:center;font-size:clamp(34px,7vw,72px);animation:player_winner 3.2s both;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
 .typo-toast-container { position:fixed;left:0;right:0;top:0;height:0;overflow:visible;z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:1rem;padding-top:1rem; }
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
+.scd-duel-toast.clickable { cursor:pointer; }
 .scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
 .scd-duel-toast .typo-toast-confirm .scd-button { min-width:7rem; }
+.scd-toast-profile { display:flex;align-items:center;gap:.55rem;min-width:0; }
+.scd-toast-profile strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-toast-avatar { position:relative;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:16px;font-weight:900; }
+.scd-toast-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }
 #skribbl-duels-panel input::placeholder,#skribbl-duels-panel textarea::placeholder,#skribbl-duels-stage input::placeholder,#skribbl-duels-stage textarea::placeholder { color:var(--COLOR_PANEL_TEXT_PLACEHOLDER); }
 #skribbl-duels-panel input,#skribbl-duels-panel select,#skribbl-duels-panel textarea,#skribbl-duels-stage input,#skribbl-duels-stage select,#skribbl-duels-stage textarea { font:inherit;flex:0 0 auto;height:32px;width:100%;min-width:0;color:var(--COLOR_INPUT_TEXT);background-color:var(--COLOR_INPUT_BG);border:1px solid var(--COLOR_INPUT_BORDER);border-radius:var(--BORDER_RADIUS);padding:.2em .5em;transition:background-color .12s ease,border-color .12s ease;box-sizing:border-box; }
 #skribbl-duels-panel input:focus,#skribbl-duels-panel select:focus,#skribbl-duels-panel textarea:focus,#skribbl-duels-stage input:focus,#skribbl-duels-stage select:focus,#skribbl-duels-stage textarea:focus { outline:0;background-color:var(--COLOR_INPUT_HOVER);border-color:var(--COLOR_INPUT_BORDER_FOCUS);box-shadow:0 0 10px -4px var(--COLOR_INPUT_BORDER_FOCUS); }
@@ -38234,6 +38280,7 @@ var DuelProductFoundation = class {
 			this.activeTab = settings.panelTab;
 			this.renderVisibility();
 			this.renderBoardPosition();
+			this.renderLauncherPosition();
 			this.renderStage();
 			this.renderBoard();
 			if (tabChanged || settings.panelOpen) this.renderPanel();
@@ -38261,9 +38308,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.52.1",
+			version: "0.53.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 8,
+			gatewayContractVersion: 9,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -38316,6 +38363,7 @@ var DuelProductFoundation = class {
 				get: () => this.settingsStore.get(),
 				update: (update) => this.settingsStore.update(update),
 				updateBoard: (update) => this.settingsStore.updateBoard(update),
+				updateLauncher: (update) => this.settingsStore.updateLauncher(update),
 				reset: () => this.settingsStore.reset()
 			},
 			ui: {
@@ -38382,7 +38430,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.52.1") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.53.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -38463,6 +38511,7 @@ var DuelProductFoundation = class {
 		if (!mounted) return;
 		this.renderVisibility();
 		this.renderBoardPosition();
+		this.renderLauncherPosition();
 		this.renderPanel();
 		this.renderStage();
 		this.renderBoard();
@@ -38481,21 +38530,7 @@ var DuelProductFoundation = class {
 		launcher.id = "skribbl-duels-launcher";
 		launcher.dataset.scdRuntimeId = this.options.runtimeId;
 		launcher.type = "button";
-		launcher.style.cssText = [
-			"position:fixed",
-			"right:12px",
-			"top:50%",
-			"transform:translateY(-50%)",
-			"z-index:2147483644",
-			"width:60px",
-			"height:60px",
-			"border:0",
-			"background:transparent"
-		].join(";");
 		const icon = this.createIconAsset("challenge-icons/skribbl-duels-logo.gif", "SD", "Skribbl Duels");
-		icon.style.width = "60px";
-		icon.style.height = "60px";
-		icon.style.filter = "drop-shadow(3px 3px 0 rgba(0, 0, 0, .25))";
 		launcher.appendChild(icon);
 		launcher.addEventListener("click", () => this.handleLauncherClick());
 		this.tooltips.register(launcher, "Open Skribbl Duels", "X");
@@ -38858,6 +38893,62 @@ var DuelProductFoundation = class {
 		this.board.style.transform = transform;
 		const grid = this.board.querySelector("[data-role=\"grid\"]");
 		if (grid) grid.style.display = settings.collapsed ? "none" : "grid";
+	}
+	renderLauncherPosition() {
+		if (!this.launcher) return;
+		const settings = this.settings.launcher;
+		const size = Math.max(36, Math.min(120, settings.size));
+		const gap = 12;
+		this.launcher.style.width = `${size}px`;
+		this.launcher.style.height = `${size}px`;
+		this.launcher.style.left = "";
+		this.launcher.style.right = "";
+		this.launcher.style.top = "";
+		this.launcher.style.bottom = "";
+		this.launcher.style.transform = "";
+		if (settings.mode === "custom") {
+			this.launcher.style.left = `${Math.max(0, Math.min(window.innerWidth - size, settings.x))}px`;
+			this.launcher.style.top = `${Math.max(0, Math.min(window.innerHeight - size, settings.y))}px`;
+			return;
+		}
+		switch (settings.anchor) {
+			case "top-left":
+				this.launcher.style.left = `${gap}px`;
+				this.launcher.style.top = `${gap}px`;
+				break;
+			case "top-center":
+				this.launcher.style.left = "50%";
+				this.launcher.style.top = `${gap}px`;
+				this.launcher.style.transform = "translateX(-50%)";
+				break;
+			case "top-right":
+				this.launcher.style.right = `${gap}px`;
+				this.launcher.style.top = `${gap}px`;
+				break;
+			case "center-left":
+				this.launcher.style.left = `${gap}px`;
+				this.launcher.style.top = "50%";
+				this.launcher.style.transform = "translateY(-50%)";
+				break;
+			case "center-right":
+				this.launcher.style.right = `${gap}px`;
+				this.launcher.style.top = "50%";
+				this.launcher.style.transform = "translateY(-50%)";
+				break;
+			case "bottom-left":
+				this.launcher.style.left = `${gap}px`;
+				this.launcher.style.bottom = `${gap}px`;
+				break;
+			case "bottom-center":
+				this.launcher.style.left = "50%";
+				this.launcher.style.bottom = `${gap}px`;
+				this.launcher.style.transform = "translateX(-50%)";
+				break;
+			case "bottom-right":
+				this.launcher.style.right = `${gap}px`;
+				this.launcher.style.bottom = `${gap}px`;
+				break;
+		}
 	}
 	renderBoard() {
 		if (!this.boardGrid || !this.board) return;
@@ -39305,7 +39396,7 @@ var DuelProductFoundation = class {
 			}
 			if (state.phase === "finished" && state.conclusion) {
 				const conclusion = state.conclusion;
-				const summary = conclusion.outcome === "draw" ? "The Duel ended in a mutually agreed Draw." : `${state.participants.find((item) => item.accountId === conclusion.winnerAccountId)?.displayName ?? "A player"} won${conclusion.reason === "player-forfeit" ? " by forfeit" : ""}.`;
+				const summary = conclusion.outcome === "draw" ? "The Duel ended in a mutually agreed Draw." : `${state.participants.find((item) => item.accountId === conclusion.winnerAccountId)?.displayName ?? "A player"} won${conclusion.reason === "player-forfeit" ? " by forfeit" : conclusion.reason === "player-disconnect" ? " after the opponent disconnected" : ""}.`;
 				card.appendChild(element("div", "", summary));
 				const open = element("button", "scd-button primary", "Open result");
 				open.type = "button";
@@ -39434,7 +39525,11 @@ var DuelProductFoundation = class {
 		status.append(element("strong", "", this.matchState.outcome === "draw" ? "Status: agreed Draw" : this.matchState.outcome === "win" ? `Status: ${this.duelDisplayName(this.matchState.winner ?? "opponent")} won` : `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", "Challenge claims are confirmed by the authoritative Gateway."));
 		stack.append(status);
 		const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId ? this.gatewayState.match : null;
-		if (this.matchState.phase === "running" && this.gatewayState.status !== "connected") {
+		if (this.matchState.phase === "running" && this.pendingRestoredMatchId === this.matchState.matchId && this.gatewayState.status !== "connected") {
+			const restoring = element("div", "scd-card scd-stack");
+			restoring.append(element("strong", "", "Restoring authoritative Match\u2026"), element("div", "scd-muted", "Waiting for the Gateway result before Match actions are enabled."));
+			stack.appendChild(restoring);
+		} else if (this.matchState.phase === "running" && this.gatewayState.status !== "connected") {
 			const recovery = element("div", "scd-card scd-stack");
 			recovery.append(element("strong", "", "Gateway connection interrupted"), element("div", "scd-muted", "Challenge telemetry is retained while the Gateway reconnects. You can retry now or reconnect once to forfeit and end the match."));
 			const actions = element("div", "scd-match-actions");
@@ -39543,13 +39638,13 @@ var DuelProductFoundation = class {
 		const opponent = this.matchState.participants.find((participant) => participant.side === "opponent");
 		const score = element("div", "scd-result-score", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`);
 		const actions = element("div", "scd-result-actions");
-		const returnButton = element("button", "scd-button primary", "Return");
+		const returnButton = element("button", "scd-button primary scd-result-return", "Return");
 		returnButton.type = "button";
 		returnButton.addEventListener("click", () => {
 			this.resetMatch();
 			this.openPanel("duel");
 		});
-		const newMatch = element("button", "scd-button primary", "New Match");
+		const newMatch = element("button", "scd-button primary scd-result-new", "New Match");
 		newMatch.type = "button";
 		const homepageAvailable = this.isHomepageVisible();
 		newMatch.disabled = !this.matchState.format || !homepageAvailable || this.gatewayState.status !== "connected";
@@ -39558,7 +39653,7 @@ var DuelProductFoundation = class {
 			const format = this.matchState.format;
 			if (format) this.beginMatchmaking(format);
 		});
-		const rematch = element("button", "scd-button primary", "Rematch");
+		const rematch = element("button", "scd-button primary scd-result-rematch", "Rematch");
 		rematch.type = "button";
 		const ownRematchReady = Boolean(selfAccountId && gatewayMatch?.state.rematchReadyAccountIds.includes(selfAccountId));
 		rematch.disabled = !gatewayMatch || gatewayMatch.state.phase !== "finished" || ownRematchReady || !homepageAvailable || this.gatewayState.status !== "connected";
@@ -39797,7 +39892,7 @@ var DuelProductFoundation = class {
 		const anchorSelect = element("label", "scd-label");
 		anchorSelect.appendChild(element("span", "", "Anchor"));
 		const select = element("select");
-		for (const anchor of [
+		const anchors = [
 			"top-left",
 			"top-center",
 			"top-right",
@@ -39806,7 +39901,8 @@ var DuelProductFoundation = class {
 			"bottom-left",
 			"bottom-center",
 			"bottom-right"
-		]) {
+		];
+		for (const anchor of anchors) {
 			const option = element("option");
 			option.value = anchor;
 			option.textContent = anchor.replaceAll("-", " ");
@@ -39820,16 +39916,50 @@ var DuelProductFoundation = class {
 		board.appendChild(anchorSelect);
 		if (this.settings.board.mode === "custom") board.append(this.pixelRange("Horizontal position", this.settings.board.x, 0, Math.max(0, window.innerWidth - 80), (value) => this.settingsStore.updateBoard({ x: value })), this.pixelRange("Vertical position", this.settings.board.y, 0, Math.max(0, window.innerHeight - 80), (value) => this.settingsStore.updateBoard({ y: value })));
 		board.append(this.range("Scale", this.settings.board.scale, .5, 1.6, .05, (value) => this.settingsStore.updateBoard({ scale: value })), this.range("Opacity", this.settings.board.opacity, .35, 1, .05, (value) => this.settingsStore.updateBoard({ opacity: value })));
+		const quickAccess = element("div", "scd-card scd-stack");
+		quickAccess.appendChild(element("strong", "", "Quick access button"));
+		const launcherModeLabel = element("label", "scd-label");
+		launcherModeLabel.appendChild(element("span", "", "Position mode"));
+		const launcherMode = element("select");
+		for (const [value, label] of [["anchor", "Screen anchor"], ["custom", "Custom coordinates"]]) {
+			const option = element("option");
+			option.value = value;
+			option.textContent = label;
+			option.selected = this.settings.launcher.mode === value;
+			launcherMode.appendChild(option);
+		}
+		launcherMode.addEventListener("change", () => {
+			this.settingsStore.updateLauncher({ mode: launcherMode.value === "custom" ? "custom" : "anchor" });
+			this.renderPanel();
+		});
+		launcherModeLabel.appendChild(launcherMode);
+		quickAccess.appendChild(launcherModeLabel);
+		const launcherAnchorLabel = element("label", "scd-label");
+		launcherAnchorLabel.appendChild(element("span", "", "Anchor"));
+		const launcherAnchor = element("select");
+		for (const anchor of anchors) {
+			const option = element("option");
+			option.value = anchor;
+			option.textContent = anchor.replaceAll("-", " ");
+			option.selected = this.settings.launcher.anchor === anchor;
+			launcherAnchor.appendChild(option);
+		}
+		launcherAnchor.disabled = this.settings.launcher.mode !== "anchor";
+		launcherAnchor.addEventListener("change", () => this.settingsStore.updateLauncher({ anchor: launcherAnchor.value }));
+		launcherAnchorLabel.appendChild(launcherAnchor);
+		quickAccess.appendChild(launcherAnchorLabel);
+		if (this.settings.launcher.mode === "custom") quickAccess.append(this.pixelRange("Horizontal position", this.settings.launcher.x, 0, Math.max(0, window.innerWidth - this.settings.launcher.size), (value) => this.settingsStore.updateLauncher({ x: value })), this.pixelRange("Vertical position", this.settings.launcher.y, 0, Math.max(0, window.innerHeight - this.settings.launcher.size), (value) => this.settingsStore.updateLauncher({ y: value })));
+		quickAccess.appendChild(this.pixelRange("Button size", this.settings.launcher.size, 36, 120, (value) => this.settingsStore.updateLauncher({ size: value })));
 		const resetBoard = element("button", "scd-button", "Reset UI settings");
 		resetBoard.addEventListener("click", () => {
 			this.settingsStore.reset();
 			this.renderPanel();
 		});
-		this.tooltips.register(resetBoard, "Restore the default panel and board settings");
-		board.appendChild(resetBoard);
+		this.tooltips.register(resetBoard, "Restore the default panel, board and Quick Access settings");
+		quickAccess.appendChild(resetBoard);
 		const chat = element("div", "scd-card scd-stack");
 		chat.append(element("strong", "", "Game-chat integration"), this.checkbox("Show confirmed completion messages", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })), this.checkbox("Show Match Chat toast notifications", this.settings.chatNotifications, (checked) => this.settingsStore.update({ chatNotifications: checked })), this.checkbox("Play Win animation", this.settings.winAnimation, (checked) => this.settingsStore.update({ winAnimation: checked })));
-		stack.append(board, chat);
+		stack.append(board, quickAccess, chat);
 		this.panelBody.appendChild(stack);
 	}
 	renderAboutTab() {
@@ -39842,7 +39972,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v8`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
+		gateway.append(element("strong", "", `Gateway Contract v9`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -40133,7 +40263,11 @@ var DuelProductFoundation = class {
 			this.clearCancellationSubmission();
 			this.readyDeadlineRecoveryAt = 0;
 			if (!state.queue) {
-				if (this.lastGatewayMatchId !== null && state.status !== "connected") this.abortLocalMatch("gateway-match-connection-lost");
+				const previousMatchId = this.lastGatewayMatchId;
+				if (previousMatchId !== null && state.status === "connected" && this.matchState.matchId === previousMatchId && this.matchState.phase !== "idle" && this.matchState.phase !== "finished") {
+					this.abortLocalMatch("gateway-match-no-longer-authoritative");
+					this.showSimpleToast("Duel ended while disconnected", "The Gateway no longer has an active result snapshot. Local Challenge tracking has been stopped.", 6e3);
+				} else if (previousMatchId !== null && state.status !== "connected") this.abortLocalMatch("gateway-match-connection-lost");
 				this.lastGatewayMatchId = null;
 			}
 			return;
@@ -40207,15 +40341,23 @@ var DuelProductFoundation = class {
 				occurredAt: message.occurredAt
 			});
 			if (ownMessage) this.duelChatStickToBottom = true;
-			if (!ownMessage && this.settings.chatNotifications && message.occurredAt >= this.chatNotificationStartedAt - 5e3 && (!this.settings.panelOpen || this.mainPanelTab() !== "match" || document.hidden)) this.showChatToast(message.authorDisplayName, message.message);
+			if (!ownMessage && this.settings.chatNotifications && message.occurredAt >= this.chatNotificationStartedAt - 5e3 && (!this.settings.panelOpen || this.mainPanelTab() !== "match" || document.hidden)) this.showChatToast(message.authorAccountId, message.authorDisplayName, message.message);
 		}
 		const resolution = state.lastClaimResolution;
 		if (resolution) this.handleGatewayClaimResolution(resolution);
 	}
-	showChatToast(author, message) {
-		this.showSimpleToast(`Match Chat \u00B7 ${author}`, message, 3500);
+	showChatToast(authorAccountId, author, message) {
+		const participant = this.gatewayState.match?.state.participants.find((item) => item.accountId === authorAccountId) ?? null;
+		const profile = element("div", "scd-toast-profile");
+		profile.append(this.createParticipantAvatar(author, participant, "scd-toast-avatar"), element("strong", "", author));
+		this.showSimpleToast(profile, message, 3500, () => {
+			this.openPanel("match");
+			queueMicrotask(() => {
+				this.panel?.querySelector("[data-scd-duel-chat-input=\"true\"]")?.focus();
+			});
+		});
 	}
-	showSimpleToast(title, message, timeout = 3500) {
+	showSimpleToast(title, message, timeout = 3500, onClick) {
 		let container = document.querySelector(".typo-toast-container");
 		if (!container) {
 			container = element("div", "typo-toast-container");
@@ -40230,8 +40372,19 @@ var DuelProductFoundation = class {
 			window.setTimeout(() => toast.remove(), 150);
 		};
 		const closeButton = element("span", "close-toast", "\u00D7");
-		closeButton.addEventListener("click", close);
-		toast.append(element("h3", "", title), closeButton, element("span", "", message));
+		closeButton.addEventListener("click", (event) => {
+			event.stopPropagation();
+			close();
+		});
+		const titleNode = typeof title === "string" ? element("h3", "", title) : title;
+		toast.append(titleNode, closeButton, element("span", "", message));
+		if (onClick) {
+			toast.classList.add("clickable");
+			toast.addEventListener("click", () => {
+				onClick();
+				close();
+			});
+		}
 		container.appendChild(toast);
 		window.setTimeout(close, timeout);
 	}
@@ -40776,7 +40929,7 @@ var DuelProductFoundation = class {
 			const winner = state.participants.find((participant) => participant.side === state.winner);
 			const loser = state.participants.find((participant) => participant.side !== state.winner);
 			author = winner?.displayName ?? "A player";
-			message = state.finishReason === "player-forfeit" ? `won after ${formatDurationWords(elapsedMs)} \u00B7 ${loser?.displayName ?? "The opponent"} forfeited.` : `won after ${formatDurationWords(elapsedMs)}.`;
+			message = state.finishReason === "player-forfeit" ? `won after ${formatDurationWords(elapsedMs)} \u00B7 ${loser?.displayName ?? "The opponent"} forfeited.` : state.finishReason === "player-disconnect" ? `won after ${formatDurationWords(elapsedMs)} \u00B7 ${loser?.displayName ?? "The opponent"} disconnected.` : `won after ${formatDurationWords(elapsedMs)}.`;
 		}
 		const id = `conclusion-${state.matchId}`;
 		if (this.duelChatMessages.some((item) => item.id === id)) return;
@@ -40827,7 +40980,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.52.1";
+var BUILD_VERSION = "0.53.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

@@ -70,7 +70,8 @@
 Challenge recovery, the balance pass and Rematch readiness shipped in v0.49.0.
 v0.50.0 hardened the telemetry/reconnect boundary. v0.51.0 added restart-safe
 Match authority and durable idempotency. v0.52.0 adds Contract v8 invite links
-and reload-safe pending telemetry/Claims; multi-instance coordination,
+and reload-safe pending telemetry/Claims. v0.53.0 adds Contract v9 disconnect
+conclusions plus late result restoration; multi-instance coordination,
 observability and anti-abuse controls are now the highest-risk prerequisites.
 The complete post-v0.50 build gate is recorded in
 `docs/full-build-roadmap-post-v0.50.0.md`.

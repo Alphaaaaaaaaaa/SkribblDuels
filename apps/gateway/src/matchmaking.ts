@@ -130,6 +130,7 @@ interface ActiveMatch {
   claimResolutions: Map<string, GatewayClaimResolutionMessage>;
   processedActions: Map<string, string>;
   rematchReadyAccountIds: Set<string>;
+  departedAccountIds: Set<string>;
 }
 
 interface ActiveInvite extends GatewayDurableInviteSnapshot {
@@ -168,6 +169,7 @@ interface DurableActiveMatchAggregate {
   claimResolutions: Array<[string, GatewayClaimResolutionMessage]>;
   processedActions: Array<[string, string]>;
   rematchReadyAccountIds: string[];
+  departedAccountIds?: string[];
 }
 
 interface BufferedMatchOutbound {
@@ -291,7 +293,9 @@ export class GatewayMatchmaker {
   public leave(accountId: string, requestId: string): void {
     const removed = this.removeQueuedAccount(accountId);
     const matchId = this.accountMatches.get(accountId);
-    if (matchId) this.abortMatch(matchId, accountId, 'matchmaking-left');
+    const match = matchId ? this.matches.get(matchId) : null;
+    if (match?.phase === 'finished') this.detachFinishedParticipant(match, accountId);
+    else if (matchId) this.abortMatch(matchId, accountId, 'matchmaking-left');
     if (removed) {
       removed.send(this.queueStatus(removed, false, null, requestId));
       this.publishQueuePositions(removed.format);
@@ -469,6 +473,10 @@ export class GatewayMatchmaker {
         if (!current || !currentParticipant || currentParticipant.connected) return;
         if (current.phase === 'finished') {
           this.deleteMatch(current);
+          return;
+        }
+        if (current.phase === 'running') {
+          this.concludeDisconnectedParticipant(current, accountId, 'player-reconnect-timeout');
           return;
         }
         this.abortMatch(current.matchId, accountId, 'player-reconnect-timeout');
@@ -1177,7 +1185,9 @@ export class GatewayMatchmaker {
       this.publishQueuePositions(queued.format);
     }
     const matchId = this.accountMatches.get(accountId);
-    if (matchId) this.abortMatch(matchId, accountId, reason);
+    const match = matchId ? this.matches.get(matchId) : null;
+    if (match?.phase === 'finished') this.detachFinishedParticipant(match, accountId);
+    else if (matchId) this.abortMatch(matchId, accountId, reason);
   }
 
   private matchQueuedPlayers(format: DuelFormat): void {
@@ -1233,7 +1243,8 @@ export class GatewayMatchmaker {
       chatByClientId: new Map(),
       claimResolutions: new Map(),
       processedActions: new Map(),
-      rematchReadyAccountIds: new Set()
+      rematchReadyAccountIds: new Set(),
+      departedAccountIds: new Set()
     };
     this.matches.set(matchId, match);
     for (const participant of participants) {
@@ -1790,6 +1801,50 @@ export class GatewayMatchmaker {
     return true;
   }
 
+  private concludeDisconnectedParticipant(
+    match: ActiveMatch,
+    disconnectedAccountId: string,
+    abortReason: string
+  ): void {
+    const opponent = match.participants.find(participant =>
+      participant.identity.accountId !== disconnectedAccountId
+    );
+    if (!opponent || (!opponent.simulated && !opponent.connected)) {
+      this.abortMatch(match.matchId, disconnectedAccountId, `${abortReason}-no-connected-opponent`);
+      return;
+    }
+    this.concludeMatch(match, {
+      outcome: 'win',
+      reason: 'player-disconnect',
+      winnerAccountId: opponent.identity.accountId,
+      loserAccountId: disconnectedAccountId,
+      initiatedByAccountId: null,
+      occurredAt: this.now()
+    });
+  }
+
+  private detachFinishedParticipant(match: ActiveMatch, accountId: string): void {
+    if (match.phase !== 'finished') return;
+    const participant = match.participants.find(item => item.identity.accountId === accountId);
+    if (!participant || participant.simulated) return;
+    if (participant.reconnectTimer) clearTimeout(participant.reconnectTimer);
+    participant.reconnectTimer = null;
+    participant.connected = false;
+    participant.send = () => {};
+    match.departedAccountIds.add(accountId);
+    match.rematchReadyAccountIds.delete(accountId);
+    if (this.accountMatches.get(accountId) === match.matchId) this.accountMatches.delete(accountId);
+    const retainedForAnotherParticipant = match.participants.some(item =>
+      !item.simulated && this.accountMatches.get(item.identity.accountId) === match.matchId
+    );
+    if (!retainedForAnotherParticipant) {
+      this.deleteMatch(match, 'finished-participants-left');
+      return;
+    }
+    match.revision += 1;
+    this.emitSnapshot(match);
+  }
+
   private rejectClaim(
     match: ActiveMatch,
     accountId: string,
@@ -1945,7 +2000,8 @@ export class GatewayMatchmaker {
       chatByClientId: Array.from(match.chatByClientId, ([key, message]) => [key, structuredClone(message)]),
       claimResolutions: Array.from(match.claimResolutions, ([key, resolution]) => [key, structuredClone(resolution)]),
       processedActions: Array.from(match.processedActions),
-      rematchReadyAccountIds: [...match.rematchReadyAccountIds]
+      rematchReadyAccountIds: [...match.rematchReadyAccountIds],
+      departedAccountIds: [...match.departedAccountIds]
     };
   }
 
@@ -2059,7 +2115,8 @@ export class GatewayMatchmaker {
       chatByClientId: new Map(aggregate.chatByClientId ?? []),
       claimResolutions: new Map(aggregate.claimResolutions ?? []),
       processedActions: new Map(aggregate.processedActions ?? []),
-      rematchReadyAccountIds: new Set(aggregate.rematchReadyAccountIds ?? [])
+      rematchReadyAccountIds: new Set(aggregate.rematchReadyAccountIds ?? []),
+      departedAccountIds: new Set(aggregate.departedAccountIds ?? [])
     };
     if (aggregate.telemetryAuthorities?.length) {
       if (!draft?.board || match.startedAt === null) {
@@ -2076,7 +2133,9 @@ export class GatewayMatchmaker {
     }
     this.matches.set(match.matchId, match);
     for (const participant of participants) {
-      if (!participant.simulated) this.accountMatches.set(participant.identity.accountId, match.matchId);
+      if (!participant.simulated && !match.departedAccountIds.has(participant.identity.accountId)) {
+        this.accountMatches.set(participant.identity.accountId, match.matchId);
+      }
     }
     this.rearmRestoredMatch(match);
   }
@@ -2085,7 +2144,7 @@ export class GatewayMatchmaker {
     const now = this.now();
     const reconnectGraceMs = this.options.reconnectGraceMs ?? 30_000;
     for (const participant of match.participants) {
-      if (participant.simulated) continue;
+      if (participant.simulated || match.departedAccountIds.has(participant.identity.accountId)) continue;
       const accountId = participant.identity.accountId;
       participant.reconnectTimer = setTimeout(() => {
         participant.reconnectTimer = null;
@@ -2093,7 +2152,9 @@ export class GatewayMatchmaker {
         const currentParticipant = current?.participants.find(item => item.identity.accountId === accountId);
         if (!current || !currentParticipant || currentParticipant.connected) return;
         if (current.phase === 'finished') this.deleteMatch(current, 'durable-finished-reconnect-timeout');
-        else this.abortMatch(current.matchId, accountId, 'durable-player-reconnect-timeout');
+        else if (current.phase === 'running') {
+          this.concludeDisconnectedParticipant(current, accountId, 'durable-player-reconnect-timeout');
+        } else this.abortMatch(current.matchId, accountId, 'durable-player-reconnect-timeout');
       }, reconnectGraceMs);
       participant.reconnectTimer.unref?.();
     }

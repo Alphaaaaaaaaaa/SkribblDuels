@@ -6,7 +6,7 @@ import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
 export const PRODUCT_CORE_VERSION = '0.5.0' as const;
 export const MATCH_STATE_CONTRACT_VERSION = 3 as const;
-export const UI_SETTINGS_VERSION = 3 as const;
+export const UI_SETTINGS_VERSION = 4 as const;
 
 export type DuelFormat = 'casual' | 'ranked';
 export type DuelPlayerSide = 'self' | 'opponent';
@@ -203,9 +203,18 @@ export interface BoardUiSettings {
   showNames: boolean;
 }
 
+export interface LauncherUiSettings {
+  mode: 'anchor' | 'custom';
+  anchor: BoardAnchor;
+  x: number;
+  y: number;
+  size: number;
+}
+
 export interface ProductUiSettings {
   version: typeof UI_SETTINGS_VERSION;
   board: BoardUiSettings;
+  launcher: LauncherUiSettings;
   panelOpen: boolean;
   panelTab: 'duel' | 'match' | 'chat' | 'settings' | 'about';
   completionMessages: boolean;

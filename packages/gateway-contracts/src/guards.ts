@@ -89,6 +89,7 @@ function matchConclusion(value: unknown): boolean {
     && (conclusion.outcome === 'win' || conclusion.outcome === 'draw')
     && (conclusion.reason === 'win-target-reached'
       || conclusion.reason === 'player-forfeit'
+      || conclusion.reason === 'player-disconnect'
       || conclusion.reason === 'mutual-draw')
     && (conclusion.winnerAccountId === null || nonEmptyString(conclusion.winnerAccountId))
     && (conclusion.loserAccountId === null || nonEmptyString(conclusion.loserAccountId))

@@ -53,12 +53,15 @@ assert(gateway.includes('public withdrawDraw('), 'Draw withdrawal is missing');
 assert(gateway.includes('public requestRematch('), 'server-authoritative Rematch request is missing');
 assert(gateway.includes('private startRematch('), 'server Rematch lifecycle is missing');
 assert(gateway.includes("reason: 'player-forfeit'"), 'Forfeit result reason is missing');
+assert(gateway.includes("reason: 'player-disconnect'"), 'Reconnect timeout does not award the connected opponent');
+assert(gateway.includes('private detachFinishedParticipant('), 'finished results are not retained for a disconnected participant');
 assert(gateway.includes("reason: 'mutual-draw'"), 'mutual Draw result reason is missing');
 assert(product.includes('this.gatewayClient.forfeitMatch('), 'Match UI does not send Forfeit');
 assert(product.includes('this.gatewayClient.respondToDraw('), 'Match UI does not accept or reject Draw proposals');
 assert(product.includes('this.matchStore.finishDraw('), 'client does not restore authoritative Draw results');
 assert(product.includes('this.telemetryGateway.setTransport'), 'match telemetry is not connected to the Gateway');
 assert(product.includes('this.matchStore.finishMatch(winner, conclusion.reason, conclusion.occurredAt)'), 'client does not restore the authoritative winner');
+assert(product.includes("state.finishReason === 'player-disconnect'"), 'disconnect result notification copy is missing');
 
 console.log(JSON.stringify({
   singletonRuntime: true,

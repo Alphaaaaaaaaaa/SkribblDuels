@@ -1,9 +1,32 @@
-# Skribbl Duels v0.52.1
+# Skribbl Duels v0.53.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
-Gateway Contract v8, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v9, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.53.0
+
+- Converts an expired reconnect grace period during a running Duel into the
+  explicit authoritative `player-disconnect` result. The connected opponent
+  receives the Win screen immediately; the returning player restores the same
+  terminal result instead of continuing a stale local Match.
+- Retains a finished result for a disconnected participant when the winner
+  already presses Return or starts another Match. Pre-start Ready/Draft/
+  Countdown disconnects and simultaneous disconnects remain cancellations.
+- Stops restored local Challenge tracking when the Gateway can no longer
+  supply any authoritative Match snapshot, and hides transient Forfeit controls
+  while a reloaded Match is still being reconciled.
+- Adds the Skribbl Duels GIF as the Tampermonkey metadata icon, applies the
+  shared panel accent palette to the homepage button and gives the Quick Access
+  launcher independent anchor/custom-position and 36–120 px size settings.
+- Styles Return in the danger palette, New Match in the Ranked palette and
+  Rematch in the Casual palette.
+- Match Chat toasts now show the sender's Duel avatar and display name. Clicking
+  the toast opens and focuses the private Match Chat.
+
+Deploy the v0.53.0 Gateway before publishing the v0.53.0 userscript because
+both sides must use Gateway Contract v9. No Supabase migration is required.
 
 ## v0.52.1
 

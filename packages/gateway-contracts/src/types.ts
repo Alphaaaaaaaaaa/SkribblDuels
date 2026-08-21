@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 8 as const;
+export const GATEWAY_CONTRACT_VERSION = 9 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -287,7 +287,7 @@ export interface GatewayDrawProposal {
 
 export interface GatewayMatchConclusion {
   outcome: 'win' | 'draw';
-  reason: 'win-target-reached' | 'player-forfeit' | 'mutual-draw';
+  reason: 'win-target-reached' | 'player-forfeit' | 'player-disconnect' | 'mutual-draw';
   winnerAccountId: string | null;
   loserAccountId: string | null;
   initiatedByAccountId: string | null;

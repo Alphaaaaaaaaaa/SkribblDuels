@@ -1,0 +1,10 @@
+{
+  "name": "@skribbl-duels/gateway-contracts",
+  "version": "0.3.0",
+  "type": "module",
+  "private": true,
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@skribbl-duels/telemetry-contracts": "file:../telemetry-contracts"
+  }
+}

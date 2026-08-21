@@ -26,6 +26,13 @@ Gateway-private invite table plus service-role-only create/accept/cancel RPCs.
 The table stores only the SHA-256 token hash; the copyable token exists only in
 the creator's live client response.
 
+For v0.54.0, apply `202608210001_create_gateway_abuse_controls.sql` after the
+Invite migration and before the multi-instance Gateway. It adds private abuse
+signals, scoped operator sanctions and the service-role-only operational purge
+function. Run `select * from public.purge_duel_operational_data();` daily from a
+trusted job to enforce 30-day Match/Invite/evidence retention and 90-day abuse-
+signal retention.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

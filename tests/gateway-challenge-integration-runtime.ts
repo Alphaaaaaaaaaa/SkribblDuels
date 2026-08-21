@@ -91,7 +91,12 @@ telemetryGateway.setTransport(envelope => {
   envelopes.push(structuredClone(envelope));
 });
 
-const localEngine = new ChallengeEngine({ autoPersist: false, createId: () => 'local-ouch-candidate' });
+let localClock = startedAt;
+const localEngine = new ChallengeEngine({
+  autoPersist: false,
+  createId: () => 'local-ouch-candidate',
+  now: () => localClock
+});
 localEngine.register(ouchDefinition);
 localEngine.activate({
   instanceId: 'duel-integration-match-field-0',
@@ -105,11 +110,13 @@ const telemetry = [
   event('CORRECT_GUESS', 'integration-self-guess', 5_150, { playerId: 21, name: 'Alpha', isSelf: true })
 ];
 for (const item of telemetry) {
+  localClock = item.occurredAt;
   await telemetryGateway.observe(item);
   localEngine.process(item);
 }
 assert.equal(envelopes.length, telemetry.length);
 assert.deepEqual(envelopes.map(envelope => envelope.sequence), [1, 2, 3]);
+for (const envelope of envelopes) envelope.sentAt = envelope.event.occurredAt;
 const localRuntime = localEngine.getInstance('duel-integration-match-field-0');
 assert.equal(localRuntime?.status, 'completion-pending');
 assert.ok(localRuntime?.completionCandidate);
@@ -136,8 +143,20 @@ const candidateMessage: GatewayClaimCandidateMessage = {
   throughSequence: telemetryGateway.getLastSequence()
 };
 const validated = authority.validateClaim(candidateMessage);
-assert.equal(validated.ok, true);
+assert.equal(validated.ok, true, JSON.stringify(validated));
 if (!validated.ok) throw new Error('The authoritative Ouch claim was unexpectedly rejected.');
+const uncoveredEvidence = authority.validateClaim({ ...candidateMessage, throughSequence: 2 });
+assert.equal(uncoveredEvidence.ok, false);
+if (!uncoveredEvidence.ok) assert.equal(uncoveredEvidence.code, 'CLAIM_EVIDENCE_SEQUENCE_INVALID');
+const replayedEvent = authority.processBatch({
+  type: 'TELEMETRY_BATCH',
+  matchId,
+  firstSequence: 4,
+  lastSequence: 4,
+  envelopes: [{ ...envelopes[2]!, sequence: 4 }]
+}, startedAt + 6_500);
+assert.equal(replayedEvent.ok, false);
+if (!replayedEvent.ok) assert.equal(replayedEvent.code, 'TELEMETRY_EVENT_REPLAYED');
 authority.acceptClaim(validated.instanceId, 'gateway-claim-1', startedAt + 5_200);
 localEngine.resolveCompletion(localRuntime.instanceId, {
   outcome: 'claimed', claimId: 'gateway-claim-1', reason: 'gateway-authoritative-claim', resolvedAt: startedAt + 5_200

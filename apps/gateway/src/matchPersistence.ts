@@ -40,6 +40,24 @@ export interface GatewayDurableInviteSnapshot {
   matchId: string | null;
 }
 
+export interface GatewayAccountSanctions {
+  fullBanUntil: number | null;
+  matchmakingBanUntil: number | null;
+  chatMuteUntil: number | null;
+  telemetryBlockUntil: number | null;
+}
+
+export interface GatewayAbuseSignal {
+  accountId: string;
+  connectionId: string | null;
+  matchId: string | null;
+  category: 'rate-limit' | 'invalid-message' | 'telemetry-replay' | 'disconnect-abuse';
+  severity: 'info' | 'warning' | 'critical';
+  reason: string;
+  correlationId: string;
+  occurredAt: number;
+}
+
 export interface GatewayMatchAuthorityPersistence {
   loadActiveMatches(now: number): Promise<GatewayDurableMatchSnapshot[]>;
   saveMatch(snapshot: GatewayDurableMatchSnapshot): Promise<void>;
@@ -59,6 +77,9 @@ export interface GatewayMatchAuthorityPersistence {
     requestId: string,
     occurredAt: number
   ): Promise<GatewayDurableInviteSnapshot | null>;
+  checkHealth?(): Promise<void>;
+  getActiveSanctions?(accountId: string, now: number): Promise<GatewayAccountSanctions>;
+  recordAbuseSignal?(signal: GatewayAbuseSignal): Promise<void>;
 }
 
 export interface DurableIdempotencyRpcRow {
@@ -156,6 +177,54 @@ export class SupabaseGatewayMatchAuthorityPersistence implements GatewayMatchAut
       .map(row => row.snapshot)
       .filter(isDurableSnapshot)
       .sort((left, right) => left.savedAt - right.savedAt);
+  }
+
+  public async checkHealth(): Promise<void> {
+    const { error } = await this.client
+      .from('duel_match_authority')
+      .select('match_id', { head: true, count: 'exact' })
+      .limit(1);
+    if (error) throw new Error(`Supabase Match Authority health check failed: ${error.message}`);
+  }
+
+  public async getActiveSanctions(accountId: string, now: number): Promise<GatewayAccountSanctions> {
+    const { data, error } = await this.client
+      .from('duel_account_sanctions')
+      .select('sanction_type, expires_at')
+      .eq('account_id', accountId)
+      .lte('starts_at', new Date(now).toISOString())
+      .gt('expires_at', new Date(now).toISOString())
+      .is('revoked_at', null);
+    if (error) throw new Error(`Unable to load Duel sanctions: ${error.message}`);
+    const result: GatewayAccountSanctions = {
+      fullBanUntil: null,
+      matchmakingBanUntil: null,
+      chatMuteUntil: null,
+      telemetryBlockUntil: null
+    };
+    for (const row of data ?? []) {
+      const expiresAt = Date.parse(String(row.expires_at));
+      if (!Number.isFinite(expiresAt)) continue;
+      if (row.sanction_type === 'full-ban') result.fullBanUntil = Math.max(result.fullBanUntil ?? 0, expiresAt);
+      if (row.sanction_type === 'matchmaking-ban') result.matchmakingBanUntil = Math.max(result.matchmakingBanUntil ?? 0, expiresAt);
+      if (row.sanction_type === 'chat-mute') result.chatMuteUntil = Math.max(result.chatMuteUntil ?? 0, expiresAt);
+      if (row.sanction_type === 'telemetry-block') result.telemetryBlockUntil = Math.max(result.telemetryBlockUntil ?? 0, expiresAt);
+    }
+    return result;
+  }
+
+  public async recordAbuseSignal(signal: GatewayAbuseSignal): Promise<void> {
+    const { error } = await this.client.from('duel_abuse_signals').insert({
+      account_id: signal.accountId,
+      connection_id: signal.connectionId,
+      match_id: signal.matchId,
+      category: signal.category,
+      severity: signal.severity,
+      reason: signal.reason.slice(0, 200),
+      correlation_id: signal.correlationId,
+      occurred_at: new Date(signal.occurredAt).toISOString()
+    });
+    if (error) throw new Error(`Unable to record Duel abuse signal: ${error.message}`);
   }
 
   public async saveMatch(snapshot: GatewayDurableMatchSnapshot): Promise<void> {

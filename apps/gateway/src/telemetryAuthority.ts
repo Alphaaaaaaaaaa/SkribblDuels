@@ -28,6 +28,7 @@ export interface GatewayTelemetryAuthoritySnapshot {
   eventClock: number;
   lastSequence: number;
   engine: ChallengeEngineSnapshot;
+  recentEventSequences?: Array<[string, number]>;
 }
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
@@ -41,6 +42,7 @@ export class GatewayPlayerTelemetryAuthority {
   private readonly instanceIds = new Map<string, string>();
   private eventClock: number;
   private lastSequence = 0;
+  private readonly recentEventSequences = new Map<string, number>();
 
   public constructor(
     private readonly accountId: string,
@@ -74,6 +76,13 @@ export class GatewayPlayerTelemetryAuthority {
       this.eventClock = Math.max(startedAt, snapshot.eventClock);
       this.lastSequence = snapshot.lastSequence;
       this.engine.importSnapshot(snapshot.engine);
+      const restoredEventSequences = snapshot.recentEventSequences
+        ?? snapshot.engine.recentProcessedEventIds.map(eventId => [eventId, snapshot.lastSequence] as [string, number]);
+      for (const [eventId, sequence] of restoredEventSequences) {
+        if (typeof eventId === 'string' && Number.isInteger(sequence) && sequence > 0) {
+          this.recentEventSequences.set(eventId, sequence);
+        }
+      }
     }
   }
 
@@ -88,7 +97,8 @@ export class GatewayPlayerTelemetryAuthority {
       startedAt: this.startedAt,
       eventClock: this.eventClock,
       lastSequence: this.lastSequence,
-      engine: this.engine.exportSnapshot()
+      engine: this.engine.exportSnapshot(),
+      recentEventSequences: [...this.recentEventSequences]
     };
   }
 
@@ -126,8 +136,18 @@ export class GatewayPlayerTelemetryAuthority {
         };
       }
       eventIds.add(envelope.event.eventId);
+      if (this.recentEventSequences.has(envelope.event.eventId)) {
+        return {
+          ok: false,
+          code: 'TELEMETRY_EVENT_REPLAYED',
+          message: 'A telemetry event ID was already accepted in an earlier batch.',
+          lastSequence: this.lastSequence
+        };
+      }
       if (envelope.event.occurredAt < this.startedAt - 5_000
-          || envelope.event.occurredAt > receivedAt + 10_000) {
+          || envelope.event.occurredAt > receivedAt + 10_000
+          || envelope.sentAt < envelope.event.occurredAt - 10_000
+          || envelope.sentAt > receivedAt + 10_000) {
         return {
           ok: false,
           code: 'TELEMETRY_TIME_INVALID',
@@ -140,6 +160,12 @@ export class GatewayPlayerTelemetryAuthority {
     for (const envelope of message.envelopes) {
       this.eventClock = Math.max(this.eventClock, envelope.event.occurredAt);
       this.engine.process(envelope.event);
+      this.recentEventSequences.set(envelope.event.eventId, envelope.sequence);
+      while (this.recentEventSequences.size > 4_000) {
+        const oldest = this.recentEventSequences.keys().next().value as string | undefined;
+        if (!oldest) break;
+        this.recentEventSequences.delete(oldest);
+      }
     }
     this.lastSequence = message.lastSequence;
     return { ok: true, lastSequence: this.lastSequence };
@@ -182,6 +208,21 @@ export class GatewayPlayerTelemetryAuthority {
         ok: false,
         code: 'CLAIM_EVIDENCE_MISMATCH',
         message: 'The submitted evidence does not match the authoritative completion candidate.'
+      };
+    }
+    if (message.occurredAt < this.startedAt - 5_000 || message.occurredAt > this.eventClock + 10_000) {
+      return {
+        ok: false,
+        code: 'CLAIM_TIME_INVALID',
+        message: 'The claim timestamp is outside the authoritative telemetry window.'
+      };
+    }
+    const evidenceSequences = message.evidenceEventIds.map(eventId => this.recentEventSequences.get(eventId));
+    if (evidenceSequences.some(sequence => sequence === undefined || sequence > message.throughSequence)) {
+      return {
+        ok: false,
+        code: 'CLAIM_EVIDENCE_SEQUENCE_INVALID',
+        message: 'Claim evidence is not covered by the submitted telemetry cursor.'
       };
     }
     return { ok: true, instanceId, candidate };

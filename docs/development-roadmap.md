@@ -35,20 +35,25 @@
 | v0.51 durable Match authority | Complete | Supabase snapshots, restart hydration, re-armed deadlines, durable action/chat/claim/telemetry idempotency and revision audit history |
 | v0.52 Friendly invite links | Complete | Hash-only single-use tokens, durable accept/cancel, Discord-auth bootstrap and direct real-client Ready checks |
 | Reload-safe Challenge transport | Complete | Pending telemetry, in-flight batches and Claim candidates survive `/credits` navigation and runtime reloads until server ACK/resolution |
+| v0.54 production infrastructure | Complete | Redis Streams delivery, fenced Match Authority, readiness/metrics/diagnostics, alert rules, shared limits, sanctions and replay hardening |
 
 ## Active development sequence
 
-### 1. Friendly-match beta certification
+### 1. Friendly-match beta certification — completed
 
-- Run the invite flow in two real browser/authenticated-client sessions.
-- Certify reconnect, creator-offline, expiry, duplicate-use and cancellation UX.
+- The invite flow has been exercised successfully with two real authenticated
+  clients; expiry, duplicate-use and cancellation UX have dedicated regressions.
 - Decide whether a friendly match should receive a distinct format/history flag
   before Ranked history is introduced.
 
-### 2. Production reliability
+### 2. Production reliability — delivered in v0.54.0
 
-- Add multi-instance realtime coordination, deeper readiness checks, metrics,
-  alerting, rate limits and anti-replay/anti-cheat enforcement.
+- Redis Streams cross-replica delivery, WebSocket-only Railway routing and a
+  fenced single Match Authority are implemented.
+- Dependency readiness, protected metrics/diagnostics, correlation logs and
+  Prometheus alert rules are implemented.
+- Shared rate limits, operator sanctions, abuse audit/retention and telemetry
+  replay/time/evidence enforcement are implemented.
 
 ### 3. Ranked competition and history
 
@@ -71,8 +76,9 @@ Challenge recovery, the balance pass and Rematch readiness shipped in v0.49.0.
 v0.50.0 hardened the telemetry/reconnect boundary. v0.51.0 added restart-safe
 Match authority and durable idempotency. v0.52.0 adds Contract v8 invite links
 and reload-safe pending telemetry/Claims. v0.53.0 adds Contract v9 disconnect
-conclusions plus late result restoration; multi-instance coordination,
-observability and anti-abuse controls are now the highest-risk prerequisites.
+conclusions plus late result restoration. v0.54.0 delivers multi-instance
+coordination, observability and anti-abuse controls; Ranked competition/history
+is now the highest-risk prerequisite.
 The complete post-v0.50 build gate is recorded in
 `docs/full-build-roadmap-post-v0.50.0.md`.
 The complete approved UI direction is recorded in

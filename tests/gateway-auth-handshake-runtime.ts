@@ -33,7 +33,11 @@ const config: GatewayServerConfig = {
   matchCountdownMs: 10_000,
   reconnectGraceMs: 30_000,
   drawProposalTimeoutMs: 30_000,
-  inviteTimeoutMs: 15 * 60_000
+  inviteTimeoutMs: 15 * 60_000,
+  redisUrl: null,
+  instanceId: 'gateway-auth-test',
+  observabilityToken: 'ops-test-token',
+  authorityLeaseMs: 30_000
 };
 
 const gateway = createGatewayServer({
@@ -108,13 +112,38 @@ assert.deepEqual(await response.json(), {
   status: 'ok',
   service: 'skribbl-duels-gateway',
   contractVersion: GATEWAY_CONTRACT_VERSION,
-  matchAuthority: {
-    enabled: false,
-    healthy: true,
-    restoredMatches: 0,
-    error: null
-  }
+  instanceId: 'gateway-auth-test'
 });
+const readinessResponse = await fetch(`${endpoint}/readyz`);
+assert.equal(readinessResponse.status, 200);
+const readiness = await readinessResponse.json() as {
+  status: string;
+  ready: boolean;
+  realtime: { mode: string; authorityRole: string };
+  matchAuthority: { active: boolean; healthy: boolean };
+};
+assert.equal(readiness.status, 'ready');
+assert.equal(readiness.ready, true);
+assert.equal(readiness.realtime.mode, 'single-instance');
+assert.equal(readiness.realtime.authorityRole, 'leader');
+assert.deepEqual(readiness.matchAuthority, {
+  active: true,
+  healthy: true
+});
+const unauthorizedMetrics = await fetch(`${endpoint}/metrics`);
+assert.equal(unauthorizedMetrics.status, 401);
+const metricsResponse = await fetch(`${endpoint}/metrics`, {
+  headers: { authorization: 'Bearer ops-test-token' }
+});
+assert.equal(metricsResponse.status, 200);
+assert.match(await metricsResponse.text(), /skribbl_duels_gateway_uptime_seconds/);
+const diagnosticsResponse = await fetch(`${endpoint}/diagnostics`, {
+  headers: { authorization: 'Bearer ops-test-token' }
+});
+assert.equal(diagnosticsResponse.status, 200);
+const diagnosticsText = await diagnosticsResponse.text();
+assert.match(diagnosticsText, /"instanceId":"gateway-auth-test"/);
+assert.doesNotMatch(diagnosticsText, /valid-test-token/);
 
 const client = new SocketIoGatewayClient({
   endpoint,
@@ -226,5 +255,6 @@ console.log(JSON.stringify({
   authoritativeDraftStarted: true,
   reconnectResume: true,
   pingPong: true,
+  protectedMetricsAndDiagnostics: true,
   missingTokenRejected: true
 }, null, 2));

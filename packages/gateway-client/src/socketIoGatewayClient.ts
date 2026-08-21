@@ -80,6 +80,7 @@ export class SocketIoGatewayClient {
   private telemetryQueue: GatewayTelemetryEnvelope[] = [];
   private telemetryInFlight: GatewayTelemetryEnvelope[] = [];
   private telemetryFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private transportRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingClaims: Array<Omit<GatewayClaimCandidateMessage, 'type'>> = [];
 
   public constructor(private readonly options: SocketIoGatewayClientOptions) {
@@ -135,6 +136,8 @@ export class SocketIoGatewayClient {
 
   public stop(): void {
     this.requeueTelemetryInFlight();
+    if (this.transportRetryTimer !== null) clearTimeout(this.transportRetryTimer);
+    this.transportRetryTimer = null;
     this.accessToken = null;
     this.disconnectSocket();
     this.persistPendingTransport();
@@ -317,8 +320,7 @@ export class SocketIoGatewayClient {
       auth,
       reconnection: true,
       reconnectionAttempts: 5,
-      transports: ['websocket', 'polling'],
-      tryAllTransports: true,
+      transports: ['websocket'],
       timeout: 10_000
     });
     this.socket = socket;
@@ -412,6 +414,11 @@ export class SocketIoGatewayClient {
       return;
     }
     if (value.type === 'ERROR') {
+      if (value.recoverable
+          && (value.code === 'REALTIME_AUTHORITY_UNAVAILABLE' || value.code === 'GATEWAY_COMMAND_FAILED')) {
+        this.requeueTelemetryInFlight();
+        this.scheduleTransportRetry();
+      }
       this.update({
         ...this.state,
         status: value.recoverable && this.state.connectionId ? this.state.status : 'error',
@@ -559,7 +566,9 @@ export class SocketIoGatewayClient {
 
   private clearTelemetryQueue(): void {
     if (this.telemetryFlushTimer !== null) clearTimeout(this.telemetryFlushTimer);
+    if (this.transportRetryTimer !== null) clearTimeout(this.transportRetryTimer);
     this.telemetryFlushTimer = null;
+    this.transportRetryTimer = null;
     this.telemetryQueue = [];
     this.telemetryInFlight = [];
     this.pendingClaims = [];
@@ -590,6 +599,15 @@ export class SocketIoGatewayClient {
     this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
     this.telemetryInFlight = [];
     this.persistPendingTransport();
+  }
+
+  private scheduleTransportRetry(): void {
+    if (this.transportRetryTimer !== null) return;
+    this.transportRetryTimer = setTimeout(() => {
+      this.transportRetryTimer = null;
+      this.flushTelemetry();
+      this.flushClaims();
+    }, 1_000);
   }
 
   private createRequestId(prefix: string): string {

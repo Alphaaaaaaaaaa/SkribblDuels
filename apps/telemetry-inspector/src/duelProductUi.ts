@@ -678,14 +678,15 @@ class CompletionChatAdapter {
 .scd-win-player { position:relative;z-index:1;width:68%;height:68%;border-radius:50%;display:grid;place-items:center;font-size:clamp(34px,7vw,72px);animation:player_winner 3.2s both;filter:drop-shadow(0 0 8px rgba(0,0,0,.25)); }
 .typo-toast-container { position:fixed;left:0;right:0;top:0;height:0;overflow:visible;z-index:2147483647;display:flex;flex-direction:column;align-items:center;gap:1rem;padding-top:1rem; }
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
-.scd-duel-toast.clickable { cursor:pointer; }
+.scd-duel-toast.clickable { cursor:pointer;transition:background-color 80ms; }
+.scd-duel-toast.clickable:hover { background:var(--COLOR_BUTTON_NORMAL_BG); }
 .scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
 .scd-duel-toast .typo-toast-confirm .scd-button { min-width:7rem; }
 .scd-toast-profile { display:flex;align-items:center;gap:.55rem;min-width:0; }
 .scd-toast-profile strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.scd-toast-avatar { position:relative;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:16px;font-weight:900; }
+.scd-toast-avatar { position:relative;width:32px !important;height:32px !important;border-radius:50%;display:grid;place-items:center;flex:none;font-size:16px;font-weight:900; }
 .scd-toast-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }
 #skribbl-duels-panel input::placeholder,#skribbl-duels-panel textarea::placeholder,#skribbl-duels-stage input::placeholder,#skribbl-duels-stage textarea::placeholder { color:var(--COLOR_PANEL_TEXT_PLACEHOLDER); }
 #skribbl-duels-panel input,#skribbl-duels-panel select,#skribbl-duels-panel textarea,#skribbl-duels-stage input,#skribbl-duels-stage select,#skribbl-duels-stage textarea { font:inherit;flex:0 0 auto;height:32px;width:100%;min-width:0;color:var(--COLOR_INPUT_TEXT);background-color:var(--COLOR_INPUT_BG);border:1px solid var(--COLOR_INPUT_BORDER);border-radius:var(--BORDER_RADIUS);padding:.2em .5em;transition:background-color .12s ease,border-color .12s ease;box-sizing:border-box; }
@@ -1066,7 +1067,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.53.0',
+      version: '0.54.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1198,7 +1199,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.53.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.54.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {

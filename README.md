@@ -1,9 +1,34 @@
-# Skribbl Duels v0.53.0
+# Skribbl Duels v0.54.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
 Gateway Contract v9, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.54.0
+
+- Adds Railway-ready horizontal realtime delivery through the Socket.IO Redis
+  Streams adapter. A renewable, verified Redis lease fences exactly one live
+  Match Authority; followers forward authenticated commands and require a
+  leader acknowledgement instead of running independent Matchmakers.
+- Uses WebSocket-only production transport because Railway does not provide
+  sticky sessions. Authority changes restore Supabase state and force the normal
+  Contract v9 reconnect/resume path.
+- Splits liveness (`/healthz`) from dependency readiness (`/readyz`) and adds
+  bearer-protected Prometheus `/metrics` plus PII-safe `/diagnostics`, structured
+  correlation logs and initial alert rules.
+- Adds shared account/connection/IP rate limits, operator sanctions, private
+  abuse signals and 30/90-day operational retention. Telemetry now rejects
+  cross-batch event replay, invalid clocks and evidence outside the declared
+  sequence cursor.
+- Keeps Match Chat toast avatars at 32×32 despite Typo's `.avatar.fit` rule and
+  adds the requested normal-button background on clickable-toast hover.
+
+Apply `supabase/migrations/202608210001_create_gateway_abuse_controls.sql`, add
+private Railway Redis as `REDIS_URL` and create `OBSERVABILITY_TOKEN` before
+deploying the v0.54.0 Gateway. Verify `/readyz`, then publish the v0.54.0
+userscript. Gateway Contract v9 is unchanged. See
+`docs/multi-instance-operations-v0.54.0.md` for the exact rollout order.
 
 ## v0.53.0
 
@@ -209,7 +234,9 @@ v0.52.0 requires
 `supabase/migrations/202608200001_create_duel_invites.sql`; installations that
 have not deployed v0.51.0 must first apply
 `supabase/migrations/202608190001_create_durable_match_authority.sql` before the
-Gateway is deployed. Installations upgrading from before v0.48.0 must also
+Gateway is deployed. v0.54.0 additionally requires
+`supabase/migrations/202608210001_create_gateway_abuse_controls.sql`.
+Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
 
 ## Local verification

@@ -135,6 +135,8 @@ assert(source.includes('suppressExternalConclusionForMatchIds'), 'historical res
 assert(source.includes("this.checkbox('Show Match Chat toast notifications'"), 'chat notification toggle is missing');
 assert(source.includes("element('div', 'typo-toast scd-duel-toast')"), 'Typo-compatible chat toast is missing');
 assert(source.includes("element('div', 'scd-toast-profile')") && source.includes("this.openPanel('match')"), 'Match Chat toast lacks the sender profile or click-to-open action');
+assert(source.includes('width:32px !important;height:32px !important'), 'Match Chat toast avatar is still overridden by Typo .avatar.fit sizing');
+assert(source.includes('.scd-duel-toast.clickable:hover { background:var(--COLOR_BUTTON_NORMAL_BG); }'), 'Clickable Match Chat toasts lack the requested Skribbl hover background');
 assert(source.includes('private showConfirmToast('), 'Typo-compatible confirm toast is missing');
 assert(!source.includes('window.confirm('), 'Forfeit still uses the browser confirm dialog');
 assert(!source.includes("heading.textContent = 'Telemetry gateway'"), 'finished Match UI still exposes telemetry diagnostics');

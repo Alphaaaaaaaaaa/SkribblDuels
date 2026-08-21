@@ -2,8 +2,8 @@
 
 This roadmap lists the work still required for a production-complete Skribbl
 Duels build. Invite-link generation and implementation shipped in v0.52.0 as
-specified in `invite-link-v0.52.0-plan.md`; closed two-browser certification is
-now the immediate beta gate.
+specified in `invite-link-v0.52.0-plan.md`; closed two-browser certification and
+the production realtime/abuse foundation are now complete.
 
 ## P0 — production correctness
 
@@ -15,27 +15,32 @@ now the immediate beta gate.
   after a Gateway restart.
 - **Delivered in v0.51.0:** persist action/chat/claim/telemetry idempotency keys
   and an auditable revision log.
-- Add retention rules for raw telemetry, derived evidence and chat.
+- **Delivered in v0.54.0:** bounded Redis data plus 30-day terminal
+  Match/Invite/derived-evidence retention and 90-day abuse-signal retention.
 
 ### Realtime infrastructure
 
-- Run Socket.IO across multiple Gateway instances with a shared adapter,
-  sticky routing and a documented reconnect policy.
-- Add health/readiness checks for Supabase, the realtime adapter and the match
-  authority.
-- Export structured metrics for connections, reconnects, queue time, telemetry
-  lag, rejected claims, match aborts and transport errors.
-- Add alerting, request correlation and a support-safe diagnostic export.
+- **Delivered in v0.54.0:** Socket.IO Redis Streams adapter, WebSocket-only
+  Railway routing (Railway has no sticky sessions), fenced single Authority and
+  documented failover/reconnect policy.
+- **Delivered in v0.54.0:** split liveness/readiness for Supabase, Redis adapter
+  and Match Authority.
+- **Delivered in v0.54.0:** PII-safe structured metrics for connections,
+  reconnects, queue time, telemetry lag, rejected Claims, Match aborts,
+  transport errors and rate limits.
+- **Delivered in v0.54.0:** Prometheus alert rules, correlation logs and a
+  bearer-protected support-safe diagnostic export.
 
 ### Security and anti-cheat
 
-- Rate-limit matchmaking, chat, draw actions, telemetry and claims per account
-  and connection.
-- Harden timestamp, sequence, replay and cross-match evidence validation.
-- Define sanctions for disconnect abuse, deliberate Forfeit avoidance and
-  automated telemetry injection.
-- Complete a privacy/security review for Discord profile data, chat and stored
-  match evidence.
+- **Delivered in v0.54.0:** shared rate limits for connection, matchmaking,
+  Invite, chat, Match action, telemetry and Claim budgets.
+- **Delivered in v0.54.0:** timestamp, sequence, cross-batch replay and evidence
+  cursor validation.
+- **Delivered in v0.54.0:** scoped operator sanctions and private signals for
+  reconnect abuse, invalid traffic and telemetry injection.
+- **Delivered in v0.54.0:** documented privacy/security review for profiles,
+  chat, Redis traffic and stored Match evidence.
 
 ## P1 — complete competitive product
 
@@ -98,9 +103,10 @@ now the immediate beta gate.
 
 ## Recommended execution order
 
-1. Certify v0.52 invite links with two real authenticated browsers and closed beta users.
-2. Multi-instance realtime infrastructure, observability and abuse controls.
-3. Ranked rating, history and leaderboards.
+1. **Complete:** certify invite links with two real authenticated browsers.
+2. **Complete in v0.54.0:** multi-instance realtime infrastructure,
+   observability and abuse controls.
+3. **Next:** Ranked rating, history and leaderboards.
 4. Full Challenge live certification and balancing telemetry.
 5. Localization, accessibility, end-to-end/load testing and release automation.
 

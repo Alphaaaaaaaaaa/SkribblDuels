@@ -217,7 +217,7 @@ for (const accountId of ['alpha', 'beta'] as const) {
       accountId,
       telemetryBatch(running.matchId, events, index, Math.min(64, events.length - index))
     );
-    assert.equal(decision.ok, true);
+    assert.equal(decision.ok, true, JSON.stringify({ accountId, index, decision }));
   }
 }
 assert.equal(matchmaker.processTelemetryBatch(

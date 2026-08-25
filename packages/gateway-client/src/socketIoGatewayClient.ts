@@ -426,6 +426,13 @@ export class SocketIoGatewayClient {
         telemetryAck: resumed ? this.state.telemetryAck : null,
         error: null
       });
+      // A navigation (most notably /credits for Bloodline) can interrupt the
+      // page after telemetry and dependent claim candidates were persisted but
+      // before the Gateway acknowledged them. Restoring the queue alone is not
+      // sufficient: WELCOME is the first point at which the replacement socket
+      // is authenticated and able to resume delivery.
+      this.flushTelemetry();
+      this.flushClaims();
       return;
     }
     if (value.type === 'AUTH_REQUIRED') {

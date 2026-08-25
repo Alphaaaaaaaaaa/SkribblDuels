@@ -20,8 +20,17 @@ assert.equal(
   -1,
   'stored-record redaction must never block the one-shot Typo MessagePort handshake'
 );
+assert.ok(
+  source.includes('scheduleWordListRetry(null)'),
+  'an early languageId -1 / missing homepage select must schedule another word-list probe'
+);
+assert.ok(
+  source.includes('Math.min(10_000, 250 * (2 ** Math.min(wordListRetryAttempt, 6)))'),
+  'word-list retries must use bounded exponential timeouts'
+);
 
 console.log(JSON.stringify({
   typoRelayStartsSynchronously: true,
-  indexedDbRedactionRunsInBackground: true
+  indexedDbRedactionRunsInBackground: true,
+  initialWordListRetries: true
 }, null, 2));

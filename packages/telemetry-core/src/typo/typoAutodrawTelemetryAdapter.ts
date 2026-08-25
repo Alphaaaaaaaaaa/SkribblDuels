@@ -22,7 +22,15 @@ export interface TypoSkdPastedPayload {
   loadedFromFile: true;
   clearBeforePaste: boolean | null;
   pasteInstant: boolean | null;
-  method: 'typo-relay' | 'command-match-fallback';
+  method: 'typo-relay' | 'command-match-fallback' | 'imagelab-ui-fallback';
+}
+
+interface PendingImageLabPlayback {
+  fileName: string;
+  commands: unknown[][];
+  startedAt: number;
+  lastCommandAt: number | null;
+  sawLockedState: boolean;
 }
 
 interface LoadedSkd {
@@ -160,12 +168,16 @@ export class TypoAutodrawTelemetryAdapter {
   private telemetrySubscription: Subscription | null = null;
   private originalFileInputClick: typeof HTMLInputElement.prototype.click | null = null;
   private patchedFileInputClick: typeof HTMLInputElement.prototype.click | null = null;
+  private imageLabPlayback: PendingImageLabPlayback | null = null;
+  private imageLabWatchTimer: number | null = null;
 
   public constructor(private readonly telemetryStore: TelemetryStore) {}
 
   public start(): void {
     if (typeof document !== 'undefined') {
       document.addEventListener('change', this.handleFileInputChange, true);
+      document.addEventListener('click', this.handleImageLabClick, true);
+      this.imageLabWatchTimer = window.setInterval(() => this.tickImageLabPlayback(), 100);
     }
     this.patchDetachedFileInputs();
     if (typeof window !== 'undefined') {
@@ -184,6 +196,7 @@ export class TypoAutodrawTelemetryAdapter {
   public stop(): void {
     if (typeof document !== 'undefined') {
       document.removeEventListener('change', this.handleFileInputChange, true);
+      document.removeEventListener('click', this.handleImageLabClick, true);
     }
     if (typeof window !== 'undefined') {
       window.removeEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
@@ -199,6 +212,11 @@ export class TypoAutodrawTelemetryAdapter {
     this.loaded.clear();
     this.emittedPasteKeys.clear();
     this.recentLoadAt.clear();
+    if (this.imageLabWatchTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.imageLabWatchTimer);
+    }
+    this.imageLabWatchTimer = null;
+    this.imageLabPlayback = null;
   }
 
   private patchDetachedFileInputs(): void {
@@ -234,6 +252,78 @@ export class TypoAutodrawTelemetryAdapter {
     const files = [...input.files].filter(file => file.name.toLocaleLowerCase().endsWith('.skd'));
     for (const file of files) void this.readFile(file);
   };
+
+  /**
+   * Current Typo ImageLab keeps parsed .skd commands in its own Svelte store.
+   * Tampermonkey's isolated world cannot reliably observe the detached file
+   * picker, but the saved-command action keeps the original filename and Typo
+   * emits every replayed command through performDrawCommand. Follow that real
+   * UI lifecycle as a cross-world fallback.
+   */
+  private readonly handleImageLabClick = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const row = target.closest<HTMLElement>('.typo-toolbar-imagelab-actions .saved-commands');
+    if (!row || target.closest('.remove')) return;
+    const action = row.lastElementChild;
+    if (!(action instanceof HTMLElement) || !action.contains(target)) return;
+    const fileName = action.textContent?.trim() ?? '';
+    if (!fileName.toLocaleLowerCase().endsWith('.skd')) return;
+    this.beginImageLabPlayback(fileName);
+  };
+
+  private beginImageLabPlayback(fileName: string): void {
+    this.imageLabPlayback = {
+      fileName,
+      commands: [],
+      startedAt: Date.now(),
+      lastCommandAt: null,
+      sawLockedState: false
+    };
+  }
+
+  private tickImageLabPlayback(): void {
+    const playback = this.imageLabPlayback;
+    if (!playback || typeof document === 'undefined') return;
+    const now = Date.now();
+    const locked = document.querySelector(
+      '.typo-toolbar-imagelab-actions .lockedHint, .typo-toolbar-imagelab-actions .saved-commands.locked'
+    ) !== null;
+    if (locked) playback.sawLockedState = true;
+    const completedByUi = playback.sawLockedState && !locked && playback.commands.length > 0;
+    const completedByIdle = playback.lastCommandAt !== null
+      && now - playback.lastCommandAt >= 1_250
+      && playback.commands.length > 0;
+    if (completedByUi || completedByIdle) {
+      this.finishImageLabPlayback();
+    } else if (now - playback.startedAt >= 120_000) {
+      this.imageLabPlayback = null;
+    }
+  }
+
+  private finishImageLabPlayback(): void {
+    const playback = this.imageLabPlayback;
+    this.imageLabPlayback = null;
+    if (!playback || playback.commands.length === 0) return;
+    const fingerprint = fingerprintSkdCommands(playback.commands);
+    const loadedPayload: TypoSkdLoadedPayload = {
+      fileName: playback.fileName,
+      fingerprint,
+      commandCount: playback.commands.length,
+      loadedFromFile: true,
+      method: 'file-input-fallback'
+    };
+    this.registerLoaded(loadedPayload, playback.commands, 'derived');
+    this.emitPasted({
+      fileName: playback.fileName,
+      fingerprint,
+      commandCount: playback.commands.length,
+      loadedFromFile: true,
+      clearBeforePaste: null,
+      pasteInstant: null,
+      method: 'imagelab-ui-fallback'
+    }, 'derived');
+  }
 
   private async readFile(file: File): Promise<void> {
     try {
@@ -330,6 +420,7 @@ export class TypoAutodrawTelemetryAdapter {
         loaded.matchIndices.performed = 0;
       }
       this.emittedPasteKeys.clear();
+      this.imageLabPlayback = null;
       return;
     }
     if (event.type !== 'DRAW_COMMAND_BATCH_SUBMITTED') return;
@@ -346,6 +437,10 @@ export class TypoAutodrawTelemetryAdapter {
     const command = performedDrawCommandFromDetail(event.detail);
     const signature = commandSignature(command);
     if (signature === null) return;
+    if (command && this.imageLabPlayback) {
+      this.imageLabPlayback.commands.push(command);
+      this.imageLabPlayback.lastCommandAt = Date.now();
+    }
     for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, 'performed');
   };
 

@@ -23,7 +23,7 @@ const manifest = createChallengeManifest({
   }))
 }, 'en', 1_000);
 
-assert.equal(manifest.entries.length, 46);
+assert.equal(manifest.entries.length, 47);
 const capabilities = {
   available: new Set<ChallengeCapability>([
     'skribbl-telemetry',
@@ -137,7 +137,7 @@ void (async () => {
   assert.equal(resolvedRace?.owner, 'opponent');
   assert.equal(resolvedRace?.pendingCandidateId, null);
 
-  console.log('Product Foundation passed with the actual 46-challenge manifest and 250 Ranked draft seeds.');
+  console.log('Product Foundation passed with the growing 47-Challenge manifest and 250 Ranked draft seeds.');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

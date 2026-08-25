@@ -1,8 +1,11 @@
 # Skribbl Duels icon template
 
 `registry.template.json` is the single source of truth for future GIF assets.
-It contains all 46 stable challenge IDs, their planned file paths and the
+It contains all 47 stable challenge IDs, their planned file paths and the
 metadata icon keys already present in the challenge definitions.
+
+`transcended` temporarily reuses the Pointsmaxxing artwork until its dedicated
+asset is supplied; IDs may therefore outnumber distinct files.
 
 ## Adding artwork
 

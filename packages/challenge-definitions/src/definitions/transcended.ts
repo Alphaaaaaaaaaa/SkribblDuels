@@ -104,10 +104,7 @@ function resultForScoreboard(
   };
 }
 
-/**
- * Certified candidate definition. It remains outside starterChallengeDefinitions
- * until the live exposure/completion gate in the v0.55 certification document is met.
- */
+/** First pool-expanding candidate; Casual-only until its live Ranked gate is met. */
 export const transcendedDefinition: ChallengeDefinition<TranscendedState, TranscendedParameters> = {
   id: 'transcended',
   version: 1,

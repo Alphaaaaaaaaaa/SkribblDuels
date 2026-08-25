@@ -286,6 +286,10 @@ performedEvents$.next(event('DRAW_COMMAND_BATCH_SUBMITTED', 'performed-context',
 }, 'anything-autodraw-turn', 21, self));
 const performedInternals = performedAdapter as unknown as {
   handlePerformedDrawCommand(event: Event): void;
+  beginImageLabPlayback(fileName: string): void;
+  finishImageLabPlayback(): void;
+  emittedPasteKeys: Set<string>;
+  loaded: Map<string, unknown>;
 };
 assert(
   JSON.stringify(performedDrawCommandFromDetail({ detail: { payload: { raw: anythingCommands[0] } } }))
@@ -300,6 +304,22 @@ for (const command of anythingCommands) {
 assert(
   performedEmitted.some(entry => entry.type === 'TYPO_SKD_PASTED'),
   'A fully executed performDrawCommand sequence from Anything.skd must emit TYPO_SKD_PASTED even when socket batching differs.'
+);
+performedEmitted.length = 0;
+performedInternals.emittedPasteKeys.clear();
+performedInternals.loaded.clear();
+performedInternals.beginImageLabPlayback('Anything.skd');
+for (const command of anythingCommands) {
+  performedInternals.handlePerformedDrawCommand(new CustomEvent('performDrawCommand', {
+    detail: { payload: { command } }
+  }));
+}
+performedInternals.finishImageLabPlayback();
+assert(
+  performedEmitted.some(entry =>
+    entry.type === 'TYPO_SKD_PASTED'
+      && (entry.payload as { method?: string }).method === 'imagelab-ui-fallback'),
+  'Clicking the real Typo saved-command row must produce a completed ImageLab .skd playback event.'
 );
 performedAdapter.stop();
 

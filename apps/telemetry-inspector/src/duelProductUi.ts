@@ -658,7 +658,8 @@ class CompletionChatAdapter {
 .scd-chat-rematch-accept { width:100%;background:#2c8de7; }
 .scd-chat-rematch-accept:hover:not(:disabled) { background:#1671c5; }
 .scd-chat-rematch-accept:active:not(:disabled) { background:#1361a9; }
-.scd-chat-form { position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:0 .2em; }
+.scd-chat-section { min-width:0; }
+.scd-chat-form { position:sticky;bottom:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:.35em .2em;background:linear-gradient(to bottom,transparent 0,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 28%); }
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
 .scd-chat-characters.visible { top:.5em;opacity:1; }
@@ -958,6 +959,7 @@ export class DuelProductFoundation {
   private readonly pendingDuelChatMessages = new Map<string, string>();
   private notifiedRematchRequestKey: string | null = null;
   private matchActionError: string | null = null;
+  private lastVisibleDrawProposalId: string | null = null;
   private readonly chatNotificationStartedAt = Date.now();
   private readonly draftKeydown = (event: KeyboardEvent) => this.handleDraftKeydown(event);
   private readonly duelChatKeydown = (event: KeyboardEvent) => this.handleDuelChatKeydown(event);
@@ -1016,6 +1018,10 @@ export class DuelProductFoundation {
     window.addEventListener('focus', this.visibilityRecovery, false);
     this.unsubscribers.push(this.gatewayClient.subscribe(state => {
       const previous = this.gatewayState;
+      const previousDrawProposalId = previous.match?.state.drawProposal?.proposalId ?? null;
+      const nextDrawProposalId = state.match?.state.drawProposal?.proposalId ?? null;
+      const drawProposalAppeared = nextDrawProposalId !== null
+        && nextDrawProposalId !== previousDrawProposalId;
       const matchChanged = previous.match?.matchId !== state.match?.matchId
         || previous.match?.revision !== state.match?.revision;
       const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
@@ -1031,6 +1037,7 @@ export class DuelProductFoundation {
         || previous.identity?.displayName !== state.identity?.displayName;
       if (matchChanged) this.matchActionError = null;
       this.gatewayState = state;
+      if (drawProposalAppeared) this.lastVisibleDrawProposalId = nextDrawProposalId;
       if (state.error && state.error !== previous.error && this.pendingDuelChatMessages.size > 0) {
         const failed = this.pendingDuelChatMessages.entries().next().value as [string, string] | undefined;
         if (failed) {
@@ -1055,7 +1062,10 @@ export class DuelProductFoundation {
         this.renderStage();
         this.renderBoard();
       }
-      if (this.settings.panelOpen && presentationChanged) this.renderPanel();
+      if (this.settings.panelOpen && presentationChanged) {
+        this.renderPanel();
+        if (drawProposalAppeared) this.ensureDuelChatInputVisible();
+      }
     }));
     this.unsubscribers.push(this.authClient.subscribe(state => {
       this.authState = state;
@@ -1103,7 +1113,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.55.0',
+      version: '0.55.1',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1236,7 +1246,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.55.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.55.1') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2798,7 +2808,7 @@ export class DuelProductFoundation {
 
   private renderChatTab(): void {
     if (!this.panelBody) return;
-    const stack = element('div', 'scd-stack');
+    const stack = element('div', 'scd-stack scd-chat-section');
     const log = element('div', 'scd-card scd-stack scd-chat-log');
     log.dataset.scdChatLog = 'true';
     if (this.duelChatMessages.length === 0) {
@@ -2947,6 +2957,17 @@ export class DuelProductFoundation {
         this.panel?.querySelector<HTMLInputElement>('[data-scd-duel-chat-input="true"]')?.focus();
       });
     }
+  }
+
+  private ensureDuelChatInputVisible(): void {
+    const proposalId = this.gatewayState.match?.state.drawProposal?.proposalId ?? null;
+    if (proposalId === null || proposalId !== this.lastVisibleDrawProposalId) return;
+    window.requestAnimationFrame(() => {
+      const input = this.panel?.querySelector<HTMLInputElement>('[data-scd-duel-chat-input="true"]');
+      if (!input?.isConnected) return;
+      input.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      this.lastVisibleDrawProposalId = null;
+    });
   }
 
   private handleDuelChatKeydown(event: KeyboardEvent): void {

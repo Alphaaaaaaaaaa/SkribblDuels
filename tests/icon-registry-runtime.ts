@@ -21,8 +21,8 @@ assert.deepEqual(Object.keys(registry.ui).sort(), ['about', 'logo', 'notReady', 
 assert.equal(registry.ui.ready, 'challenge-icons/checkmark.gif');
 assert.equal(registry.ui.notReady, 'challenge-icons/crossmark.gif');
 assert.deepEqual(Object.keys(registry.countdown), ['1', '2', '3', '4', '5', 'G', 'O', '!']);
-assert.equal(registry.challenges.length, 46);
-assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 46);
+assert.equal(registry.challenges.length, 47);
+assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 47);
 assert.equal(new Set(registry.challenges.map(entry => entry.assetPath)).size, 46);
 assert.deepEqual(
   [...registry.challenges.map(entry => entry.challengeId)].sort(),
@@ -32,4 +32,4 @@ for (const entry of registry.challenges) {
   assert.match(entry.assetPath, /^challenge-icons\/[a-z0-9-]+\.(?:gif|png)$/);
 }
 
-console.log('All 46 challenge IDs and UI/countdown GIF paths are covered by the icon registry.');
+console.log('All 47 challenge IDs and UI/countdown GIF paths are covered by the icon registry.');

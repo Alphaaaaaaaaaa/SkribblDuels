@@ -63,6 +63,12 @@ function cancelledSnapshot(matchId: string, revision: number): GatewayMatchSnaps
 
 type ClientInternals = {
   state: GatewayConnectionSnapshot;
+  socket: {
+    connected: boolean;
+    emit(event: string, message: unknown): void;
+    removeAllListeners(): void;
+    disconnect(): void;
+  } | null;
   telemetryQueue: GatewayTelemetryEnvelope[];
   telemetryInFlight: GatewayTelemetryEnvelope[];
   pendingClaims: Array<Omit<GatewayClaimCandidateMessage, 'type'>>;
@@ -113,11 +119,44 @@ assert.deepEqual(
   ['reload-candidate'],
   'A page reload must restore claim candidates which still depend on pending telemetry.'
 );
+const resumedMessages: unknown[] = [];
+reloadedInternals.socket = {
+  connected: true,
+  emit(_event, message) {
+    resumedMessages.push(message);
+  },
+  removeAllListeners() {},
+  disconnect() {}
+};
+reloadedInternals.receive({
+  type: 'WELCOME',
+  contractVersion: 10,
+  connectionId: 'reloaded-connection',
+  identity: {
+    accountId: 'alpha',
+    displayName: 'Alpha',
+    discordUserId: 'discord-alpha'
+  },
+  serverTime: 2_000,
+  heartbeatIntervalMs: 25_000,
+  resumeStatus: 'resumed',
+  resumedMatchId: 'reload-match'
+});
+assert.equal(
+  (resumedMessages[0] as { type?: string } | undefined)?.type,
+  'TELEMETRY_BATCH',
+  'WELCOME must immediately resend restored telemetry after a /credits navigation or reload.'
+);
+assert.deepEqual(
+  reloadedInternals.telemetryInFlight.map(envelope => envelope.sequence),
+  [12],
+  'Restored telemetry must move in-flight on the authenticated replacement socket.'
+);
 reloadedInternals.receive(snapshot('reload-match', 5));
 assert.equal(
-  reloadedInternals.telemetryQueue.length,
+  reloadedInternals.telemetryInFlight.length,
   1,
-  'The resumed snapshot for the persisted match must preserve its transport queue.'
+  'The resumed snapshot for the persisted match must preserve its in-flight transport batch.'
 );
 firstPageClient.stop();
 reloadedClient.stop();

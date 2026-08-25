@@ -11,6 +11,8 @@ interface RelayPortState {
   ports: WeakSet<MessagePort>;
 }
 
+export const TYPO_RELAY_REQUEST_EVENT_NAME = 'skribbl-duels:request-typo-relays';
+
 function isWindowMessage(event: MessageEvent<unknown>): boolean {
   return event.source === null || event.source === window;
 }
@@ -48,6 +50,8 @@ export class TypoRelayBridge {
   };
 
   private started = false;
+  private retryTimer: number | null = null;
+  private retryAttempt = 0;
 
   public readonly incoming$: Observable<IncomingRelayEnvelope> =
     this.incomingSubject.asObservable();
@@ -65,12 +69,43 @@ export class TypoRelayBridge {
     if (this.started) return;
     this.started = true;
     window.addEventListener('message', this.handleWindowMessage);
+    this.requestMissingRelayPorts();
   }
 
   public stop(): void {
     if (!this.started) return;
     this.started = false;
     window.removeEventListener('message', this.handleWindowMessage);
+    if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.retryAttempt = 0;
+  }
+
+  private requestMissingRelayPorts(): void {
+    if (!this.started) return;
+    const missing = [
+      ...(!this.incomingStatusSubject.value.connected ? ['skribblMessagePort' as const] : []),
+      ...(!this.outgoingStatusSubject.value.connected ? ['skribblEmitPort' as const] : [])
+    ];
+    if (missing.length === 0) {
+      if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      this.retryAttempt = 0;
+      return;
+    }
+    const detail = { missing, attempt: this.retryAttempt + 1 };
+    // Late Typo builds can respond to either the DOM event or postMessage
+    // handshake by transferring fresh ports. Older builds still work because
+    // the original one-shot port messages remain listened for continuously.
+    window.dispatchEvent(new CustomEvent(TYPO_RELAY_REQUEST_EVENT_NAME, { detail }));
+    window.postMessage({ type: TYPO_RELAY_REQUEST_EVENT_NAME, detail }, '*');
+    const delay = Math.min(10_000, 250 * (2 ** Math.min(this.retryAttempt, 6)));
+    this.retryAttempt += 1;
+    if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = null;
+      this.requestMissingRelayPorts();
+    }, delay);
   }
 
   private readonly handleWindowMessage = (event: MessageEvent<unknown>): void => {
@@ -123,6 +158,7 @@ export class TypoRelayBridge {
       connectedAt: Date.now(),
       messageCount: this.incomingState.messageCount
     });
+    this.requestMissingRelayPorts();
   }
 
   private attachOutgoingPort(port: MessagePort): void {
@@ -167,5 +203,6 @@ export class TypoRelayBridge {
       connectedAt: Date.now(),
       messageCount: this.outgoingState.messageCount
     });
+    this.requestMissingRelayPorts();
   }
 }

@@ -81,7 +81,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.55.0';
+const BUILD_VERSION = '0.55.1';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -307,6 +307,47 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
   runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
   runtime.addCleanup(() => replayProvider.destroy());
+  type WordListRetryTarget = { languageId: number; languageName: string | null; force: boolean };
+  let wordListRetryTimer: number | null = null;
+  let wordListRetryAttempt = 0;
+  let wordListRetryKey: string | null = null;
+  let preloadHomepageWordList: (force?: boolean) => void;
+
+  const clearWordListRetry = (): void => {
+    if (wordListRetryTimer !== null) window.clearTimeout(wordListRetryTimer);
+    wordListRetryTimer = null;
+    wordListRetryAttempt = 0;
+    wordListRetryKey = null;
+  };
+
+  const scheduleWordListRetry = (target: WordListRetryTarget | null): void => {
+    const key = target
+      ? `${target.languageId}:${target.languageName ?? ''}`
+      : 'homepage-language-probe';
+    if (wordListRetryKey !== key) {
+      if (wordListRetryTimer !== null) window.clearTimeout(wordListRetryTimer);
+      wordListRetryTimer = null;
+      wordListRetryAttempt = 0;
+      wordListRetryKey = key;
+    }
+    if (wordListRetryTimer !== null || !runtime.isActive()) return;
+    const delay = Math.min(10_000, 250 * (2 ** Math.min(wordListRetryAttempt, 6)));
+    wordListRetryAttempt += 1;
+    wordListRetryTimer = window.setTimeout(() => {
+      wordListRetryTimer = null;
+      if (!runtime.isActive()) return;
+      if (target) {
+        void loadWordListWithWarning(
+          target.languageId,
+          target.languageName,
+          target.force
+        );
+      } else {
+        preloadHomepageWordList(false);
+      }
+    }, delay);
+  };
+
   const loadWordListWithWarning = async (
     languageId: number,
     languageName?: string | null,
@@ -314,15 +355,31 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   ): Promise<OfficialWordListStatus> => {
     const status = await loadOfficialWordList(languageId, languageName, force);
     if (status.warning) console.warn('[Skribbl Duels Word Lists]', status.warning, status);
+    if (status.state === 'error') {
+      scheduleWordListRetry({ languageId, languageName: status.languageName ?? languageName ?? null, force: true });
+    } else if (status.languageId < 0 && status.languageName === null) {
+      // During early document-start the homepage language select and the Typo
+      // relay can legitimately be absent. Keep probing instead of freezing the
+      // public status forever at languageId -1 / unsupported.
+      scheduleWordListRetry(null);
+    } else {
+      clearWordListRetry();
+    }
     return status;
   };
 
-  const preloadHomepageWordList = (force = false): void => {
+  preloadHomepageWordList = (force = false): void => {
     const select = document.querySelector<HTMLSelectElement>('#home select');
-    if (!select) return;
+    if (!select) {
+      scheduleWordListRetry(null);
+      return;
+    }
     const languageId = Number(select.value);
     const languageName = select.options[select.selectedIndex]?.textContent?.trim() ?? null;
-    if (!Number.isInteger(languageId)) return;
+    if (!Number.isInteger(languageId) || languageId < 0 || !languageName) {
+      scheduleWordListRetry(null);
+      return;
+    }
     void loadWordListWithWarning(languageId, languageName, force);
   };
 
@@ -343,11 +400,13 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   runtime.addCleanup(() => {
     document.removeEventListener('change', handleHomepageLanguageChange, true);
     document.removeEventListener('click', handleHomepagePlayClick, true);
+    clearWordListRetry();
   });
   preloadHomepageWordList(false);
 
   const wordListTelemetrySubscription = telemetryStore.events$.subscribe(event => {
     if (event.type === 'LOBBY_HYDRATED' && event.context.languageId !== null) {
+      clearWordListRetry();
       void loadWordListWithWarning(event.context.languageId, event.context.languageName);
     }
   });

@@ -1,9 +1,44 @@
-# Skribbl Duels v0.55.0
+# Skribbl Duels v0.55.1
 
-This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
+This monorepo contains the growing 47-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v10, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.55.1
+
+- Resends durable telemetry immediately after an authenticated `WELCOME`, so a
+  `/credits` navigation can no longer leave Bloodline and every later Claim
+  blocked behind an unsent resume cursor.
+- Detects the real Typo ImageLab `.skd` flow through the saved filename row,
+  `performDrawCommand` playback and locked/unlocked completion state.
+- Retries an initially unavailable homepage language with exponential timeouts
+  and keeps a late Typo relay handshake open. All 28 canonical language IDs
+  remain eligible to become authoritative when their lists can be fetched.
+- Keeps the Duel Chat form visible when a Draw proposal expands a long Match
+  panel, including a sticky input surface and nearest-scroll recovery.
+- Changes the Challenge policy from a frozen pool to a growing pool and adds
+  Transcended as Challenge 47 for Casual certification. It remains unavailable
+  to Ranked drafts for now.
+- Adds stable Tampermonkey `updateURL` and `downloadURL` metadata. Publishing a
+  higher `@version` at the same raw GitHub path enables normal update checks.
+
+Deploy the v0.55.1 Gateway first, verify `/readyz`, then install or update the
+v0.55.1 userscript. Contract v10 and the existing Supabase/Redis setup remain
+compatible; no migration or new Railway variable is required.
+
+## One-click userscript installation
+
+With Tampermonkey installed, open the tracked raw userscript URL and its native
+installation page should appear:
+
+<https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js>
+
+The published file contains `@updateURL` and `@downloadURL` pointing to that
+same stable path. Keep the filename/path unchanged and increase `@version` for
+every release; Tampermonkey then discovers and installs the newer source during
+its configured update check. Do not point these metadata fields at versioned
+ZIP files or GitHub blob pages.
 
 ## v0.55.0
 
@@ -30,8 +65,7 @@ challenge claims.
   startup. Every successfully fetched, non-empty word list becomes authoritative
   automatically; unavailable source files remain explicitly unsupported.
 - Implements Transcended v1 with a coherent authoritative score roster and
-  deterministic regressions as an inactive candidate; the certified live pool
-  remains frozen at 46 Challenges.
+  deterministic regressions as an inactive candidate at the time of v0.55.0.
 - Defines deterministic certification gates for TL;DR v2 and the seven new
   Challenge candidates in `docs/challenge-live-certification-v0.55.0.md`.
 

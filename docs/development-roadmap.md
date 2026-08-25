@@ -5,7 +5,7 @@
 | Phase | Status | Result |
 | --- | --- | --- |
 | Telemetry and protocol state | Complete | Versioned telemetry contract, replay fixtures and protocol/lobby state |
-| Challenge system | Complete | 46 modular challenges with automated runtime coverage |
+| Challenge system | Complete | Growing pool, currently 47 modular Challenges with automated runtime coverage |
 | Product foundation | Complete | Casual 3×3, Ranked 5×5, conflict-aware draft generation and match freeze |
 | Account identity | Complete | Discord OAuth through Supabase, RLS profiles and automatic profile synchronization |
 | Gateway foundation | Complete | Railway HTTPS service, token verification, profile lookup, `HELLO`/`WELCOME` and heartbeat |
@@ -17,7 +17,7 @@
 | Match reconnect continuity | Complete | Contract v3 resume cursor, 30-second server grace, authoritative snapshot restoration and stale-state rejection |
 | Draft interaction hardening | Complete | Stable clock updates, centered two-choice surface, Left/Right Arrow input and definition tooltips |
 | Lobby-series continuity | Complete | Back to back uses stable lobby identity; Noob vs. Pro vs. Hacker and Bullet retain global progress across lobby/language changes |
-| GIF asset template | Complete | Validated paths for all 46 challenge icons plus logo, settings, about and countdown frames |
+| GIF asset template | Complete | Validated mappings for all 47 Challenge IDs plus logo, settings, about and countdown frames |
 | Vanilla Hub and match-start stage | Complete | Homepage entry, intro, modal Hub, dynamic Duels/Match navigation and standalone Versus/Draft/Countdown views |
 | Persistent Versus identity | Complete | Duel name, language, Discord/Skribbl avatar selection and server-controlled Special entitlement |
 | Embedded visual assets | Complete | Real Challenge icons in intro, Draft and board plus animated GIF countdown |
@@ -64,14 +64,15 @@
   dedicated live/false-positive regressions.
 - Aggregate telemetry, Claim-source and rejection-reason metrics plus a visible
   client ACK/queue cursor make two-client certification measurable.
-- TL;DR v2 and the seven proposed additions remain gated by the deterministic
-  data/events recorded in `docs/challenge-live-certification-v0.55.0.md`.
+- Transcended expands the Casual pool in v0.55.1; TL;DR v2 and the other six
+  proposed additions remain gated by the deterministic data/events recorded in
+  `docs/challenge-live-certification-v0.55.0.md`.
 
 ### 4. Ranked competition and history
 
 - Define rating, provisional, season, Draw, Forfeit and reconnect-timeout rules.
 - Apply each rating update exactly once and add leaderboard plus match history.
-- Prevent repeated-opponent farming and certify all 46 Challenges in live
+- Prevent repeated-opponent farming and certify every active Challenge in live
   two-client runs.
 
 ### 5. Product and release completion

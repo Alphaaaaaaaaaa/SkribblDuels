@@ -16,9 +16,9 @@
 - Keep gateway messages versioned and validated. The Gateway is authoritative for identity, matchmaking, ready checks, drafts, claims, match results, ratings, and private Duel chat.
 - Browser clients may submit telemetry and claim candidates but must not authoritatively award fields or results.
 
-## Frozen product rules
+## Stable product rules
 
-- The active challenge pool contains 46 challenges. New challenges and rule changes must remain modular and versioned.
+- The active challenge pool grows whenever a new Challenge is introduced. Every addition and rule change must remain modular, versioned and regression-tested; new Challenges may remain excluded from Ranked until certified.
 - Casual uses a 3x3 board and a five-field win target.
 - Ranked uses a 5x5 board and a thirteen-field win target.
 - Blind Guess and Drunk Vision must never appear on the same board. Express this through general conflict metadata, not UI-specific conditionals. Deaf Guess remains compatible with either challenge.

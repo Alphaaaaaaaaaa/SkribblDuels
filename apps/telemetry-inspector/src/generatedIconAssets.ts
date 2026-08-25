@@ -106,5 +106,6 @@ export const CHALLENGE_ICON_ASSET_PATHS: Readonly<Record<string, string>> = {
   "hint-reflexes": "challenge-icons/hint-reflexes.gif",
   "noob-vs-pro-vs-hacker": "challenge-icons/noob-vs-pro-vs-hacker.gif",
   "reflexes-like-a-cat": "challenge-icons/reflexes-like-a-cat.gif",
-  "drop-down": "challenge-icons/drop-down.gif"
+  "drop-down": "challenge-icons/drop-down.gif",
+  "transcended": "challenge-icons/pointsmaxxing.gif"
 };

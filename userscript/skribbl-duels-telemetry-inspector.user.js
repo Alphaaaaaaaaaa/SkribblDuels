@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.55.0
+// @version      0.55.1
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif
+// @downloadURL  https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js
+// @updateURL    https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js
 // @match        https://skribbl.io/*
 // @grant        none
 // @run-at       document-start
@@ -1596,6 +1598,7 @@ var AvatarTelemetryAdapter = class {
 		});
 	}
 };
+var TYPO_RELAY_REQUEST_EVENT_NAME = "skribbl-duels:request-typo-relays";
 function isWindowMessage(event) {
 	return event.source === null || event.source === window;
 }
@@ -1627,6 +1630,8 @@ var TypoRelayBridge = class {
 		ports: /* @__PURE__ */ new WeakSet()
 	};
 	started = false;
+	retryTimer = null;
+	retryAttempt = 0;
 	incoming$ = this.incomingSubject.asObservable();
 	outgoing$ = this.outgoingSubject.asObservable();
 	incomingStatus$ = this.incomingStatusSubject.asObservable();
@@ -1635,11 +1640,41 @@ var TypoRelayBridge = class {
 		if (this.started) return;
 		this.started = true;
 		window.addEventListener("message", this.handleWindowMessage);
+		this.requestMissingRelayPorts();
 	}
 	stop() {
 		if (!this.started) return;
 		this.started = false;
 		window.removeEventListener("message", this.handleWindowMessage);
+		if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+		this.retryTimer = null;
+		this.retryAttempt = 0;
+	}
+	requestMissingRelayPorts() {
+		if (!this.started) return;
+		const missing = [...!this.incomingStatusSubject.value.connected ? ["skribblMessagePort"] : [], ...!this.outgoingStatusSubject.value.connected ? ["skribblEmitPort"] : []];
+		if (missing.length === 0) {
+			if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+			this.retryTimer = null;
+			this.retryAttempt = 0;
+			return;
+		}
+		const detail = {
+			missing,
+			attempt: this.retryAttempt + 1
+		};
+		window.dispatchEvent(new CustomEvent(TYPO_RELAY_REQUEST_EVENT_NAME, { detail }));
+		window.postMessage({
+			type: TYPO_RELAY_REQUEST_EVENT_NAME,
+			detail
+		}, "*");
+		const delay = Math.min(1e4, 250 * 2 ** Math.min(this.retryAttempt, 6));
+		this.retryAttempt += 1;
+		if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+		this.retryTimer = window.setTimeout(() => {
+			this.retryTimer = null;
+			this.requestMissingRelayPorts();
+		}, delay);
 	}
 	handleWindowMessage = (event) => {
 		if (!isWindowMessage(event)) return;
@@ -1683,6 +1718,7 @@ var TypoRelayBridge = class {
 			connectedAt: Date.now(),
 			messageCount: this.incomingState.messageCount
 		});
+		this.requestMissingRelayPorts();
 	}
 	attachOutgoingPort(port) {
 		if (this.outgoingState.ports.has(port)) return;
@@ -1720,6 +1756,7 @@ var TypoRelayBridge = class {
 			connectedAt: Date.now(),
 			messageCount: this.outgoingState.messageCount
 		});
+		this.requestMissingRelayPorts();
 	}
 };
 function extractPacketId(socketEvent, packetData) {
@@ -5139,11 +5176,17 @@ var TypoAutodrawTelemetryAdapter = class {
 	telemetrySubscription = null;
 	originalFileInputClick = null;
 	patchedFileInputClick = null;
+	imageLabPlayback = null;
+	imageLabWatchTimer = null;
 	constructor(telemetryStore) {
 		this.telemetryStore = telemetryStore;
 	}
 	start() {
-		if (typeof document !== "undefined") document.addEventListener("change", this.handleFileInputChange, true);
+		if (typeof document !== "undefined") {
+			document.addEventListener("change", this.handleFileInputChange, true);
+			document.addEventListener("click", this.handleImageLabClick, true);
+			this.imageLabWatchTimer = window.setInterval(() => this.tickImageLabPlayback(), 100);
+		}
 		this.patchDetachedFileInputs();
 		if (typeof window !== "undefined") {
 			window.addEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded, true);
@@ -5156,7 +5199,10 @@ var TypoAutodrawTelemetryAdapter = class {
 		this.telemetrySubscription = this.telemetryStore.events$.subscribe((event) => this.handleTelemetry(event));
 	}
 	stop() {
-		if (typeof document !== "undefined") document.removeEventListener("change", this.handleFileInputChange, true);
+		if (typeof document !== "undefined") {
+			document.removeEventListener("change", this.handleFileInputChange, true);
+			document.removeEventListener("click", this.handleImageLabClick, true);
+		}
 		if (typeof window !== "undefined") {
 			window.removeEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded, true);
 			window.removeEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded, true);
@@ -5171,6 +5217,9 @@ var TypoAutodrawTelemetryAdapter = class {
 		this.loaded.clear();
 		this.emittedPasteKeys.clear();
 		this.recentLoadAt.clear();
+		if (this.imageLabWatchTimer !== null && typeof window !== "undefined") window.clearInterval(this.imageLabWatchTimer);
+		this.imageLabWatchTimer = null;
+		this.imageLabPlayback = null;
 	}
 	patchDetachedFileInputs() {
 		if (typeof HTMLInputElement === "undefined" || this.originalFileInputClick) return;
@@ -5196,6 +5245,67 @@ var TypoAutodrawTelemetryAdapter = class {
 		const files = [...input.files].filter((file) => file.name.toLocaleLowerCase().endsWith(".skd"));
 		for (const file of files) this.readFile(file);
 	};
+	/**
+	* Current Typo ImageLab keeps parsed .skd commands in its own Svelte store.
+	* Tampermonkey's isolated world cannot reliably observe the detached file
+	* picker, but the saved-command action keeps the original filename and Typo
+	* emits every replayed command through performDrawCommand. Follow that real
+	* UI lifecycle as a cross-world fallback.
+	*/
+	handleImageLabClick = (event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		const row = target.closest(".typo-toolbar-imagelab-actions .saved-commands");
+		if (!row || target.closest(".remove")) return;
+		const action = row.lastElementChild;
+		if (!(action instanceof HTMLElement) || !action.contains(target)) return;
+		const fileName = action.textContent?.trim() ?? "";
+		if (!fileName.toLocaleLowerCase().endsWith(".skd")) return;
+		this.beginImageLabPlayback(fileName);
+	};
+	beginImageLabPlayback(fileName) {
+		this.imageLabPlayback = {
+			fileName,
+			commands: [],
+			startedAt: Date.now(),
+			lastCommandAt: null,
+			sawLockedState: false
+		};
+	}
+	tickImageLabPlayback() {
+		const playback = this.imageLabPlayback;
+		if (!playback || typeof document === "undefined") return;
+		const now = Date.now();
+		const locked = document.querySelector(".typo-toolbar-imagelab-actions .lockedHint, .typo-toolbar-imagelab-actions .saved-commands.locked") !== null;
+		if (locked) playback.sawLockedState = true;
+		const completedByUi = playback.sawLockedState && !locked && playback.commands.length > 0;
+		const completedByIdle = playback.lastCommandAt !== null && now - playback.lastCommandAt >= 1250 && playback.commands.length > 0;
+		if (completedByUi || completedByIdle) this.finishImageLabPlayback();
+		else if (now - playback.startedAt >= 12e4) this.imageLabPlayback = null;
+	}
+	finishImageLabPlayback() {
+		const playback = this.imageLabPlayback;
+		this.imageLabPlayback = null;
+		if (!playback || playback.commands.length === 0) return;
+		const fingerprint = fingerprintSkdCommands(playback.commands);
+		const loadedPayload = {
+			fileName: playback.fileName,
+			fingerprint,
+			commandCount: playback.commands.length,
+			loadedFromFile: true,
+			method: "file-input-fallback"
+		};
+		this.registerLoaded(loadedPayload, playback.commands, "derived");
+		this.emitPasted({
+			fileName: playback.fileName,
+			fingerprint,
+			commandCount: playback.commands.length,
+			loadedFromFile: true,
+			clearBeforePaste: null,
+			pasteInstant: null,
+			method: "imagelab-ui-fallback"
+		}, "derived");
+	}
 	async readFile(file) {
 		try {
 			const sequences = parseSkdCommandSequences(JSON.parse(await file.text()));
@@ -5286,6 +5396,7 @@ var TypoAutodrawTelemetryAdapter = class {
 				loaded.matchIndices.performed = 0;
 			}
 			this.emittedPasteKeys.clear();
+			this.imageLabPlayback = null;
 			return;
 		}
 		if (event.type !== "DRAW_COMMAND_BATCH_SUBMITTED") return;
@@ -5298,8 +5409,13 @@ var TypoAutodrawTelemetryAdapter = class {
 	}
 	handlePerformedDrawCommand = (event) => {
 		if (!(event instanceof CustomEvent)) return;
-		const signature = commandSignature(performedDrawCommandFromDetail(event.detail));
+		const command = performedDrawCommandFromDetail(event.detail);
+		const signature = commandSignature(command);
 		if (signature === null) return;
+		if (command && this.imageLabPlayback) {
+			this.imageLabPlayback.commands.push(command);
+			this.imageLabPlayback.lastCommandAt = Date.now();
+		}
 		for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, "performed");
 	};
 	consumeSignature(loaded, signature, source) {
@@ -11262,7 +11378,222 @@ var deafGuessDefinition = createTypoActiveGuessDefinition({
 	icon: "typo-deaf-guess",
 	difficulty: 3
 });
-var CHALLENGE_DEFINITIONS_VERSION = "2.11.0";
+function initialState() {
+	return {
+		activeGameSessionId: null,
+		trackingStartedEventId: null,
+		selfPlayerId: null,
+		players: [],
+		currentLead: 0
+	};
+}
+function normalizePlayers(players) {
+	if (!players) return [];
+	const byId = /* @__PURE__ */ new Map();
+	for (const player of players) {
+		if (!Number.isInteger(player.id) || !Number.isFinite(player.score)) continue;
+		byId.set(player.id, {
+			playerId: player.id,
+			score: player.score,
+			departed: false
+		});
+	}
+	return [...byId.values()];
+}
+function upsertPlayer(players, playerId, score, departed = false) {
+	let found = false;
+	const next = players.map((player) => {
+		if (player.playerId !== playerId) return player;
+		found = true;
+		return {
+			playerId,
+			score,
+			departed
+		};
+	});
+	if (!found) next.push({
+		playerId,
+		score,
+		departed
+	});
+	return next;
+}
+function markDeparted(players, playerId) {
+	return players.map((player) => player.playerId === playerId ? {
+		...player,
+		departed: true
+	} : player);
+}
+function resetScores(players) {
+	return players.map((player) => ({
+		...player,
+		score: 0,
+		departed: false
+	}));
+}
+function currentLead(players, selfPlayerId) {
+	const active = players.filter((player) => !player.departed);
+	const self = active.find((player) => player.playerId === selfPlayerId);
+	const opponents = active.filter((player) => player.playerId !== selfPlayerId);
+	if (!self || self.score <= 0 || opponents.length === 0) return null;
+	return self.score - Math.max(...opponents.map((player) => player.score));
+}
+function resultForScoreboard(state, players, selfPlayerId, points, eventId, completeReason, progressReason) {
+	const lead = currentLead(players, selfPlayerId);
+	const progress = Math.max(0, Math.min(points, lead ?? 0));
+	const complete = lead !== null && lead >= points;
+	return {
+		internalState: {
+			...state,
+			selfPlayerId,
+			players,
+			currentLead: Math.max(0, lead ?? 0)
+		},
+		progress,
+		complete,
+		reason: complete ? completeReason : progressReason,
+		evidenceEventIds: [...state.trackingStartedEventId ? [state.trackingStartedEventId] : [], eventId]
+	};
+}
+/** First pool-expanding candidate; Casual-only until its live Ranked gate is met. */
+var transcendedDefinition = {
+	id: "transcended",
+	version: 1,
+	metadata: {
+		category: "progress",
+		localization: localization("Transcended", "Build a lead of at least 2,000 points over every active opponent in a public game.", "Transcended", "Baue in einem \u00F6ffentlichen Spiel mindestens 2.000 Punkte Vorsprung auf jeden aktiven Gegner auf."),
+		rankedEligible: false,
+		difficulty: 4
+	},
+	defaultParameters: { points: 2e3 },
+	target: (parameters) => parameters.points,
+	createInitialState: initialState,
+	validateParameters(value) {
+		return typeof value === "object" && value !== null && isFinitePositiveNumber(value.points);
+	},
+	relevantEvents: [
+		"LOBBY_HYDRATED",
+		"PLAYER_JOINED",
+		"PLAYER_LEFT",
+		"GAME_STARTING",
+		"ROUND_STARTED",
+		"SCORE_CHANGED",
+		"ROUND_RESULTS_AVAILABLE",
+		"GAME_ENDED"
+	],
+	allowedLobbyTypes: [0],
+	resetOn: ["lobby-change"],
+	reduce({ event, runtime, parameters }) {
+		const state = runtime.internalState;
+		if (event.type === "LOBBY_HYDRATED") {
+			const players = normalizePlayers(event.payload.players);
+			const gameSessionId = event.context.gameSessionId;
+			const selfPlayerId = event.context.meId;
+			if (players.length === 0 || gameSessionId === null || selfPlayerId === null) return null;
+			const trackingStartedEventId = state.activeGameSessionId === gameSessionId ? state.trackingStartedEventId : event.eventId;
+			return resultForScoreboard({
+				...state,
+				activeGameSessionId: gameSessionId,
+				trackingStartedEventId
+			}, players, selfPlayerId, parameters.points, event.eventId, "transcended-authoritative-hydration-lead-reached", "transcended-authoritative-roster-hydrated");
+		}
+		if (event.type === "PLAYER_JOINED") {
+			const user = event.payload.user;
+			if (!user || !Number.isFinite(user.score)) return null;
+			return {
+				internalState: {
+					...state,
+					players: upsertPlayer(state.players, user.id, user.score, false),
+					currentLead: 0
+				},
+				progress: 0,
+				reason: "transcended-active-opponent-roster-expanded"
+			};
+		}
+		if (event.type === "PLAYER_LEFT") {
+			const playerId = event.payload.playerId;
+			if (playerId === null) return null;
+			return {
+				internalState: {
+					...state,
+					players: markDeparted(state.players, playerId),
+					currentLead: 0
+				},
+				progress: 0,
+				reason: "transcended-departure-does-not-create-lead"
+			};
+		}
+		if (event.type === "GAME_STARTING") {
+			const gameSessionId = event.context.gameSessionId;
+			const selfPlayerId = event.context.meId;
+			if (gameSessionId === null || selfPlayerId === null) return null;
+			return {
+				internalState: {
+					activeGameSessionId: gameSessionId,
+					trackingStartedEventId: event.eventId,
+					selfPlayerId,
+					players: resetScores(state.players),
+					currentLead: 0
+				},
+				progress: 0,
+				reason: "transcended-new-game-tracking-started",
+				evidenceEventIds: [event.eventId]
+			};
+		}
+		if (event.type === "ROUND_STARTED") {
+			const gameSessionId = event.context.gameSessionId;
+			const selfPlayerId = event.context.meId;
+			const players = normalizePlayers(event.payload.players);
+			if (gameSessionId === null || selfPlayerId === null || players.length === 0) return null;
+			return resultForScoreboard({
+				...state,
+				activeGameSessionId: gameSessionId,
+				trackingStartedEventId: state.activeGameSessionId === gameSessionId ? state.trackingStartedEventId : event.eventId
+			}, players, selfPlayerId, parameters.points, event.eventId, "transcended-round-start-scoreboard-lead-reached", "transcended-round-scoreboard-synced");
+		}
+		if (event.type === "SCORE_CHANGED") {
+			const gameSessionId = event.context.gameSessionId;
+			const selfPlayerId = event.context.meId;
+			const playerId = event.payload.playerId;
+			const totalScore = event.payload.totalScore;
+			if (gameSessionId === null || selfPlayerId === null || playerId === null || totalScore === null || !Number.isFinite(totalScore)) return null;
+			const active = state.activeGameSessionId === gameSessionId ? state : {
+				...state,
+				activeGameSessionId: gameSessionId,
+				trackingStartedEventId: event.eventId,
+				selfPlayerId
+			};
+			return resultForScoreboard(active, upsertPlayer(active.players, playerId, totalScore, false), selfPlayerId, parameters.points, event.eventId, "transcended-score-lead-reached", "transcended-scoreboard-updated");
+		}
+		if (event.type === "ROUND_RESULTS_AVAILABLE") {
+			const gameSessionId = event.context.gameSessionId;
+			const selfPlayerId = event.context.meId;
+			if (gameSessionId === null || selfPlayerId === null || event.payload.scores.length === 0) return null;
+			let players = state.players;
+			for (const score of event.payload.scores) players = upsertPlayer(players, score.playerId, score.totalScore, false);
+			return resultForScoreboard({
+				...state,
+				activeGameSessionId: gameSessionId,
+				trackingStartedEventId: state.activeGameSessionId === gameSessionId ? state.trackingStartedEventId : event.eventId
+			}, players, selfPlayerId, parameters.points, event.eventId, "transcended-round-result-lead-reached", "transcended-coherent-round-scoreboard-updated");
+		}
+		if (event.type === "GAME_ENDED") {
+			const selfPlayerId = event.context.meId ?? state.selfPlayerId;
+			if (state.activeGameSessionId !== event.context.gameSessionId || selfPlayerId === null) return null;
+			let players = state.players;
+			for (const score of event.payload.finalScores ?? []) players = upsertPlayer(players, score.playerId, score.totalScore, false);
+			const result = resultForScoreboard(state, players, selfPlayerId, parameters.points, event.eventId, "transcended-final-score-lead-reached", "transcended-game-ended-before-required-lead");
+			if (result.complete) return result;
+			return {
+				...result,
+				internalState: initialState(),
+				progress: 0
+			};
+		}
+		return null;
+	}
+};
+var CHALLENGE_DEFINITIONS_VERSION = "2.12.0";
 var starterChallengeDefinitions = [
 	quickscopeDefinition,
 	bulletSkribblIoDefinition,
@@ -11309,7 +11640,8 @@ var starterChallengeDefinitions = [
 	hintReflexesDefinition,
 	noobVsProVsHackerDefinition,
 	reflexesLikeACatDefinition,
-	dropDownDefinition
+	dropDownDefinition,
+	transcendedDefinition
 ];
 var starterSandboxInstanceIds = {
 	quickscope: "sandbox-field-quickscope",
@@ -11357,7 +11689,8 @@ var starterSandboxInstanceIds = {
 	"hint-reflexes": "sandbox-field-hint-reflexes",
 	"noob-vs-pro-vs-hacker": "sandbox-field-noob-vs-pro-vs-hacker",
 	"reflexes-like-a-cat": "sandbox-field-reflexes-like-a-cat",
-	"drop-down": "sandbox-field-drop-down"
+	"drop-down": "sandbox-field-drop-down",
+	transcended: "sandbox-field-transcended"
 };
 function registerStarterChallengeDefinitions(engine) {
 	const registered = new Set(engine.getDefinitionIds());
@@ -12759,7 +13092,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.55.0";
+var GATEWAY_CLIENT_VERSION = "0.55.1";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -16379,6 +16712,8 @@ var SocketIoGatewayClient = class {
 				telemetryAck: resumed ? this.state.telemetryAck : null,
 				error: null
 			});
+			this.flushTelemetry();
+			this.flushClaims();
 			return;
 		}
 		if (value.type === "AUTH_REQUIRED") {
@@ -37576,7 +37911,8 @@ var CHALLENGE_ICON_ASSET_PATHS = {
 	"hint-reflexes": "challenge-icons/hint-reflexes.gif",
 	"noob-vs-pro-vs-hacker": "challenge-icons/noob-vs-pro-vs-hacker.gif",
 	"reflexes-like-a-cat": "challenge-icons/reflexes-like-a-cat.gif",
-	"drop-down": "challenge-icons/drop-down.gif"
+	"drop-down": "challenge-icons/drop-down.gif",
+	"transcended": "challenge-icons/pointsmaxxing.gif"
 };
 function bindReliableButtonAction(button, action) {
 	let suppressPointerClick = false;
@@ -38045,7 +38381,8 @@ var CompletionChatAdapter = class {
 .scd-chat-rematch-accept { width:100%;background:#2c8de7; }
 .scd-chat-rematch-accept:hover:not(:disabled) { background:#1671c5; }
 .scd-chat-rematch-accept:active:not(:disabled) { background:#1361a9; }
-.scd-chat-form { position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:0 .2em; }
+.scd-chat-section { min-width:0; }
+.scd-chat-form { position:sticky;bottom:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:.35em .2em;background:linear-gradient(to bottom,transparent 0,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 28%); }
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
 .scd-chat-characters.visible { top:.5em;opacity:1; }
@@ -38333,6 +38670,7 @@ var DuelProductFoundation = class {
 	pendingDuelChatMessages = /* @__PURE__ */ new Map();
 	notifiedRematchRequestKey = null;
 	matchActionError = null;
+	lastVisibleDrawProposalId = null;
 	chatNotificationStartedAt = Date.now();
 	draftKeydown = (event) => this.handleDraftKeydown(event);
 	duelChatKeydown = (event) => this.handleDuelChatKeydown(event);
@@ -38384,11 +38722,15 @@ var DuelProductFoundation = class {
 		window.addEventListener("focus", this.visibilityRecovery, false);
 		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
 			const previous = this.gatewayState;
+			const previousDrawProposalId = previous.match?.state.drawProposal?.proposalId ?? null;
+			const nextDrawProposalId = state.match?.state.drawProposal?.proposalId ?? null;
+			const drawProposalAppeared = nextDrawProposalId !== null && nextDrawProposalId !== previousDrawProposalId;
 			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
 			const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
 			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName;
 			if (matchChanged) this.matchActionError = null;
 			this.gatewayState = state;
+			if (drawProposalAppeared) this.lastVisibleDrawProposalId = nextDrawProposalId;
 			if (state.error && state.error !== previous.error && this.pendingDuelChatMessages.size > 0) {
 				const failed = this.pendingDuelChatMessages.entries().next().value;
 				if (failed) {
@@ -38409,7 +38751,10 @@ var DuelProductFoundation = class {
 				this.renderStage();
 				this.renderBoard();
 			}
-			if (this.settings.panelOpen && presentationChanged) this.renderPanel();
+			if (this.settings.panelOpen && presentationChanged) {
+				this.renderPanel();
+				if (drawProposalAppeared) this.ensureDuelChatInputVisible();
+			}
 		}));
 		this.unsubscribers.push(this.authClient.subscribe((state) => {
 			this.authState = state;
@@ -38453,7 +38798,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.55.0",
+			version: "0.55.1",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 10,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -38576,7 +38921,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.55.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.55.1") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -39838,7 +40183,7 @@ var DuelProductFoundation = class {
 	}
 	renderChatTab() {
 		if (!this.panelBody) return;
-		const stack = element("div", "scd-stack");
+		const stack = element("div", "scd-stack scd-chat-section");
 		const log = element("div", "scd-card scd-stack scd-chat-log");
 		log.dataset.scdChatLog = "true";
 		if (this.duelChatMessages.length === 0) log.appendChild(element("div", "scd-muted", "Private Duel channel. Messages are visible only to both matched players."));
@@ -39962,6 +40307,19 @@ var DuelProductFoundation = class {
 				this.panel?.querySelector("[data-scd-duel-chat-input=\"true\"]")?.focus();
 			});
 		}
+	}
+	ensureDuelChatInputVisible() {
+		const proposalId = this.gatewayState.match?.state.drawProposal?.proposalId ?? null;
+		if (proposalId === null || proposalId !== this.lastVisibleDrawProposalId) return;
+		window.requestAnimationFrame(() => {
+			const input = this.panel?.querySelector("[data-scd-duel-chat-input=\"true\"]");
+			if (!input?.isConnected) return;
+			input.scrollIntoView({
+				block: "nearest",
+				inline: "nearest"
+			});
+			this.lastVisibleDrawProposalId = null;
+		});
 	}
 	handleDuelChatKeydown(event) {
 		const target = event.target;
@@ -41234,7 +41592,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.55.0";
+var BUILD_VERSION = "0.55.1";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
@@ -41306,17 +41664,58 @@ async function bootstrap(runtime) {
 	runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
 	runtime.addCleanup(() => replayProvider.destroy());
+	let wordListRetryTimer = null;
+	let wordListRetryAttempt = 0;
+	let wordListRetryKey = null;
+	let preloadHomepageWordList;
+	const clearWordListRetry = () => {
+		if (wordListRetryTimer !== null) window.clearTimeout(wordListRetryTimer);
+		wordListRetryTimer = null;
+		wordListRetryAttempt = 0;
+		wordListRetryKey = null;
+	};
+	const scheduleWordListRetry = (target) => {
+		const key = target ? `${target.languageId}:${target.languageName ?? ""}` : "homepage-language-probe";
+		if (wordListRetryKey !== key) {
+			if (wordListRetryTimer !== null) window.clearTimeout(wordListRetryTimer);
+			wordListRetryTimer = null;
+			wordListRetryAttempt = 0;
+			wordListRetryKey = key;
+		}
+		if (wordListRetryTimer !== null || !runtime.isActive()) return;
+		const delay = Math.min(1e4, 250 * 2 ** Math.min(wordListRetryAttempt, 6));
+		wordListRetryAttempt += 1;
+		wordListRetryTimer = window.setTimeout(() => {
+			wordListRetryTimer = null;
+			if (!runtime.isActive()) return;
+			if (target) loadWordListWithWarning(target.languageId, target.languageName, target.force);
+			else preloadHomepageWordList(false);
+		}, delay);
+	};
 	const loadWordListWithWarning = async (languageId, languageName, force = false) => {
 		const status = await loadOfficialWordList(languageId, languageName, force);
 		if (status.warning) console.warn("[Skribbl Duels Word Lists]", status.warning, status);
+		if (status.state === "error") scheduleWordListRetry({
+			languageId,
+			languageName: status.languageName ?? languageName ?? null,
+			force: true
+		});
+		else if (status.languageId < 0 && status.languageName === null) scheduleWordListRetry(null);
+		else clearWordListRetry();
 		return status;
 	};
-	const preloadHomepageWordList = (force = false) => {
+	preloadHomepageWordList = (force = false) => {
 		const select = document.querySelector("#home select");
-		if (!select) return;
+		if (!select) {
+			scheduleWordListRetry(null);
+			return;
+		}
 		const languageId = Number(select.value);
 		const languageName = select.options[select.selectedIndex]?.textContent?.trim() ?? null;
-		if (!Number.isInteger(languageId)) return;
+		if (!Number.isInteger(languageId) || languageId < 0 || !languageName) {
+			scheduleWordListRetry(null);
+			return;
+		}
 		loadWordListWithWarning(languageId, languageName, force);
 	};
 	const handleHomepageLanguageChange = (event) => {
@@ -41332,10 +41731,14 @@ async function bootstrap(runtime) {
 	runtime.addCleanup(() => {
 		document.removeEventListener("change", handleHomepageLanguageChange, true);
 		document.removeEventListener("click", handleHomepagePlayClick, true);
+		clearWordListRetry();
 	});
 	preloadHomepageWordList(false);
 	const wordListTelemetrySubscription = telemetryStore.events$.subscribe((event) => {
-		if (event.type === "LOBBY_HYDRATED" && event.context.languageId !== null) loadWordListWithWarning(event.context.languageId, event.context.languageName);
+		if (event.type === "LOBBY_HYDRATED" && event.context.languageId !== null) {
+			clearWordListRetry();
+			loadWordListWithWarning(event.context.languageId, event.context.languageName);
+		}
 	});
 	runtime.addCleanup(() => wordListTelemetrySubscription.unsubscribe());
 	const challengeEngine = new ChallengeEngine({

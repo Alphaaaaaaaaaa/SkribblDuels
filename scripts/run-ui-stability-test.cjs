@@ -88,6 +88,8 @@ assert(source.includes('background-color:var(--COLOR_PANEL_HI)'), 'Skribbl scrol
 assert(source.includes('::-webkit-scrollbar-button') && source.includes('display:none;width:0;height:0'), 'scrollbar arrow buttons are not suppressed');
 assert(source.includes('background-clip:border-box'), 'scrollbar thumb does not use the full scrollbar width');
 assert(source.includes('this.duelChatStickToBottom ? log.scrollHeight : this.duelChatScrollTop'), 'Duel chat does not preserve reader scroll position');
+assert(source.includes('.scd-chat-form { position:sticky;bottom:0'), 'Duel Chat form is not pinned when Draw controls expand a long Match panel');
+assert(source.includes("input.scrollIntoView({ block: 'nearest', inline: 'nearest' })"), 'A newly visible Draw proposal does not recover the Chat input into view');
 assert(source.includes('input::placeholder') && source.includes('var(--COLOR_PANEL_TEXT_PLACEHOLDER)'), 'native Skribbl placeholder styling is missing');
 assert(source.includes('var(--COLOR_INPUT_BORDER_FOCUS)'), 'native Skribbl input focus styling is missing');
 assert(source.includes("image.addEventListener('error'"), 'asset-error fallback is missing');
@@ -105,6 +107,8 @@ assert(source.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax
 assert(source.includes('.scd-invite-button { min-height:54px') && source.includes('font-size:1.45em; }'), 'Invite button font size does not match the other matchmaking buttons');
 assert(source.includes("inviteIcon.src = '/img/link.svg'"), 'Skribbl-style invite link icon is missing');
 assert(viteConfig.includes("icon: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif'"), 'Tampermonkey metadata icon is missing');
+assert(viteConfig.includes("updateURL: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js'"), 'Tampermonkey stable update URL is missing');
+assert(viteConfig.includes("downloadURL: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js'"), 'Tampermonkey stable download URL is missing');
 assert(source.includes("const info = element('div', 'scd-invite-info')"), 'Invite metadata is not grouped into one responsive row');
 assert(source.includes("const actions = element('div', 'scd-invite-controls')"), 'Invite link controls do not use the refined grid');
 assert(source.includes('link.readOnly = true') && source.includes('link.select()'), 'Invite link is not read-only with click-to-select behavior');

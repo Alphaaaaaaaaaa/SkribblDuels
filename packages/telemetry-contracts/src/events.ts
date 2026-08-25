@@ -107,7 +107,7 @@ export interface TelemetryPayloadMap {
     loadedFromFile: true;
     clearBeforePaste: boolean | null;
     pasteInstant: boolean | null;
-    method: 'typo-relay' | 'command-match-fallback';
+    method: 'typo-relay' | 'command-match-fallback' | 'imagelab-ui-fallback';
   };
 
   TYPO_CHALLENGE_STATE_CHANGED: {

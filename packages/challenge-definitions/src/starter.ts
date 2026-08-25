@@ -49,8 +49,9 @@ import { autodrawDetectedDefinition } from './definitions/autodrawDetected';
 import { blindGuessDefinition } from './definitions/blindGuess';
 import { drunkVisionDefinition } from './definitions/drunkVision';
 import { deafGuessDefinition } from './definitions/deafGuess';
+import { transcendedDefinition } from './definitions/transcended';
 
-export const CHALLENGE_DEFINITIONS_VERSION = '2.11.0' as const;
+export const CHALLENGE_DEFINITIONS_VERSION = '2.12.0' as const;
 
 export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   quickscopeDefinition,
@@ -98,7 +99,8 @@ export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   hintReflexesDefinition,
   noobVsProVsHackerDefinition,
   reflexesLikeACatDefinition,
-  dropDownDefinition
+  dropDownDefinition,
+  transcendedDefinition
 ];
 
 export const STARTER_CHALLENGE_IDS = [
@@ -147,7 +149,8 @@ export const STARTER_CHALLENGE_IDS = [
   'hint-reflexes',
   'noob-vs-pro-vs-hacker',
   'reflexes-like-a-cat',
-  'drop-down'
+  'drop-down',
+  'transcended'
 ] as const;
 
 export type StarterChallengeId = typeof STARTER_CHALLENGE_IDS[number];
@@ -198,7 +201,8 @@ export const starterSandboxInstanceIds = {
   'hint-reflexes': 'sandbox-field-hint-reflexes',
   'noob-vs-pro-vs-hacker': 'sandbox-field-noob-vs-pro-vs-hacker',
   'reflexes-like-a-cat': 'sandbox-field-reflexes-like-a-cat',
-  'drop-down': 'sandbox-field-drop-down'
+  'drop-down': 'sandbox-field-drop-down',
+  transcended: 'sandbox-field-transcended'
 } as const satisfies Record<StarterChallengeId, string>;
 
 interface DefinitionEngine extends Pick<

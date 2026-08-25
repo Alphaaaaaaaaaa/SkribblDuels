@@ -112,8 +112,7 @@ for (const definition of definitions) {
   const engine = new ChallengeEngine({ autoPersist: false });
   engine.register(definition);
   engine.activate({ instanceId: definition.id, challengeId: definition.id });
-  engine.process(event('ROUND_STARTED', `${definition.id}-round-start`, 0, roundPayload, roundSessionId));
-  engine.process(event('TYPO_CHALLENGE_STATE_CHANGED', `${definition.id}-active`, 50, {
+  const activeState = {
     challengeId: definition.id === 'blind-guess' ? 1 : definition.id === 'drunk-vision' ? 2 : 3,
     challengeKey: definition.id,
     challengeName: definition.id === 'blind-guess' ? 'Blind Guess' : definition.id === 'drunk-vision' ? 'Drunk Vision' : 'Deaf Guess',
@@ -122,7 +121,10 @@ for (const definition of definitions) {
     featureActive: true,
     reason: 'trigger-applied',
     method: 'typo-relay'
-  }, roundSessionId));
+  } as const;
+  engine.process(event('TYPO_CHALLENGE_STATE_CHANGED', `${definition.id}-active-before-round`, 0, activeState, roundSessionId));
+  engine.process(event('ROUND_STARTED', `${definition.id}-round-start`, 10, roundPayload, roundSessionId));
+  engine.process(event('TYPO_CHALLENGE_STATE_CHANGED', `${definition.id}-active-during-round`, 50, activeState, roundSessionId));
   engine.process(event('TYPO_CHALLENGE_GUESS_ATTEMPT', `${definition.id}-attempt`, 500, {
     sourceGuessEventId: `${definition.id}-guess-submitted`,
     message: 'Punkt',
@@ -143,6 +145,11 @@ for (const definition of definitions) {
 const disabled = new ChallengeEngine({ autoPersist: false });
 disabled.register(blindGuessDefinition);
 disabled.activate({ instanceId: 'blind', challengeId: 'blind-guess' });
+disabled.process(event('TYPO_CHALLENGE_STATE_CHANGED', 'disabled-active-before-round', 950, {
+  challengeId: 1, challengeKey: 'blind-guess', challengeName: 'Blind Guess',
+  selected: true, effectActive: true, featureActive: true,
+  reason: 'trigger-applied', method: 'typo-relay'
+}, 'disabled-turn'));
 disabled.process(event('ROUND_STARTED', 'disabled-round-start', 1000, roundPayload, 'disabled-turn'));
 disabled.process(event('TYPO_CHALLENGE_STATE_CHANGED', 'disabled-active', 1050, {
   challengeId: 1,
@@ -194,6 +201,11 @@ assert(disabled.getInstance('blind')?.status === 'active', 'Disabling and re-ena
 const fallback = new ChallengeEngine({ autoPersist: false });
 fallback.register(drunkVisionDefinition);
 fallback.activate({ instanceId: 'drunk', challengeId: 'drunk-vision' });
+fallback.process(event('TYPO_CHALLENGE_STATE_CHANGED', 'fallback-effect-before-round', 1950, {
+  challengeId: 2, challengeKey: 'drunk-vision', challengeName: 'Drunk Vision',
+  selected: null, effectActive: true, featureActive: null,
+  reason: 'dom-fallback', method: 'dom-fallback'
+}, 'fallback-turn'));
 fallback.process(event('ROUND_STARTED', 'fallback-round-start', 2000, roundPayload, 'fallback-turn'));
 fallback.process(event('TYPO_CHALLENGE_STATE_CHANGED', 'fallback-effect', 2050, {
   challengeId: 2,
@@ -232,13 +244,18 @@ fallbackWithoutPriorState.process(event('CORRECT_GUESS', 'deaf-live-correct', 33
   word: 'Pasta'
 }, 'deaf-live-turn', self));
 assert(
-  fallbackWithoutPriorState.getInstance('deaf-no-prior-state')?.status === 'completion-pending',
-  'A synchronous active DOM snapshot at guess submission must complete Deaf Guess even when the effect was already active before ROUND_STARTED.'
+  fallbackWithoutPriorState.getInstance('deaf-no-prior-state')?.status === 'active',
+  'A Typo effect first observed during the drawing turn must not complete Deaf Guess.'
 );
 
 const fallbackDisabled = new ChallengeEngine({ autoPersist: false });
 fallbackDisabled.register(blindGuessDefinition);
 fallbackDisabled.activate({ instanceId: 'blind-fallback-disabled', challengeId: 'blind-guess' });
+fallbackDisabled.process(event('TYPO_CHALLENGE_STATE_CHANGED', 'blind-fallback-before-round', 3950, {
+  challengeId: 1, challengeKey: 'blind-guess', challengeName: 'Blind Guess',
+  selected: null, effectActive: true, featureActive: null,
+  reason: 'dom-fallback', method: 'dom-fallback'
+}, 'blind-fallback-turn'));
 fallbackDisabled.process(event('ROUND_STARTED', 'blind-fallback-round-start', 4000, roundPayload, 'blind-fallback-turn'));
 fallbackDisabled.process(event('TYPO_CHALLENGE_STATE_CHANGED', 'blind-fallback-active', 4050, {
   challengeId: 1,

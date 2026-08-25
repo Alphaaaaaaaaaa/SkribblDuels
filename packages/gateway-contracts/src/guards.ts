@@ -222,6 +222,7 @@ function matchmakingState(value: unknown): boolean {
       || !Array.isArray(state.claims)
       || !state.claims.every(authoritativeClaim)
       || !stringArray(state.rematchReadyAccountIds, 2)
+      || !stringArray(state.departedAccountIds, 2)
       || (state.drawProposal !== null && !drawProposal(state.drawProposal))
       || (state.conclusion !== null && !matchConclusion(state.conclusion))) return false;
   const participantIds = new Set((state.participants as Array<Record<string, unknown>>)
@@ -230,6 +231,8 @@ function matchmakingState(value: unknown): boolean {
     !participantIds.has(claim.ownerAccountId))) return false;
   if ((state.rematchReadyAccountIds as string[]).some(accountId => !participantIds.has(accountId))
       || new Set(state.rematchReadyAccountIds as string[]).size !== state.rematchReadyAccountIds.length) return false;
+  if ((state.departedAccountIds as string[]).some(accountId => !participantIds.has(accountId))
+      || new Set(state.departedAccountIds as string[]).size !== state.departedAccountIds.length) return false;
   if (state.drawProposal !== null) {
     const proposal = state.drawProposal as Record<string, unknown>;
     if (!participantIds.has(proposal.proposerAccountId)) return false;
@@ -485,6 +488,7 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
     case 'DUEL_CHAT_MESSAGE':
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.messageId)
+        && nonEmptyString(message.clientMessageId)
         && nonEmptyString(message.authorAccountId)
         && nonEmptyString(message.authorDisplayName, 128)
         && nonEmptyCodePointString(message.message, 300)

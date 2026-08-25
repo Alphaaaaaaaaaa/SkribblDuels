@@ -1,6 +1,6 @@
 # Gateway Client
 
-Socket.IO transport for the browser userscript. It places the current Supabase access token in the connection handshake, sends a token-free Contract v9 `HELLO`, validates server messages and exposes authenticated queue, invite and match state to the Duel UI. It also owns bounded private-chat history, telemetry batching/ACK flow and deferred Claim submission until the evidence sequence is server-confirmed.
+Socket.IO transport for the browser userscript. It places the current Supabase access token in the connection handshake, sends a token-free Contract v10 `HELLO`, validates server messages and exposes authenticated queue, invite and match state to the Duel UI. It also owns bounded private-chat history, telemetry batching/ACK flow and idempotent fallback Claim submission.
 
 The client exposes validated queue and match snapshots plus `joinMatchmaking`, `leaveMatchmaking`, `setReady` and revision-checked `pickDraftChallenge`. Page eligibility remains a product-UI decision; the client emits the required `page: 'home'` declaration.
 
@@ -14,6 +14,11 @@ Unacknowledged telemetry batches and unresolved Claim candidates are also
 retained in session storage. A `/credits` navigation or runtime reload replays
 them against the exact resumed match and removes them only after the Gateway's
 ACK/Claim resolution.
+
+`getTransportStats()` exposes only local queue sizes and the acknowledged
+sequence for live certification. Confirmed Chat messages echo their
+`clientMessageId`, so an optimistic local line can be replaced rather than
+shown twice.
 
 `forfeitMatch`, `proposeDraw`, `respondToDraw`, `withdrawDraw` and `requestRematch` generate
 unique action IDs so safe retries are idempotent. Draw proposal state is always

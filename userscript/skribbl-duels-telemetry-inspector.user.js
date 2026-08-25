@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.54.2
+// @version      0.55.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif
@@ -5045,6 +5045,23 @@ function commandSignature(value) {
 	const command = normalizeCommand(value);
 	return command === null ? null : JSON.stringify(command);
 }
+function performedDrawCommandFromDetail(value, depth = 0) {
+	if (depth > 4) return null;
+	const direct = normalizeCommand(value);
+	if (direct) return direct;
+	const record = recordValue(value);
+	if (!record) return null;
+	for (const candidate of [
+		record.command,
+		record.raw,
+		record.detail,
+		record.payload
+	]) {
+		const command = performedDrawCommandFromDetail(candidate, depth + 1);
+		if (command) return command;
+	}
+	return null;
+}
 function fnv1a(value) {
 	let hash = 2166136261;
 	for (let index = 0; index < value.length; index += 1) {
@@ -5122,35 +5139,30 @@ var TypoAutodrawTelemetryAdapter = class {
 	telemetrySubscription = null;
 	originalFileInputClick = null;
 	patchedFileInputClick = null;
-	ownDrawingActive = false;
 	constructor(telemetryStore) {
 		this.telemetryStore = telemetryStore;
 	}
 	start() {
-		if (typeof document !== "undefined") {
-			document.addEventListener("change", this.handleFileInputChange, true);
-			document.addEventListener("performDrawCommand", this.handlePerformedDrawCommand, true);
-		}
+		if (typeof document !== "undefined") document.addEventListener("change", this.handleFileInputChange, true);
 		this.patchDetachedFileInputs();
 		if (typeof window !== "undefined") {
 			window.addEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded, true);
 			window.addEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded, true);
 			window.addEventListener(TYPO_SKD_PASTED_EVENT_NAME, this.handleDirectPasted, true);
 			window.addEventListener(TYPO_SKD_PASTED_LEGACY_EVENT_NAME, this.handleDirectPasted, true);
+			window.addEventListener("performDrawCommand", this.handlePerformedDrawCommand, true);
 			window.addEventListener("message", this.handleWindowMessage, true);
 		}
 		this.telemetrySubscription = this.telemetryStore.events$.subscribe((event) => this.handleTelemetry(event));
 	}
 	stop() {
-		if (typeof document !== "undefined") {
-			document.removeEventListener("change", this.handleFileInputChange, true);
-			document.removeEventListener("performDrawCommand", this.handlePerformedDrawCommand, true);
-		}
+		if (typeof document !== "undefined") document.removeEventListener("change", this.handleFileInputChange, true);
 		if (typeof window !== "undefined") {
 			window.removeEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded, true);
 			window.removeEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded, true);
 			window.removeEventListener(TYPO_SKD_PASTED_EVENT_NAME, this.handleDirectPasted, true);
 			window.removeEventListener(TYPO_SKD_PASTED_LEGACY_EVENT_NAME, this.handleDirectPasted, true);
+			window.removeEventListener("performDrawCommand", this.handlePerformedDrawCommand, true);
 			window.removeEventListener("message", this.handleWindowMessage, true);
 		}
 		this.restoreFileInputClick();
@@ -5159,7 +5171,6 @@ var TypoAutodrawTelemetryAdapter = class {
 		this.loaded.clear();
 		this.emittedPasteKeys.clear();
 		this.recentLoadAt.clear();
-		this.ownDrawingActive = false;
 	}
 	patchDetachedFileInputs() {
 		if (typeof HTMLInputElement === "undefined" || this.originalFileInputClick) return;
@@ -5269,7 +5280,6 @@ var TypoAutodrawTelemetryAdapter = class {
 		});
 	}
 	handleTelemetry(event) {
-		this.ownDrawingActive = event.context.meId !== null && event.context.drawerId === event.context.meId && event.context.roundSessionId !== null;
 		if (event.type === "LOBBY_CHANGED") {
 			for (const loaded of this.loaded.values()) {
 				loaded.matchIndices.telemetry = 0;
@@ -5287,9 +5297,8 @@ var TypoAutodrawTelemetryAdapter = class {
 		}
 	}
 	handlePerformedDrawCommand = (event) => {
-		if (!this.ownDrawingActive || !(event instanceof CustomEvent)) return;
-		const detail = recordValue(event.detail);
-		const signature = commandSignature(detail?.command ?? detail?.raw ?? event.detail);
+		if (!(event instanceof CustomEvent)) return;
+		const signature = commandSignature(performedDrawCommandFromDetail(event.detail));
 		if (signature === null) return;
 		for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, "performed");
 	};
@@ -6715,10 +6724,10 @@ function freshTurnState(previous, roundSessionId, roundStartedEventId, selfIsDra
 }
 var sniperDefinition = {
 	id: "sniper",
-	version: 3,
+	version: 4,
 	metadata: {
 		category: "guessing",
-		localization: localization("Sniper", "Guess correctly on your first attempt in 3 consecutive eligible drawing turns. Your own drawing turns and turns interrupted by the drawer leaving are skipped.", "Sniper", "Errate das Wort in 3 aufeinanderfolgenden g\u00FCltigen Zeichen-Turns jeweils mit deinem ersten Versuch. Eigene Malrunden und durch den Drawer-Abgang unterbrochene Turns werden \u00FCbersprungen."),
+		localization: localization("Sniper", "Be the first guesser with your first attempt in 3 consecutive eligible drawing turns. Your own drawing turns and turns interrupted by the drawer leaving are skipped.", "Sniper", "Errate das Wort in 3 aufeinanderfolgenden g\u00FCltigen Zeichen-Turns jeweils als First Guesser mit deinem ersten Versuch. Eigene Malrunden und durch den Drawer-Abgang unterbrochene Turns werden \u00FCbersprungen."),
 		icon: "sniper-crosshair",
 		rankedEligible: true,
 		difficulty: 4
@@ -6818,6 +6827,11 @@ var sniperDefinition = {
 			reason: "sniper-streak-reset-by-correct-guess-after-earlier-attempt",
 			evidenceEventIds: [event.eventId]
 		};
+		if (event.payload.position !== 1 || event.payload.isFirstGuesser !== true) return {
+			reset: true,
+			reason: "sniper-streak-reset-by-non-first-correct-guess",
+			evidenceEventIds: [event.eventId]
+		};
 		const nextCount = runtime.internalState.qualifyingEvents + 1;
 		const nextEvidence = [
 			...runtime.internalState.successfulEvidenceEventIds,
@@ -6834,7 +6848,7 @@ var sniperDefinition = {
 			},
 			progress: nextCount,
 			complete: nextCount >= parameters.rounds,
-			reason: "sniper-correct-on-first-attempt",
+			reason: "sniper-first-guesser-on-first-attempt",
 			evidenceEventIds: nextEvidence
 		};
 	}
@@ -6964,7 +6978,7 @@ var omgHackerDefinition = {
 function voteValue$2(payload) {
 	return typeof payload.vote === "number" && Number.isFinite(payload.vote) ? payload.vote : null;
 }
-function initialState$2(gameSessionId = null) {
+function initialState$3(gameSessionId = null) {
 	return {
 		qualifyingEvents: 0,
 		gameSessionId,
@@ -7005,7 +7019,7 @@ var fanboyDefinition = {
 	},
 	defaultParameters: { drawings: 1 },
 	target: (parameters) => parameters.drawings + 1,
-	createInitialState: () => initialState$2(),
+	createInitialState: () => initialState$3(),
 	validateParameters(value) {
 		return typeof value === "object" && value !== null && isPositiveInteger(value.drawings);
 	},
@@ -7021,7 +7035,7 @@ var fanboyDefinition = {
 	resetOn: ["lobby-change"],
 	reduce({ event, runtime, parameters }) {
 		if (event.type === "GAME_STARTING") return {
-			internalState: initialState$2(event.context.gameSessionId),
+			internalState: initialState$3(event.context.gameSessionId),
 			progress: 0,
 			target: parameters.drawings + 1,
 			reason: "fanboy-round-observation-started"
@@ -7048,7 +7062,7 @@ var fanboyDefinition = {
 				};
 			}
 			const base = state.roundNumber === null || newRoundBoundary ? {
-				...initialState$2(state.gameSessionId),
+				...initialState$3(state.gameSessionId),
 				roundNumber: nextRoundNumber
 			} : state;
 			const players = Array.isArray(event.payload.players) ? event.payload.players : [];
@@ -8076,13 +8090,36 @@ var colorPickerDefinition = {
 };
 var LIST_BASE = "https://raw.githubusercontent.com/pospos21/words/main/lists/";
 var CACHE_PREFIX = "skribblDuelsOfficialWordListV2:";
-var LANGUAGE_NAME_BY_ID = {
-	0: "English",
-	1: "German",
-	7: "French",
-	14: "Korean",
-	24: "Spanish"
-};
+var SKRIBBL_LANGUAGE_NAME_BY_ID = Object.freeze(Object.fromEntries([
+	[0, "English"],
+	[1, "German"],
+	[2, "Bulgarian"],
+	[3, "Czech"],
+	[4, "Danish"],
+	[5, "Dutch"],
+	[6, "Finnish"],
+	[7, "French"],
+	[8, "Estonian"],
+	[9, "Greek"],
+	[10, "Hebrew"],
+	[11, "Hungarian"],
+	[12, "Italian"],
+	[13, "Japanese"],
+	[14, "Korean"],
+	[15, "Latvian"],
+	[16, "Macedonian"],
+	[17, "Norwegian"],
+	[18, "Portuguese"],
+	[19, "Polish"],
+	[20, "Romanian"],
+	[21, "Russian"],
+	[22, "Serbian"],
+	[23, "Slovakian"],
+	[24, "Spanish"],
+	[25, "Swedish"],
+	[26, "Tagalog"],
+	[27, "Turkish"]
+]));
 var lists = /* @__PURE__ */ new Map();
 var originalWords = /* @__PURE__ */ new Map();
 var statuses = /* @__PURE__ */ new Map();
@@ -8182,7 +8219,9 @@ function install(languageId, languageName, words, source, fromCache) {
 	return status;
 }
 function resolveLanguageName(languageId, languageName) {
-	return languageName?.trim() || statuses.get(languageId)?.languageName || LANGUAGE_NAME_BY_ID[languageId] || null;
+	const canonical = SKRIBBL_LANGUAGE_NAME_BY_ID[languageId];
+	if (canonical) return canonical;
+	return languageName?.trim() || statuses.get(languageId)?.languageName || null;
 }
 function gmRequester() {
 	try {
@@ -8494,10 +8533,10 @@ var isThatAModDefinition = {
 };
 var bloodlineDefinition = {
 	id: "bloodline",
-	version: 3,
+	version: 4,
 	metadata: {
 		category: "home",
-		localization: localization("Bloodline", "Open the Credits link from the homepage and let the Credits page finish loading.", "Bloodline", "\u00D6ffne \u00FCber den Link auf der Homepage die Credits und lasse die Credits-Seite vollst\u00E4ndig laden."),
+		localization: localization("Bloodline", "Click the Credits link on the homepage.", "Bloodline", "Klicke auf der Homepage auf den Credits-Link."),
 		icon: "bloodline-credits",
 		rankedEligible: true,
 		difficulty: 1
@@ -8512,19 +8551,19 @@ var bloodlineDefinition = {
 	validateParameters(value) {
 		return typeof value === "object" && value !== null && typeof value.requiredPathname === "string" && value.requiredPathname.startsWith("/");
 	},
-	relevantEvents: ["CREDITS_OPENED"],
+	relevantEvents: ["CREDITS_LINK_CLICKED"],
 	reduce({ event, parameters }) {
-		if (event.type !== "CREDITS_OPENED") return null;
-		if (event.payload.pathname !== parameters.requiredPathname || event.payload.readyState !== "complete" || event.payload.linkClickObserved !== true || typeof event.payload.navigationId !== "string") return null;
+		if (event.type !== "CREDITS_LINK_CLICKED") return null;
+		if (event.payload.pathname !== parameters.requiredPathname || typeof event.payload.navigationId !== "string") return null;
 		return {
 			internalState: {
 				qualifyingEvents: 1,
 				navigationId: event.payload.navigationId,
-				loadElapsedMs: event.payload.loadElapsedMs
+				loadElapsedMs: null
 			},
 			progress: 1,
 			complete: true,
-			reason: "credits-link-navigation-completed",
+			reason: "credits-link-clicked-on-homepage",
 			evidenceEventIds: [event.eventId]
 		};
 	}
@@ -10249,7 +10288,7 @@ var bulletSkribblIoDefinition = {
 		};
 	}
 };
-function normalizePlayers(players) {
+function normalizePlayers$1(players) {
 	if (!players) return [];
 	const byId = /* @__PURE__ */ new Map();
 	for (const player of players) {
@@ -10262,7 +10301,7 @@ function normalizePlayers(players) {
 	}
 	return Array.from(byId.values());
 }
-function upsertPlayer(players, playerId, score, departed = false) {
+function upsertPlayer$1(players, playerId, score, departed = false) {
 	let found = false;
 	const next = players.map((player) => {
 		if (player.playerId !== playerId) return player;
@@ -10280,13 +10319,13 @@ function upsertPlayer(players, playerId, score, departed = false) {
 	});
 	return next;
 }
-function markDeparted(players, playerId) {
+function markDeparted$1(players, playerId) {
 	return players.map((player) => player.playerId === playerId ? {
 		...player,
 		departed: true
 	} : player);
 }
-function resetScores(players) {
+function resetScores$1(players) {
 	return players.map((player) => ({
 		...player,
 		score: 0,
@@ -10300,7 +10339,7 @@ function isPositiveFirst(players, selfPlayerId) {
 	if (!self || self.score <= 0 || opponents.length === 0) return false;
 	return opponents.every((player) => self.score >= player.score);
 }
-function initialState$1() {
+function initialState$2() {
 	return {
 		activeGameSessionId: null,
 		trackingStartedEventId: null,
@@ -10312,7 +10351,7 @@ function initialState$1() {
 	};
 }
 function startTracking(state, gameSessionId, selfPlayerId, eventId, players) {
-	const snapshot = normalizePlayers(players);
+	const snapshot = normalizePlayers$1(players);
 	const baseline = snapshot.length > 0 ? snapshot : state.lobbyPlayers;
 	const nextPlayers = baseline.some((player) => player.playerId === selfPlayerId) ? baseline : [...baseline, {
 		playerId: selfPlayerId,
@@ -10332,7 +10371,7 @@ function startTracking(state, gameSessionId, selfPlayerId, eventId, players) {
 }
 var deservedDefinition = {
 	id: "deserved",
-	version: 3,
+	version: 4,
 	metadata: {
 		category: "progress",
 		localization: localization("Deserved?", "Reach first place in a public game with a positive score, ties included, without having been the first guesser since joining that game.", "Deserved?", "Erreiche in einem \u00F6ffentlichen Spiel mit positiver Punktzahl Platz 1, Gleichstand eingeschlossen, ohne seit deinem Beitritt zu diesem Spiel jemals First Guesser gewesen zu sein."),
@@ -10342,7 +10381,7 @@ var deservedDefinition = {
 	},
 	defaultParameters: {},
 	target: () => 1,
-	createInitialState: initialState$1,
+	createInitialState: initialState$2,
 	validateParameters(value) {
 		return typeof value === "object" && value !== null;
 	},
@@ -10362,7 +10401,7 @@ var deservedDefinition = {
 	reduce({ event, runtime }) {
 		const state = runtime.internalState;
 		if (event.type === "LOBBY_HYDRATED") {
-			const lobbyPlayers = normalizePlayers(event.payload.players);
+			const lobbyPlayers = normalizePlayers$1(event.payload.players);
 			const gameSessionId = event.context.gameSessionId;
 			const selfPlayerId = event.context.meId;
 			if (gameSessionId !== null && selfPlayerId !== null) return {
@@ -10393,8 +10432,8 @@ var deservedDefinition = {
 			return {
 				internalState: {
 					...state,
-					lobbyPlayers: upsertPlayer(state.lobbyPlayers, user.id, user.score, false),
-					players: state.activeGameSessionId === event.context.gameSessionId ? upsertPlayer(state.players, user.id, user.score, false) : state.players
+					lobbyPlayers: upsertPlayer$1(state.lobbyPlayers, user.id, user.score, false),
+					players: state.activeGameSessionId === event.context.gameSessionId ? upsertPlayer$1(state.players, user.id, user.score, false) : state.players
 				},
 				reason: "deserved-player-joined"
 			};
@@ -10405,8 +10444,8 @@ var deservedDefinition = {
 			return {
 				internalState: {
 					...state,
-					lobbyPlayers: markDeparted(state.lobbyPlayers, playerId),
-					players: markDeparted(state.players, playerId)
+					lobbyPlayers: markDeparted$1(state.lobbyPlayers, playerId),
+					players: markDeparted$1(state.players, playerId)
 				},
 				reason: "deserved-player-left"
 			};
@@ -10416,7 +10455,7 @@ var deservedDefinition = {
 			const selfPlayerId = event.context.meId;
 			if (gameSessionId === null || selfPlayerId === null) return null;
 			if (state.activeGameSessionId === gameSessionId) return null;
-			const players = resetScores(state.lobbyPlayers);
+			const players = resetScores$1(state.lobbyPlayers);
 			return {
 				internalState: startTracking({
 					...state,
@@ -10431,7 +10470,7 @@ var deservedDefinition = {
 			const gameSessionId = event.context.gameSessionId;
 			const selfPlayerId = event.context.meId;
 			if (gameSessionId === null || selfPlayerId === null) return null;
-			const snapshot = normalizePlayers(event.payload.players);
+			const snapshot = normalizePlayers$1(event.payload.players);
 			if (state.activeGameSessionId !== gameSessionId) return {
 				internalState: startTracking(state, gameSessionId, selfPlayerId, event.eventId, event.payload.players),
 				progress: 0,
@@ -10471,28 +10510,20 @@ var deservedDefinition = {
 			const playerId = event.payload.playerId;
 			const totalScore = event.payload.totalScore;
 			if (gameSessionId === null || selfPlayerId === null || playerId === null || totalScore === null || !Number.isFinite(totalScore)) return null;
-			let active = state.activeGameSessionId === gameSessionId ? state : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
-			const previousTracked = active.players.find((player) => player.playerId === playerId)?.score ?? null;
-			const explicitReset = event.payload.previousScore !== null && totalScore < event.payload.previousScore || previousTracked !== null && totalScore < previousTracked;
-			if (explicitReset) active = {
-				...active,
-				trackingStartedEventId: event.eventId,
-				players: resetScores(active.lobbyPlayers.length > 0 ? active.lobbyPlayers : active.players),
-				selfWasFirstGuesser: false,
-				firstGuesserEventId: null
-			};
-			const players = upsertPlayer(active.players, playerId, totalScore, false);
+			const active = state.activeGameSessionId === gameSessionId ? state : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
+			const players = upsertPlayer$1(active.players, playerId, totalScore, false);
 			const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
 			const evidenceEventIds = [...active.trackingStartedEventId ? [active.trackingStartedEventId] : [], event.eventId];
 			return {
 				internalState: {
 					...active,
 					selfPlayerId,
-					players
+					players,
+					lobbyPlayers: upsertPlayer$1(active.lobbyPlayers, playerId, totalScore, false)
 				},
 				progress: reachedFirst ? 1 : 0,
 				complete: reachedFirst,
-				reason: explicitReset ? "deserved-new-game-detected-by-score-reset" : reachedFirst ? "deserved-positive-first-place-reached-without-first-guess" : "deserved-scoreboard-updated",
+				reason: reachedFirst ? "deserved-positive-first-place-reached-without-first-guess" : "deserved-scoreboard-updated",
 				evidenceEventIds
 			};
 		}
@@ -10501,11 +10532,8 @@ var deservedDefinition = {
 			const selfPlayerId = event.context.meId;
 			if (gameSessionId === null || selfPlayerId === null || event.payload.scores.length === 0) return null;
 			const active = state.activeGameSessionId === gameSessionId ? state : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
-			const players = event.payload.scores.map((score) => ({
-				playerId: score.playerId,
-				score: score.totalScore,
-				departed: false
-			}));
+			let players = active.players;
+			for (const score of event.payload.scores) players = upsertPlayer$1(players, score.playerId, score.totalScore, false);
 			const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
 			const evidenceEventIds = [...active.trackingStartedEventId ? [active.trackingStartedEventId] : [], event.eventId];
 			return {
@@ -10523,6 +10551,21 @@ var deservedDefinition = {
 		}
 		if (event.type === "GAME_ENDED") {
 			if (state.activeGameSessionId === null || state.activeGameSessionId !== event.context.gameSessionId) return null;
+			const selfPlayerId = event.context.meId ?? state.selfPlayerId;
+			let finalPlayers = state.players;
+			for (const score of event.payload.finalScores ?? []) finalPlayers = upsertPlayer$1(finalPlayers, score.playerId, score.totalScore, false);
+			if (selfPlayerId !== null && !state.selfWasFirstGuesser && isPositiveFirst(finalPlayers, selfPlayerId)) return {
+				internalState: {
+					...state,
+					selfPlayerId,
+					players: finalPlayers,
+					lobbyPlayers: finalPlayers
+				},
+				progress: 1,
+				complete: true,
+				reason: "deserved-positive-final-ranking-without-first-guess",
+				evidenceEventIds: [...state.trackingStartedEventId ? [state.trackingStartedEventId] : [], event.eventId]
+			};
 			return {
 				internalState: {
 					...state,
@@ -11057,12 +11100,13 @@ var autodrawDetectedDefinition = {
 		};
 	}
 };
-function initialState() {
+function initialState$1() {
 	return {
 		selected: null,
 		featureActive: null,
 		effectActive: false,
 		roundSessionId: null,
+		armedBeforeRound: false,
 		effectObservedThisRound: false,
 		disabledDuringRound: false,
 		effectEventId: null,
@@ -11071,11 +11115,12 @@ function initialState() {
 		guessAttemptAtMonotonicMs: null
 	};
 }
-function roundState(current, roundSessionId) {
+function roundState(current, roundSessionId, armedBeforeRound) {
 	return {
 		...current,
 		effectActive: false,
 		roundSessionId,
+		armedBeforeRound,
 		effectObservedThisRound: false,
 		disabledDuringRound: false,
 		effectEventId: null,
@@ -11087,7 +11132,7 @@ function roundState(current, roundSessionId) {
 function createTypoActiveGuessDefinition(config) {
 	return {
 		id: config.id,
-		version: 3,
+		version: 4,
 		metadata: {
 			category: "guessing",
 			localization: localization(config.name, config.descriptionEn, config.name, config.descriptionDe),
@@ -11097,7 +11142,7 @@ function createTypoActiveGuessDefinition(config) {
 		},
 		defaultParameters: {},
 		target: () => 1,
-		createInitialState: initialState,
+		createInitialState: initialState$1,
 		relevantEvents: [
 			"ROUND_STARTED",
 			"TYPO_CHALLENGE_STATE_CHANGED",
@@ -11111,8 +11156,9 @@ function createTypoActiveGuessDefinition(config) {
 			if (event.type === "ROUND_STARTED") {
 				const selfId = event.context.meId;
 				const isOwnDrawing = selfId !== null && event.context.drawerId === selfId;
+				const armedBeforeRound = !isOwnDrawing && current.featureActive !== false && (current.selected === true || current.effectActive);
 				return {
-					internalState: roundState(current, isOwnDrawing ? null : event.context.roundSessionId),
+					internalState: roundState(current, isOwnDrawing ? null : event.context.roundSessionId, armedBeforeRound),
 					reason: isOwnDrawing ? `${config.id}-own-drawing-skipped` : `${config.id}-round-started`
 				};
 			}
@@ -11148,6 +11194,7 @@ function createTypoActiveGuessDefinition(config) {
 			if (event.type === "TYPO_CHALLENGE_GUESS_ATTEMPT") {
 				if (current.roundSessionId === null) return null;
 				if (event.context.roundSessionId !== current.roundSessionId) return null;
+				if (!current.armedBeforeRound) return null;
 				if (current.disabledDuringRound) return null;
 				if (!event.payload.activeChallengeKeys.includes(config.id)) return null;
 				if (current.selected === false || current.featureActive === false) return null;
@@ -11171,7 +11218,7 @@ function createTypoActiveGuessDefinition(config) {
 			if (event.payload.position !== 1 || event.payload.isFirstGuesser !== true) return null;
 			if (current.roundSessionId === null) return null;
 			if (event.context.roundSessionId !== current.roundSessionId) return null;
-			if (current.disabledDuringRound || !current.effectObservedThisRound) return null;
+			if (!current.armedBeforeRound || current.disabledDuringRound || !current.effectObservedThisRound) return null;
 			if (current.selected === false || current.featureActive === false) return null;
 			if (current.guessAttemptEventId === null || current.guessAttemptAtMonotonicMs === null) return null;
 			const responseDelayMs = event.monotonicMs - current.guessAttemptAtMonotonicMs;
@@ -11215,7 +11262,7 @@ var deafGuessDefinition = createTypoActiveGuessDefinition({
 	icon: "typo-deaf-guess",
 	difficulty: 3
 });
-var CHALLENGE_DEFINITIONS_VERSION = "2.10.0";
+var CHALLENGE_DEFINITIONS_VERSION = "2.11.0";
 var starterChallengeDefinitions = [
 	quickscopeDefinition,
 	bulletSkribblIoDefinition,
@@ -12617,10 +12664,11 @@ function authoritativeClaim(value) {
 }
 function matchmakingState(value) {
 	const state = record(value);
-	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || !stringArray(state.rematchReadyAccountIds, 2) || state.drawProposal !== null && !drawProposal(state.drawProposal) || state.conclusion !== null && !matchConclusion(state.conclusion)) return false;
+	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || !stringArray(state.rematchReadyAccountIds, 2) || !stringArray(state.departedAccountIds, 2) || state.drawProposal !== null && !drawProposal(state.drawProposal) || state.conclusion !== null && !matchConclusion(state.conclusion)) return false;
 	const participantIds = new Set(state.participants.map((participant) => participant.accountId));
 	if (state.claims.some((claim) => !participantIds.has(claim.ownerAccountId))) return false;
 	if (state.rematchReadyAccountIds.some((accountId) => !participantIds.has(accountId)) || new Set(state.rematchReadyAccountIds).size !== state.rematchReadyAccountIds.length) return false;
+	if (state.departedAccountIds.some((accountId) => !participantIds.has(accountId)) || new Set(state.departedAccountIds).size !== state.departedAccountIds.length) return false;
 	if (state.drawProposal !== null) {
 		const proposal = state.drawProposal;
 		if (!participantIds.has(proposal.proposerAccountId)) return false;
@@ -12648,7 +12696,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 9 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 10 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -12656,7 +12704,7 @@ function isGatewayServerMessage(value) {
 		case "MATCH_SNAPSHOT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingState(message.state);
 		case "MATCH_EVENT": return nonEmptyString(message.matchId) && nonNegativeInteger(message.revision) && matchmakingEvent(message.event);
 		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && nonNegativeInteger(message.definitionVersion) && nonEmptyString(message.ownerAccountId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision) && finiteNumber(message.occurredAt);
-		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyCodePointString(message.message, 300) && finiteNumber(message.occurredAt);
+		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.clientMessageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyCodePointString(message.message, 300) && finiteNumber(message.occurredAt);
 		case "TELEMETRY_ACK": return nonEmptyString(message.matchId) && nonNegativeInteger(message.lastSequence);
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
@@ -12711,7 +12759,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.54.2";
+var GATEWAY_CLIENT_VERSION = "0.55.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -15988,6 +16036,17 @@ var SocketIoGatewayClient = class {
 	getState() {
 		return structuredClone(this.state);
 	}
+	/** A read-only view of the durable telemetry/claim transport for live certification. */
+	getTransportStats() {
+		const matchId = this.state.match?.matchId ?? this.telemetryInFlight[0]?.matchId ?? this.telemetryQueue[0]?.matchId ?? this.pendingClaims[0]?.matchId ?? null;
+		return {
+			matchId,
+			queuedTelemetry: this.telemetryQueue.length,
+			inFlightTelemetry: this.telemetryInFlight.length,
+			pendingClaimCandidates: this.pendingClaims.length,
+			acknowledgedSequence: this.state.telemetryAck?.matchId === matchId ? this.state.telemetryAck.lastSequence : 0
+		};
+	}
 	subscribe(listener) {
 		this.listeners.add(listener);
 		listener(this.getState());
@@ -16209,6 +16268,10 @@ var SocketIoGatewayClient = class {
 		this.telemetryQueue.push(structuredClone(envelope));
 		this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
 		this.persistPendingTransport();
+		if (envelope.event.type === "CREDITS_LINK_CLICKED") {
+			this.flushTelemetry();
+			return;
+		}
 		if (this.telemetryQueue.length >= 64) {
 			this.flushTelemetry();
 			return;
@@ -16251,7 +16314,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 9,
+				contractVersion: 10,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -16290,7 +16353,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v9 message.`
+				error: `Gateway sent an invalid Contract v10 message.`
 			});
 			return;
 		}
@@ -16405,7 +16468,7 @@ var SocketIoGatewayClient = class {
 		}
 		if (value.type === "CLAIM_RESOLUTION") {
 			if (this.state.match?.matchId !== value.matchId) return;
-			this.pendingClaims = this.pendingClaims.filter((candidate) => candidate.matchId !== value.matchId || candidate.candidateId !== value.candidateId);
+			this.pendingClaims = this.pendingClaims.filter((candidate) => candidate.matchId !== value.matchId || candidate.candidateId !== value.candidateId && !(value.accepted && value.ownerAccountId === this.state.identity?.accountId && candidate.challengeId === value.challengeId));
 			this.persistPendingTransport();
 			this.update({
 				...this.state,
@@ -37972,6 +38035,7 @@ var CompletionChatAdapter = class {
 .scd-chat-log { max-height:330px;overflow:auto;min-width:0;transition:mask-image .12s;-webkit-transition:-webkit-mask-image .12s; }
 .scd-chat-log.has-overflow:not(.at-top) { mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%); }
 .scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
+.scd-chat-line.pending { opacity:.72; }
 .scd-chat-line.system { padding:6px 8px;border-left:3px solid var(--SCD_ACCENT);background:rgba(255,255,255,.055); }
 .scd-chat-line.spam { color:var(--COLOR_CHAT_TEXT_LEAVE);border-left-color:var(--COLOR_CHAT_TEXT_LEAVE);font-weight:700; }
 .scd-chat-rematch-request { width:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px;border-radius:7px;background:rgba(255,255,255,.055);box-sizing:border-box; }
@@ -38019,9 +38083,7 @@ var CompletionChatAdapter = class {
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
 .scd-duel-toast.clickable { cursor:pointer;transition:background-color 80ms; }
 .scd-duel-toast.clickable:hover { background:var(--COLOR_BUTTON_NORMAL_BG); }
-.scd-chat-toast { width:min(32rem,calc(100vw - 2rem));min-width:0;max-width:calc(100vw - 2rem);overflow:hidden;box-sizing:border-box; }
-.scd-chat-toast > span:not(.close-toast) { display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.scd-chat-toast .scd-toast-profile { display:flex;max-width:100%;overflow:hidden;white-space:nowrap; }
+.scd-chat-toast > span:not(.close-toast) { display:block;max-width:min(32rem,calc(100vw - 6rem));overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
@@ -38268,7 +38330,7 @@ var DuelProductFoundation = class {
 	duelChatStickToBottom = true;
 	duelChatDraft = "";
 	duelChatSpam = emptyDuelChatSpamState();
-	pendingDuelChatMessage = null;
+	pendingDuelChatMessages = /* @__PURE__ */ new Map();
 	notifiedRematchRequestKey = null;
 	matchActionError = null;
 	chatNotificationStartedAt = Date.now();
@@ -38327,9 +38389,14 @@ var DuelProductFoundation = class {
 			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName;
 			if (matchChanged) this.matchActionError = null;
 			this.gatewayState = state;
-			if (state.error && state.error !== previous.error && this.pendingDuelChatMessage) {
-				if (!this.duelChatDraft) this.duelChatDraft = this.pendingDuelChatMessage;
-				this.pendingDuelChatMessage = null;
+			if (state.error && state.error !== previous.error && this.pendingDuelChatMessages.size > 0) {
+				const failed = this.pendingDuelChatMessages.entries().next().value;
+				if (failed) {
+					const [clientMessageId, message] = failed;
+					if (!this.duelChatDraft) this.duelChatDraft = message;
+					this.pendingDuelChatMessages.delete(clientMessageId);
+					this.duelChatMessages = this.duelChatMessages.filter((item) => item.id !== `optimistic-${clientMessageId}`);
+				}
 			}
 			if (state.error === "Spam detected! You're sending messages too quickly." && state.error !== previous.error) this.insertDuelChatSpamWarning();
 			this.handleInviteGatewayState(previous, state);
@@ -38386,9 +38453,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.54.2",
+			version: "0.55.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 9,
+			gatewayContractVersion: 10,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -38400,6 +38467,7 @@ var DuelProductFoundation = class {
 			},
 			gateway: {
 				getState: () => this.gatewayClient.getState(),
+				getTransportStats: () => this.gatewayClient.getTransportStats(),
 				subscribe: (listener) => this.gatewayClient.subscribe(listener),
 				reconnect: () => this.gatewayClient.reconnect(),
 				joinMatchmaking: (format) => this.beginMatchmaking(format),
@@ -38508,7 +38576,7 @@ var DuelProductFoundation = class {
 		this.winAnimation = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.54.2") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.55.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -39601,7 +39669,11 @@ var DuelProductFoundation = class {
 			return;
 		}
 		const status = element("div", "scd-card scd-stack");
-		status.append(element("strong", "", this.matchState.outcome === "draw" ? "Status: agreed Draw" : this.matchState.outcome === "win" ? `Status: ${this.duelDisplayName(this.matchState.winner ?? "opponent")} won` : `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", "Challenge claims are confirmed by the authoritative Gateway."));
+		const telemetryStats = this.telemetryGateway.getStats();
+		const transportStats = this.gatewayClient.getTransportStats();
+		const lastResolution = this.gatewayState.lastClaimResolution;
+		status.append(element("strong", "", this.matchState.outcome === "draw" ? "Status: agreed Draw" : this.matchState.outcome === "win" ? `Status: ${this.duelDisplayName(this.matchState.winner ?? "opponent")} won` : `Status: ${this.matchState.phase}`), element("div", "", `${self?.displayName ?? this.options.getSelfName()} \u00B7 ${this.matchState.scores.self}:${this.matchState.scores.opponent} \u00B7 ${opponent?.displayName ?? "Opponent"}`), element("div", "scd-muted", "Challenge claims are confirmed by the authoritative Gateway."), element("div", "scd-muted scd-claim-pipeline", `Claim pipeline: ${telemetryStats.locallyObserved} observed \u00B7 ${telemetryStats.forwarded} forwarded \u00B7 ${transportStats.acknowledgedSequence} ACK \u00B7 ${transportStats.queuedTelemetry + transportStats.inFlightTelemetry} queued \u00B7 ${transportStats.pendingClaimCandidates} fallback`));
+		if (lastResolution?.matchId === this.matchState.matchId) status.appendChild(element("div", `scd-muted scd-claim-certification ${lastResolution.accepted ? "accepted" : "rejected"}`, `Last certification: ${challengeName(this.manifest, lastResolution.challengeId)} \u00B7 ${lastResolution.accepted ? "accepted" : `rejected (${lastResolution.reason ?? "unknown"})`}`));
 		stack.append(status);
 		const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId ? this.gatewayState.match : null;
 		if (this.matchState.phase === "running" && this.pendingRestoredMatchId === this.matchState.matchId && this.gatewayState.status !== "connected") {
@@ -39736,6 +39808,8 @@ var DuelProductFoundation = class {
 		rematch.type = "button";
 		const ownRematchReady = Boolean(selfAccountId && gatewayMatch?.state.rematchReadyAccountIds.includes(selfAccountId));
 		const opponentRematchReady = this.opponentRematchRequester() !== null;
+		const opponentAccountId = gatewayMatch?.state.participants.find((participant) => participant.accountId !== selfAccountId)?.accountId ?? null;
+		const opponentDeparted = Boolean(opponentAccountId && gatewayMatch?.state.departedAccountIds.includes(opponentAccountId));
 		rematch.disabled = !gatewayMatch || gatewayMatch.state.phase !== "finished" || ownRematchReady || !homepageAvailable || this.gatewayState.status !== "connected";
 		if (!homepageAvailable) rematch.title = "Leave the active Skribbl lobby and return to the homepage first.";
 		if (ownRematchReady) rematch.textContent = "Rematch requested";
@@ -39744,7 +39818,7 @@ var DuelProductFoundation = class {
 			this.runMatchAction(() => this.gatewayClient.requestRematch(gatewayMatch.matchId), rematch);
 		});
 		actions.append(returnButton, newMatch);
-		if (opponentRematchReady) actions.classList.add("without-rematch");
+		if (opponentRematchReady || opponentDeparted) actions.classList.add("without-rematch");
 		else actions.appendChild(rematch);
 		card.append(visual, title, score, actions);
 		const error = this.matchActionError ?? this.visibleGatewayError();
@@ -39771,7 +39845,7 @@ var DuelProductFoundation = class {
 		else for (const message of this.duelChatMessages) {
 			const winnerMessage = message.side === "system" && message.id.startsWith("conclusion-") && this.matchState.outcome === "win";
 			const spamMessage = message.side === "system" && message.id.startsWith("spam-");
-			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}${winnerMessage ? " winner" : ""}${spamMessage ? " spam" : ""}`);
+			const line = element("div", `scd-chat-line${message.side === "system" ? " system" : ""}${winnerMessage ? " winner" : ""}${spamMessage ? " spam" : ""}${message.pending ? " pending" : ""}`);
 			if (spamMessage) {
 				line.append(element("strong", "", message.message), element("small", "scd-muted", ` \u00B7 ${formatTime(message.occurredAt)}`));
 				log.appendChild(line);
@@ -39852,15 +39926,23 @@ var DuelProductFoundation = class {
 			}
 			try {
 				this.duelChatStickToBottom = true;
-				this.pendingDuelChatMessage = message;
-				this.gatewayClient.sendDuelChat(matchId, message);
+				const clientMessageId = this.gatewayClient.sendDuelChat(matchId, message);
+				this.pendingDuelChatMessages.set(clientMessageId, message);
+				this.duelChatMessages.push({
+					id: `optimistic-${clientMessageId}`,
+					side: "self",
+					author: this.duelDisplayName("self"),
+					message,
+					occurredAt: Date.now(),
+					pending: true
+				});
 				this.duelChatDraft = "";
 				input.value = "";
 				updateCount();
 				log.scrollTop = log.scrollHeight;
+				this.renderPanel();
 			} catch (error) {
 				this.duelChatSpam = previousSpam;
-				this.pendingDuelChatMessage = null;
 				this.restoreDuelChatFocus = false;
 				this.matchmakingError = error instanceof Error ? error.message : String(error);
 				this.renderPanel();
@@ -40096,7 +40178,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v9`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
+		gateway.append(element("strong", "", `Gateway Contract v10`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -40457,15 +40539,19 @@ var DuelProductFoundation = class {
 			if (message.matchId !== this.matchState.matchId) continue;
 			this.processedGatewayChatIds.add(message.messageId);
 			const ownMessage = message.authorAccountId === state.identity?.accountId;
-			this.duelChatMessages.push({
+			const optimisticId = `optimistic-${message.clientMessageId}`;
+			const optimisticIndex = ownMessage ? this.duelChatMessages.findIndex((item) => item.id === optimisticId) : -1;
+			const confirmed = {
 				id: message.messageId,
 				side: ownMessage ? "self" : "opponent",
 				author: message.authorDisplayName,
 				message: message.message,
 				occurredAt: message.occurredAt
-			});
+			};
+			if (optimisticIndex >= 0) this.duelChatMessages.splice(optimisticIndex, 1, confirmed);
+			else this.duelChatMessages.push(confirmed);
 			if (ownMessage) {
-				this.pendingDuelChatMessage = null;
+				this.pendingDuelChatMessages.delete(message.clientMessageId);
 				this.duelChatStickToBottom = true;
 			}
 			if (!ownMessage && this.settings.chatNotifications && message.occurredAt >= this.chatNotificationStartedAt - 5e3 && (!this.settings.panelOpen || this.mainPanelTab() !== "match" || document.hidden)) this.showChatToast(message.authorAccountId, message.authorDisplayName, message.message);
@@ -40747,7 +40833,7 @@ var DuelProductFoundation = class {
 		const snapshot = this.gatewayState.match;
 		const selfAccountId = this.gatewayState.identity?.accountId;
 		if (!snapshot || snapshot.matchId !== this.matchState.matchId || snapshot.state.phase !== "finished" || !selfAccountId) return null;
-		return snapshot.state.participants.find((participant) => participant.accountId !== selfAccountId && snapshot.state.rematchReadyAccountIds.includes(participant.accountId)) ?? null;
+		return snapshot.state.participants.find((participant) => participant.accountId !== selfAccountId && !snapshot.state.departedAccountIds.includes(participant.accountId) && snapshot.state.rematchReadyAccountIds.includes(participant.accountId)) ?? null;
 	}
 	gatewayParticipants(snapshot) {
 		const selfAccountId = this.gatewayState.identity?.accountId;
@@ -40914,7 +41000,7 @@ var DuelProductFoundation = class {
 		this.duelChatStickToBottom = true;
 		this.duelChatDraft = "";
 		this.duelChatSpam = emptyDuelChatSpamState();
-		this.pendingDuelChatMessage = null;
+		this.pendingDuelChatMessages.clear();
 		this.notifiedRematchRequestKey = null;
 		this.matchActionError = null;
 		this.lastConclusionMessageMatchId = null;
@@ -41148,7 +41234,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.54.2";
+var BUILD_VERSION = "0.55.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

@@ -46,14 +46,14 @@ function freshTurnState(
 
 export const sniperDefinition: ChallengeDefinition<SniperState, SniperParameters> = {
   id: 'sniper',
-  version: 3,
+  version: 4,
   metadata: {
     category: 'guessing',
     localization: localization(
       'Sniper',
-      'Guess correctly on your first attempt in 3 consecutive eligible drawing turns. Your own drawing turns and turns interrupted by the drawer leaving are skipped.',
+      'Be the first guesser with your first attempt in 3 consecutive eligible drawing turns. Your own drawing turns and turns interrupted by the drawer leaving are skipped.',
       'Sniper',
-      'Errate das Wort in 3 aufeinanderfolgenden gültigen Zeichen-Turns jeweils mit deinem ersten Versuch. Eigene Malrunden und durch den Drawer-Abgang unterbrochene Turns werden übersprungen.'
+      'Errate das Wort in 3 aufeinanderfolgenden gültigen Zeichen-Turns jeweils als First Guesser mit deinem ersten Versuch. Eigene Malrunden und durch den Drawer-Abgang unterbrochene Turns werden übersprungen.'
     ),
     icon: 'sniper-crosshair',
     rankedEligible: true,
@@ -193,6 +193,14 @@ export const sniperDefinition: ChallengeDefinition<SniperState, SniperParameters
       };
     }
 
+    if (event.payload.position !== 1 || event.payload.isFirstGuesser !== true) {
+      return {
+        reset: true,
+        reason: 'sniper-streak-reset-by-non-first-correct-guess',
+        evidenceEventIds: [event.eventId]
+      };
+    }
+
     const nextCount = runtime.internalState.qualifyingEvents + 1;
     const nextEvidence = [
       ...runtime.internalState.successfulEvidenceEventIds,
@@ -213,7 +221,7 @@ export const sniperDefinition: ChallengeDefinition<SniperState, SniperParameters
       },
       progress: nextCount,
       complete: nextCount >= parameters.rounds,
-      reason: 'sniper-correct-on-first-attempt',
+      reason: 'sniper-first-guesser-on-first-attempt',
       evidenceEventIds: nextEvidence
     };
   }

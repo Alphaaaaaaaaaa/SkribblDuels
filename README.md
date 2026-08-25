@@ -1,9 +1,43 @@
-# Skribbl Duels v0.54.2
+# Skribbl Duels v0.55.0
 
 This monorepo contains the 46-challenge telemetry/challenge system, Product UI,
-Gateway Contract v9, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v10, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.55.0
+
+- Makes accepted telemetry sufficient for a Claim: the Gateway's authoritative
+  Challenge Engine now certifies each new completion immediately. The separate
+  browser `CLAIM_CANDIDATE` remains an idempotent fallback instead of a required
+  second command.
+- Adds live Claim-pipeline state to the Match Hub and PII-safe per-challenge
+  telemetry/candidate/resolution counters to `/metrics`, including rejection
+  reason and certification source.
+- Changes Bloodline v4 to complete on the captured homepage Credits click and
+  flushes that event before `/credits` navigation can unload the userscript.
+- Restores Autodraw detection for loaded `.skd` playback by observing nested
+  `performDrawCommand` events on both document and window paths.
+- Requires Blind, Drunk and Deaf Guess to be active before and throughout the
+  drawing turn. Deserved? retains a coherent full scoreboard and First-Guesser
+  disqualification across round resets; Sniper now requires First Guesser.
+- Displays own Duel Chat messages optimistically while the authoritative spam
+  score is evaluated, then replaces them by `clientMessageId` after Gateway
+  confirmation. Only the Chat-toast message span owns ellipsis overflow.
+- Invalidates outstanding Rematch requests when either terminal participant
+  Returns, starts a New Match or disconnects.
+- Attempts the canonical IDs for all 28 selectable Skribbl languages at Gateway
+  startup. Every successfully fetched, non-empty word list becomes authoritative
+  automatically; unavailable source files remain explicitly unsupported.
+- Implements Transcended v1 with a coherent authoritative score roster and
+  deterministic regressions as an inactive candidate; the certified live pool
+  remains frozen at 46 Challenges.
+- Defines deterministic certification gates for TL;DR v2 and the seven new
+  Challenge candidates in `docs/challenge-live-certification-v0.55.0.md`.
+
+Deploy the v0.55.0 Gateway first, verify `/readyz`, then reload the v0.55.0
+userscript. Contract v10 is required on both sides. Existing Supabase and Redis
+state remains compatible; no new migration or Railway variable is required.
 
 ## v0.54.2
 

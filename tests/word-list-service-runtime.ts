@@ -3,6 +3,8 @@ import {
   getOfficialWordListStatus,
   hasOfficialWord,
   loadOfficialWordList,
+  SKRIBBL_LANGUAGES,
+  SKRIBBL_LANGUAGE_NAME_BY_ID,
   setOfficialWordListForTesting
 } from '@skribbl-duels/challenge-definitions';
 
@@ -56,4 +58,7 @@ assert(percentileMetrics.longThreshold === 19, 'Long words must continue to use 
 
 const unsupported = getOfficialWordListStatus(12345, null);
 assert(unsupported.state === 'unsupported' && Boolean(unsupported.warning), 'Unnamed/non-selectable languages need a warning status.');
+assert(SKRIBBL_LANGUAGES.length === 28, 'Every selectable Skribbl language ID must have a canonical mapping.');
+assert(SKRIBBL_LANGUAGE_NAME_BY_ID[0] === 'English' && SKRIBBL_LANGUAGE_NAME_BY_ID[27] === 'Turkish', 'The canonical language range must cover IDs 0 through 27.');
+assert(getOfficialWordListStatus(2, 'German').languageName === 'Bulgarian', 'A supplied name must not override a known Skribbl language ID.');
 console.log('Language-scoped official word-list service runtime test passed.');

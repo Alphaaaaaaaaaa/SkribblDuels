@@ -6,6 +6,7 @@ export interface TypoActiveGuessState {
   featureActive: boolean | null;
   effectActive: boolean;
   roundSessionId: string | null;
+  armedBeforeRound: boolean;
   effectObservedThisRound: boolean;
   disabledDuringRound: boolean;
   effectEventId: string | null;
@@ -29,6 +30,7 @@ function initialState(): TypoActiveGuessState {
     featureActive: null,
     effectActive: false,
     roundSessionId: null,
+    armedBeforeRound: false,
     effectObservedThisRound: false,
     disabledDuringRound: false,
     effectEventId: null,
@@ -40,12 +42,14 @@ function initialState(): TypoActiveGuessState {
 
 function roundState(
   current: TypoActiveGuessState,
-  roundSessionId: string | null
+  roundSessionId: string | null,
+  armedBeforeRound: boolean
 ): TypoActiveGuessState {
   return {
     ...current,
     effectActive: false,
     roundSessionId,
+    armedBeforeRound,
     effectObservedThisRound: false,
     disabledDuringRound: false,
     effectEventId: null,
@@ -60,7 +64,7 @@ export function createTypoActiveGuessDefinition(
 ): ChallengeDefinition<TypoActiveGuessState, Record<string, never>> {
   return {
     id: config.id,
-    version: 3,
+    version: 4,
     metadata: {
       category: 'guessing',
       localization: localization(
@@ -90,8 +94,15 @@ export function createTypoActiveGuessDefinition(
       if (event.type === 'ROUND_STARTED') {
         const selfId = event.context.meId;
         const isOwnDrawing = selfId !== null && event.context.drawerId === selfId;
+        const armedBeforeRound = !isOwnDrawing
+          && current.featureActive !== false
+          && (current.selected === true || current.effectActive);
         return {
-          internalState: roundState(current, isOwnDrawing ? null : event.context.roundSessionId),
+          internalState: roundState(
+            current,
+            isOwnDrawing ? null : event.context.roundSessionId,
+            armedBeforeRound
+          ),
           reason: isOwnDrawing
             ? `${config.id}-own-drawing-skipped`
             : `${config.id}-round-started`
@@ -151,6 +162,7 @@ export function createTypoActiveGuessDefinition(
       if (event.type === 'TYPO_CHALLENGE_GUESS_ATTEMPT') {
         if (current.roundSessionId === null) return null;
         if (event.context.roundSessionId !== current.roundSessionId) return null;
+        if (!current.armedBeforeRound) return null;
         if (current.disabledDuringRound) return null;
         if (!event.payload.activeChallengeKeys.includes(config.id)) return null;
         if (current.selected === false || current.featureActive === false) return null;
@@ -183,7 +195,7 @@ export function createTypoActiveGuessDefinition(
       if (event.payload.position !== 1 || event.payload.isFirstGuesser !== true) return null;
       if (current.roundSessionId === null) return null;
       if (event.context.roundSessionId !== current.roundSessionId) return null;
-      if (current.disabledDuringRound || !current.effectObservedThisRound) return null;
+      if (!current.armedBeforeRound || current.disabledDuringRound || !current.effectObservedThisRound) return null;
       if (current.selected === false || current.featureActive === false) return null;
       if (current.guessAttemptEventId === null || current.guessAttemptAtMonotonicMs === null) return null;
       const responseDelayMs = event.monotonicMs - current.guessAttemptAtMonotonicMs;

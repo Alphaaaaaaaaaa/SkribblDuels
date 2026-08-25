@@ -41,6 +41,7 @@ export class GatewayMetrics {
   private readonly gauges = new Map<string, number>();
   private readonly histograms = new Map<string, HistogramState>();
   private readonly seenMatchEvents = new Set<string>();
+  private readonly seenClaimResolutions = new Set<string>();
 
   public increment(name: string, labels: Labels = {}, amount = 1): void {
     const key = metricKey(name, labels);
@@ -83,10 +84,26 @@ export class GatewayMetrics {
   }
 
   public observeOutbound(message: GatewayServerMessage): void {
-    if (message.type === 'CLAIM_RESOLUTION' && !message.accepted) {
-      this.increment('skribbl_duels_gateway_rejected_claims_total', {
-        reason: message.reason ?? 'unknown'
-      });
+    if (message.type === 'CLAIM_RESOLUTION') {
+      const resolutionKey = `${message.matchId}:${message.ownerAccountId}:${message.candidateId}:${message.revision}`;
+      if (!this.seenClaimResolutions.has(resolutionKey)) {
+        this.seenClaimResolutions.add(resolutionKey);
+        const reason = message.reason ?? 'none';
+        this.increment('skribbl_duels_gateway_claim_resolutions_total', {
+          challenge: message.challengeId,
+          outcome: message.accepted ? 'accepted' : 'rejected',
+          reason,
+          source: reason === 'server-telemetry-certified' ? 'server-telemetry' : 'client-candidate'
+        });
+        if (!message.accepted) {
+          this.increment('skribbl_duels_gateway_rejected_claims_total', { reason });
+        }
+        while (this.seenClaimResolutions.size > 20_000) {
+          const oldest = this.seenClaimResolutions.values().next().value as string | undefined;
+          if (!oldest) break;
+          this.seenClaimResolutions.delete(oldest);
+        }
+      }
     }
     if (message.type === 'MATCH_EVENT' && message.event.type === 'MATCH_ABORTED') {
       const eventKey = `${message.matchId}:${message.revision}:${message.event.type}`;

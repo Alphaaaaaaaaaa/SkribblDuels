@@ -233,9 +233,9 @@ const board: GatewayDraftBoardSnapshot = {
 };
 const bloodlineEvent: TelemetryEvent = {
   schemaVersion: 1,
-  eventId: 'durable-credits-opened',
+  eventId: 'durable-credits-clicked',
   telemetrySequence: 1,
-  type: 'CREDITS_OPENED',
+  type: 'CREDITS_LINK_CLICKED',
   category: 'home',
   occurredAt: now + 1_000,
   monotonicMs: 1_000,
@@ -249,8 +249,7 @@ const bloodlineEvent: TelemetryEvent = {
     origin: 'dom-adapter', rawRecordId: null, changeId: null, direction: null, socketEvent: null, packetId: null
   },
   payload: {
-    pathname: '/credits', readyState: 'complete', linkClickObserved: true,
-    navigationId: 'durable-navigation', linkClickedAt: now + 500, loadElapsedMs: 500
+    href: 'https://skribbl.io/credits', pathname: '/credits', navigationId: 'durable-navigation'
   },
   confidence: 'confirmed',
   highVolume: false

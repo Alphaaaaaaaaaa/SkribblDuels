@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 9 as const;
+export const GATEWAY_CONTRACT_VERSION = 10 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -276,6 +276,8 @@ export interface GatewayMatchmakingState {
   drawProposal: GatewayDrawProposal | null;
   conclusion: GatewayMatchConclusion | null;
   rematchReadyAccountIds: readonly string[];
+  /** Finished-match participants who explicitly left instead of waiting for a rematch. */
+  departedAccountIds: readonly string[];
 }
 
 export interface GatewayDrawProposal {
@@ -366,6 +368,7 @@ export interface GatewayDuelChatMessage {
   type: 'DUEL_CHAT_MESSAGE';
   matchId: string;
   messageId: string;
+  clientMessageId: string;
   authorAccountId: string;
   authorDisplayName: string;
   message: string;

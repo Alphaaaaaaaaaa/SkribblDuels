@@ -17,7 +17,8 @@ async function main(): Promise<void> {
   setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo', 'New York'], 'German');
   const rebalanced = new Set([
     'bloodline', 'ouch', 'picasso', 'cool-number-detected', 'fanboy', 'color-picker',
-    'time-waste', 'mogged', 'need-some-space', 'smol-words', 'big-word', 'hint-reflexes'
+    'time-waste', 'mogged', 'need-some-space', 'smol-words', 'big-word', 'hint-reflexes',
+    'blind-guess', 'drunk-vision', 'deaf-guess'
   ]);
 
   const fixture = JSON.parse(readFileSync(new URL('../fixtures/starter-challenges-with-typo-guess-challenges-v30.fixture.json', import.meta.url), 'utf8'));
@@ -38,7 +39,7 @@ async function main(): Promise<void> {
     if (rebalanced.has(definition.id)) continue;
     assert(runtime?.status === 'completion-pending', `${definition.id} did not complete; status=${runtime?.status}.`);
   }
-  console.log('All 46 starter challenges loaded; 34 unchanged challenges completed from the legacy v30 fixture.');
+  console.log('All 46 starter challenges loaded; 31 unchanged challenges completed from the legacy v30 fixture.');
 }
 
 void main();

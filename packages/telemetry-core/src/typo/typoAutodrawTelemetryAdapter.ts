@@ -62,6 +62,19 @@ export function commandSignature(value: unknown): string | null {
   return command === null ? null : JSON.stringify(command);
 }
 
+export function performedDrawCommandFromDetail(value: unknown, depth = 0): unknown[] | null {
+  if (depth > 4) return null;
+  const direct = normalizeCommand(value);
+  if (direct) return direct;
+  const record = recordValue(value);
+  if (!record) return null;
+  for (const candidate of [record.command, record.raw, record.detail, record.payload]) {
+    const command = performedDrawCommandFromDetail(candidate, depth + 1);
+    if (command) return command;
+  }
+  return null;
+}
+
 function fnv1a(value: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
@@ -147,14 +160,12 @@ export class TypoAutodrawTelemetryAdapter {
   private telemetrySubscription: Subscription | null = null;
   private originalFileInputClick: typeof HTMLInputElement.prototype.click | null = null;
   private patchedFileInputClick: typeof HTMLInputElement.prototype.click | null = null;
-  private ownDrawingActive = false;
 
   public constructor(private readonly telemetryStore: TelemetryStore) {}
 
   public start(): void {
     if (typeof document !== 'undefined') {
       document.addEventListener('change', this.handleFileInputChange, true);
-      document.addEventListener('performDrawCommand', this.handlePerformedDrawCommand, true);
     }
     this.patchDetachedFileInputs();
     if (typeof window !== 'undefined') {
@@ -162,6 +173,9 @@ export class TypoAutodrawTelemetryAdapter {
       window.addEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
       window.addEventListener(TYPO_SKD_PASTED_EVENT_NAME, this.handleDirectPasted as EventListener, true);
       window.addEventListener(TYPO_SKD_PASTED_LEGACY_EVENT_NAME, this.handleDirectPasted as EventListener, true);
+      // Window capture observes events dispatched on either document or window
+      // without consuming the same command twice.
+      window.addEventListener('performDrawCommand', this.handlePerformedDrawCommand, true);
       window.addEventListener('message', this.handleWindowMessage, true);
     }
     this.telemetrySubscription = this.telemetryStore.events$.subscribe(event => this.handleTelemetry(event));
@@ -170,13 +184,13 @@ export class TypoAutodrawTelemetryAdapter {
   public stop(): void {
     if (typeof document !== 'undefined') {
       document.removeEventListener('change', this.handleFileInputChange, true);
-      document.removeEventListener('performDrawCommand', this.handlePerformedDrawCommand, true);
     }
     if (typeof window !== 'undefined') {
       window.removeEventListener(TYPO_SKD_FILE_LOADED_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
       window.removeEventListener(TYPO_SKD_FILE_LOADED_LEGACY_EVENT_NAME, this.handleDirectLoaded as EventListener, true);
       window.removeEventListener(TYPO_SKD_PASTED_EVENT_NAME, this.handleDirectPasted as EventListener, true);
       window.removeEventListener(TYPO_SKD_PASTED_LEGACY_EVENT_NAME, this.handleDirectPasted as EventListener, true);
+      window.removeEventListener('performDrawCommand', this.handlePerformedDrawCommand, true);
       window.removeEventListener('message', this.handleWindowMessage, true);
     }
     this.restoreFileInputClick();
@@ -185,7 +199,6 @@ export class TypoAutodrawTelemetryAdapter {
     this.loaded.clear();
     this.emittedPasteKeys.clear();
     this.recentLoadAt.clear();
-    this.ownDrawingActive = false;
   }
 
   private patchDetachedFileInputs(): void {
@@ -311,9 +324,6 @@ export class TypoAutodrawTelemetryAdapter {
   }
 
   private handleTelemetry(event: TelemetryEvent): void {
-    this.ownDrawingActive = event.context.meId !== null
-      && event.context.drawerId === event.context.meId
-      && event.context.roundSessionId !== null;
     if (event.type === 'LOBBY_CHANGED') {
       for (const loaded of this.loaded.values()) {
         loaded.matchIndices.telemetry = 0;
@@ -332,9 +342,8 @@ export class TypoAutodrawTelemetryAdapter {
   }
 
   private readonly handlePerformedDrawCommand = (event: Event): void => {
-    if (!this.ownDrawingActive || !(event instanceof CustomEvent)) return;
-    const detail = recordValue(event.detail);
-    const command = detail?.command ?? detail?.raw ?? event.detail;
+    if (!(event instanceof CustomEvent)) return;
+    const command = performedDrawCommandFromDetail(event.detail);
     const signature = commandSignature(command);
     if (signature === null) return;
     for (const loaded of this.loaded.values()) this.consumeSignature(loaded, signature, 'performed');

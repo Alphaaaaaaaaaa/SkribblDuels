@@ -36,6 +36,7 @@
 | v0.52 Friendly invite links | Complete | Hash-only single-use tokens, durable accept/cancel, Discord-auth bootstrap and direct real-client Ready checks |
 | Reload-safe Challenge transport | Complete | Pending telemetry, in-flight batches and Claim candidates survive `/credits` navigation and runtime reloads until server ACK/resolution |
 | v0.54 production infrastructure | Complete | Redis Streams delivery, fenced Match Authority, readiness/metrics/diagnostics, alert rules, shared limits, sanctions and replay hardening |
+| v0.55 Challenge live certification | Complete | Telemetry-triggered server Claims, per-challenge certification metrics, visible transport cursors and false-positive regressions |
 
 ## Active development sequence
 
@@ -55,14 +56,25 @@
 - Shared rate limits, operator sanctions, abuse audit/retention and telemetry
   replay/time/evidence enforcement are implemented.
 
-### 3. Ranked competition and history
+### 3. Challenge live certification — delivered in v0.55.0
+
+- Accepted telemetry now triggers authoritative Claims without requiring a
+  second browser command; the fallback candidate path remains idempotent.
+- Bloodline, Autodraw, Typo active-turn boundaries, Deserved? and Sniper have
+  dedicated live/false-positive regressions.
+- Aggregate telemetry, Claim-source and rejection-reason metrics plus a visible
+  client ACK/queue cursor make two-client certification measurable.
+- TL;DR v2 and the seven proposed additions remain gated by the deterministic
+  data/events recorded in `docs/challenge-live-certification-v0.55.0.md`.
+
+### 4. Ranked competition and history
 
 - Define rating, provisional, season, Draw, Forfeit and reconnect-timeout rules.
 - Apply each rating update exactly once and add leaderboard plus match history.
 - Prevent repeated-opponent farming and certify all 46 Challenges in live
   two-client runs.
 
-### 4. Product and release completion
+### 5. Product and release completion
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
@@ -78,7 +90,7 @@ Match authority and durable idempotency. v0.52.0 adds Contract v8 invite links
 and reload-safe pending telemetry/Claims. v0.53.0 adds Contract v9 disconnect
 conclusions plus late result restoration. v0.54.0 delivers multi-instance
 coordination, observability and anti-abuse controls; Ranked competition/history
-is now the highest-risk prerequisite.
+follow after the v0.55 live Challenge certification gate.
 The complete post-v0.50 build gate is recorded in
 `docs/full-build-roadmap-post-v0.50.0.md`.
 The complete approved UI direction is recorded in

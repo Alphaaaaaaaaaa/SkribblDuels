@@ -50,7 +50,7 @@ import { blindGuessDefinition } from './definitions/blindGuess';
 import { drunkVisionDefinition } from './definitions/drunkVision';
 import { deafGuessDefinition } from './definitions/deafGuess';
 
-export const CHALLENGE_DEFINITIONS_VERSION = '2.10.0' as const;
+export const CHALLENGE_DEFINITIONS_VERSION = '2.11.0' as const;
 
 export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   quickscopeDefinition,

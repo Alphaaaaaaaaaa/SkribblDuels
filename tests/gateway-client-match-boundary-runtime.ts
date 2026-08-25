@@ -48,7 +48,8 @@ function snapshot(matchId: string, revision: number): GatewayMatchSnapshotMessag
       claims: [],
       drawProposal: null,
       conclusion: null,
-      rematchReadyAccountIds: []
+      rematchReadyAccountIds: [],
+      departedAccountIds: []
     }
   };
 }

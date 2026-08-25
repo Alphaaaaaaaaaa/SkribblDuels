@@ -7,6 +7,7 @@ import {
 import {
   fingerprintSkdCommands,
   parseSkdCommandSequences,
+  performedDrawCommandFromDetail,
   TypoAutodrawTelemetryAdapter,
   type TypoSkdLoadedPayload
 } from '@skribbl-duels/telemetry-core';
@@ -286,8 +287,15 @@ performedEvents$.next(event('DRAW_COMMAND_BATCH_SUBMITTED', 'performed-context',
 const performedInternals = performedAdapter as unknown as {
   handlePerformedDrawCommand(event: Event): void;
 };
+assert(
+  JSON.stringify(performedDrawCommandFromDetail({ detail: { payload: { raw: anythingCommands[0] } } }))
+    === JSON.stringify(anythingCommands[0]),
+  'Nested Typo performDrawCommand event details must resolve to the raw SKD command.'
+);
 for (const command of anythingCommands) {
-  performedInternals.handlePerformedDrawCommand(new CustomEvent('performDrawCommand', { detail: command }));
+  performedInternals.handlePerformedDrawCommand(new CustomEvent('performDrawCommand', {
+    detail: { payload: { command } }
+  }));
 }
 assert(
   performedEmitted.some(entry => entry.type === 'TYPO_SKD_PASTED'),

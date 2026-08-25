@@ -13,16 +13,14 @@ export interface BloodlineState {
 
 export const bloodlineDefinition: ChallengeDefinition<BloodlineState, BloodlineParameters> = {
   id: 'bloodline',
-  // v3 intentionally invalidates v2 completion-pending snapshots whose
-  // navigation event was stranded client-side by the old reconnect queue.
-  version: 3,
+  version: 4,
   metadata: {
     category: 'home',
     localization: localization(
       'Bloodline',
-      'Open the Credits link from the homepage and let the Credits page finish loading.',
+      'Click the Credits link on the homepage.',
       'Bloodline',
-      'Öffne über den Link auf der Homepage die Credits und lasse die Credits-Seite vollständig laden.'
+      'Klicke auf der Homepage auf den Credits-Link.'
     ),
     icon: 'bloodline-credits',
     rankedEligible: true,
@@ -42,13 +40,11 @@ export const bloodlineDefinition: ChallengeDefinition<BloodlineState, BloodlineP
       typeof (value as Partial<BloodlineParameters>).requiredPathname === 'string' &&
       (value as Partial<BloodlineParameters>).requiredPathname!.startsWith('/');
   },
-  relevantEvents: ['CREDITS_OPENED'],
+  relevantEvents: ['CREDITS_LINK_CLICKED'],
   reduce({ event, parameters }) {
-    if (event.type !== 'CREDITS_OPENED') return null;
-    if (event.payload.pathname !== parameters.requiredPathname ||
-        event.payload.readyState !== 'complete' ||
-        event.payload.linkClickObserved !== true ||
-        typeof event.payload.navigationId !== 'string') {
+    if (event.type !== 'CREDITS_LINK_CLICKED') return null;
+    if (event.payload.pathname !== parameters.requiredPathname
+        || typeof event.payload.navigationId !== 'string') {
       return null;
     }
 
@@ -56,11 +52,11 @@ export const bloodlineDefinition: ChallengeDefinition<BloodlineState, BloodlineP
       internalState: {
         qualifyingEvents: 1,
         navigationId: event.payload.navigationId,
-        loadElapsedMs: event.payload.loadElapsedMs
+        loadElapsedMs: null
       },
       progress: 1,
       complete: true,
-      reason: 'credits-link-navigation-completed',
+      reason: 'credits-link-clicked-on-homepage',
       evidenceEventIds: [event.eventId]
     };
   }

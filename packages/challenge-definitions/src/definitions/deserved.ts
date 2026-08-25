@@ -104,7 +104,7 @@ function startTracking(
 
 export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedParameters> = {
   id: 'deserved',
-  version: 3,
+  version: 4,
   metadata: {
     category: 'progress',
     localization: localization(
@@ -264,23 +264,9 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
       const totalScore = event.payload.totalScore;
       if (gameSessionId === null || selfPlayerId === null || playerId === null || totalScore === null || !Number.isFinite(totalScore)) return null;
 
-      let active = state.activeGameSessionId === gameSessionId
+      const active = state.activeGameSessionId === gameSessionId
         ? state
         : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
-      const previousTracked = active.players.find(player => player.playerId === playerId)?.score ?? null;
-      const explicitReset =
-        (event.payload.previousScore !== null && totalScore < event.payload.previousScore) ||
-        (previousTracked !== null && totalScore < previousTracked);
-      if (explicitReset) {
-        active = {
-          ...active,
-          trackingStartedEventId: event.eventId,
-          players: resetScores(active.lobbyPlayers.length > 0 ? active.lobbyPlayers : active.players),
-          selfWasFirstGuesser: false,
-          firstGuesserEventId: null
-        };
-      }
-
       const players = upsertPlayer(active.players, playerId, totalScore, false);
       const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
       const evidenceEventIds = [
@@ -291,13 +277,12 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
         internalState: {
           ...active,
           selfPlayerId,
-          players
+          players,
+          lobbyPlayers: upsertPlayer(active.lobbyPlayers, playerId, totalScore, false)
         },
         progress: reachedFirst ? 1 : 0,
         complete: reachedFirst,
-        reason: explicitReset
-          ? 'deserved-new-game-detected-by-score-reset'
-          : reachedFirst
+        reason: reachedFirst
             ? 'deserved-positive-first-place-reached-without-first-guess'
             : 'deserved-scoreboard-updated',
         evidenceEventIds
@@ -311,11 +296,13 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
       const active = state.activeGameSessionId === gameSessionId
         ? state
         : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
-      const players = event.payload.scores.map(score => ({
-        playerId: score.playerId,
-        score: score.totalScore,
-        departed: false
-      }));
+      // Skribbl round-result score arrays may omit players who earned no
+      // points in that turn. Merge them into the last complete roster instead
+      // of treating the partial array as the entire ranking.
+      let players = active.players;
+      for (const score of event.payload.scores) {
+        players = upsertPlayer(players, score.playerId, score.totalScore, false);
+      }
       const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
       const evidenceEventIds = [
         ...(active.trackingStartedEventId ? [active.trackingStartedEventId] : []),
@@ -341,6 +328,31 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
 
     if (event.type === 'GAME_ENDED') {
       if (state.activeGameSessionId === null || state.activeGameSessionId !== event.context.gameSessionId) return null;
+      const selfPlayerId = event.context.meId ?? state.selfPlayerId;
+      let finalPlayers = state.players;
+      for (const score of event.payload.finalScores ?? []) {
+        finalPlayers = upsertPlayer(finalPlayers, score.playerId, score.totalScore, false);
+      }
+      const reachedFirst = selfPlayerId !== null
+        && !state.selfWasFirstGuesser
+        && isPositiveFirst(finalPlayers, selfPlayerId);
+      if (reachedFirst) {
+        return {
+          internalState: {
+            ...state,
+            selfPlayerId,
+            players: finalPlayers,
+            lobbyPlayers: finalPlayers
+          },
+          progress: 1,
+          complete: true,
+          reason: 'deserved-positive-final-ranking-without-first-guess',
+          evidenceEventIds: [
+            ...(state.trackingStartedEventId ? [state.trackingStartedEventId] : []),
+            event.eventId
+          ]
+        };
+      }
       return {
         internalState: {
           ...state,

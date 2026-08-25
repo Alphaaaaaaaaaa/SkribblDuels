@@ -10,7 +10,7 @@ import type {
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.54.2' as const;
+export const GATEWAY_CLIENT_VERSION = '0.55.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'
@@ -34,6 +34,14 @@ export interface GatewayConnectionSnapshot {
   lastClaimResolution: GatewayClaimResolutionMessage | null;
   telemetryAck: GatewayTelemetryAckMessage | null;
   error: string | null;
+}
+
+export interface GatewayTransportStats {
+  readonly matchId: string | null;
+  readonly queuedTelemetry: number;
+  readonly inFlightTelemetry: number;
+  readonly pendingClaimCandidates: number;
+  readonly acknowledgedSequence: number;
 }
 
 export interface SocketIoGatewayClientOptions {

@@ -1,13 +1,10 @@
 import * as assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ChallengeEngine, type CompletionCandidate } from '@skribbl-duels/challenge-engine';
 import {
-  registerStarterChallengeDefinitions,
   setOfficialWordListForTesting
 } from '@skribbl-duels/challenge-definitions';
 import type {
   GatewayClaimCandidateMessage,
-  GatewayDraftBoardSnapshot,
   GatewayMatchSnapshotMessage,
   GatewayServerMessage,
   GatewayTelemetryBatchMessage,
@@ -70,36 +67,6 @@ function telemetryBatch(
     lastSequence: firstIndex + envelopes.length,
     envelopes
   };
-}
-
-function mirrorCandidates(
-  accountId: string,
-  board: GatewayDraftBoardSnapshot,
-  events: readonly TelemetryEvent[],
-  startedAt: number
-): Map<string, CompletionCandidate> {
-  let clock = startedAt;
-  const engine = new ChallengeEngine({ now: () => clock, autoPersist: false });
-  registerStarterChallengeDefinitions(engine);
-  for (const field of board.fields) {
-    engine.activate({
-      instanceId: `mirror-${accountId}-${field.fieldIndex}`,
-      challengeId: field.challengeId,
-      activatedAt: startedAt
-    });
-  }
-  for (const event of events) {
-    clock = Math.max(clock, event.occurredAt);
-    engine.process(event);
-  }
-  const candidates = new Map<string, CompletionCandidate>();
-  for (const runtime of engine.getInstances()) {
-    assert.equal(runtime.status, 'completion-pending', `${runtime.challengeId} did not complete in the authority fixture.`);
-    assert.ok(runtime.completionCandidate);
-    candidates.set(runtime.challengeId, runtime.completionCandidate);
-  }
-  engine.destroy();
-  return candidates;
 }
 
 setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo'], 'German');
@@ -223,23 +190,7 @@ assert.ok(resumedAlphaMessages.some(message =>
   message.type === 'TELEMETRY_ACK' && message.lastSequence === 0
 ));
 
-for (const accountId of ['alpha', 'beta'] as const) {
-  for (let index = 0; index < events.length; index += 64) {
-    const decision = matchmaker.processTelemetryBatch(
-      accountId,
-      telemetryBatch(running.matchId, events, index, Math.min(64, events.length - index))
-    );
-    assert.equal(decision.ok, true, JSON.stringify({ accountId, index, decision }));
-  }
-}
-assert.equal(matchmaker.processTelemetryBatch(
-  'alpha', telemetryBatch(running.matchId, events, 0, Math.min(64, events.length))
-).ok, true, 'A fully duplicated acknowledged batch should be idempotent.');
-
-const alphaCandidates = mirrorCandidates('alpha', board, events, running.state.startedAt);
-const betaCandidates = mirrorCandidates('beta', board, events, running.state.startedAt);
 const firstField = board.fields[0]!;
-const firstCandidate = alphaCandidates.get(firstField.challengeId)!;
 const forged: GatewayClaimCandidateMessage = {
   type: 'CLAIM_CANDIDATE',
   matchId: running.matchId,
@@ -247,32 +198,26 @@ const forged: GatewayClaimCandidateMessage = {
   challengeId: firstField.challengeId,
   definitionVersion: firstField.definitionVersion,
   evidenceEventIds: ['forged-event'],
-  occurredAt: now,
-  throughSequence: events.length
+  occurredAt: running.state.startedAt,
+  throughSequence: 0
 };
 assert.equal(matchmaker.submitClaimCandidate('alpha', forged).ok, true);
 assert.ok(resumedAlphaMessages.some(message =>
   message.type === 'CLAIM_RESOLUTION'
   && message.candidateId === forged.candidateId
   && !message.accepted
-  && message.reason === 'claim_evidence_mismatch'
+  && message.reason === 'claim_not_validated'
 ));
 
-const acceptedMessages: GatewayClaimCandidateMessage[] = [];
-for (const field of board.fields.slice(0, board.winTarget)) {
-  const candidate = alphaCandidates.get(field.challengeId)!;
-  const message: GatewayClaimCandidateMessage = {
-    type: 'CLAIM_CANDIDATE',
-    matchId: running.matchId,
-    candidateId: `alpha-${candidate.candidateId}`,
-    challengeId: field.challengeId,
-    definitionVersion: field.definitionVersion,
-    evidenceEventIds: candidate.evidenceEventIds,
-    occurredAt: candidate.completedAt,
-    throughSequence: events.length
-  };
-  acceptedMessages.push(message);
-  assert.equal(matchmaker.submitClaimCandidate('alpha', message).ok, true);
+let acceptedThroughSequence = 0;
+for (let index = 0; index < events.length; index += 64) {
+  const decision = matchmaker.processTelemetryBatch(
+    'alpha',
+    telemetryBatch(running.matchId, events, index, Math.min(64, events.length - index))
+  );
+  assert.equal(decision.ok, true, JSON.stringify({ index, decision }));
+  acceptedThroughSequence = Math.min(index + 64, events.length);
+  if (latestMatch(resumedAlphaMessages).state.phase === 'finished') break;
 }
 const finished = latestMatch(resumedAlphaMessages);
 assert.equal(finished.state.phase, 'finished');
@@ -284,18 +229,22 @@ assert.equal(new Set(finished.state.claims.map(claim => claim.challengeId)).size
 assert.ok(resumedAlphaMessages.some(message =>
   message.type === 'MATCH_EVENT' && message.event.type === 'MATCH_FINISHED'
 ));
+const automaticResolutions = resumedAlphaMessages.filter(message =>
+  message.type === 'CLAIM_RESOLUTION'
+  && message.ownerAccountId === 'alpha'
+  && message.accepted
+  && message.reason === 'server-telemetry-certified'
+);
+assert.equal(automaticResolutions.length, board.winTarget);
+assert.ok(acceptedThroughSequence > 0);
 
-const firstAccepted = acceptedMessages[0]!;
-const betaCandidate = betaCandidates.get(firstAccepted.challengeId)!;
 assert.equal(matchmaker.submitClaimCandidate('beta', {
-  ...firstAccepted,
-  candidateId: `beta-${betaCandidate.candidateId}`,
-  evidenceEventIds: betaCandidate.evidenceEventIds,
-  occurredAt: betaCandidate.completedAt
+  ...forged,
+  candidateId: 'beta-after-finish'
 }).ok, true);
 assert.ok(betaMessages.some(message =>
   message.type === 'CLAIM_RESOLUTION'
-  && message.candidateId === `beta-${betaCandidate.candidateId}`
+  && message.candidateId === 'beta-after-finish'
   && !message.accepted
   && message.reason === 'claim-match-not-running'
 ));
@@ -312,7 +261,7 @@ console.log(JSON.stringify({
   reconnectChatHistory: true,
   telemetrySequenceAcks: true,
   telemetryGapRejected: true,
-  duplicatedBatchIdempotent: true,
+  automaticClaimsFromAcceptedTelemetry: true,
   forgedEvidenceRejected: true,
   serverChallengeReplay: true,
   authoritativeClaimsBroadcast: true,

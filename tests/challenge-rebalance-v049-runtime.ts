@@ -82,13 +82,13 @@ function engineFor(definition: Parameters<ChallengeEngine['register']>[0], insta
 }
 
 const expectedVersions = new Map([
-  [bloodlineDefinition.id, 3], [ouchDefinition.id, 2], [picassoDefinition.id, 2],
+  [bloodlineDefinition.id, 4], [ouchDefinition.id, 2], [picassoDefinition.id, 2],
   [coolNumberDetectedDefinition.id, 2], [fanboyDefinition.id, 2], [colorPickerDefinition.id, 2],
   [timeWasteDefinition.id, 2], [moggedDefinition.id, 4], [needSomeSpaceDefinition.id, 2],
   [smolWordsDefinition.id, 2], [bigWordDefinition.id, 2], [hintReflexesDefinition.id, 2]
 ]);
 for (const [definition, version] of [
-  [bloodlineDefinition, 3], [ouchDefinition, 2], [picassoDefinition, 2],
+  [bloodlineDefinition, 4], [ouchDefinition, 2], [picassoDefinition, 2],
   [coolNumberDetectedDefinition, 2], [fanboyDefinition, 2], [colorPickerDefinition, 2],
   [timeWasteDefinition, 2], [moggedDefinition, 4], [needSomeSpaceDefinition, 2],
   [smolWordsDefinition, 2], [bigWordDefinition, 2], [hintReflexesDefinition, 2]
@@ -98,9 +98,8 @@ for (const [definition, version] of [
 }
 
 const bloodline = engineFor(bloodlineDefinition, 'bloodline');
-bloodline.process(event('CREDITS_OPENED', 'credits-opened', {
-  pathname: '/credits', readyState: 'complete', linkClickObserved: true,
-  navigationId: 'nav-1', loadElapsedMs: 250
+bloodline.process(event('CREDITS_LINK_CLICKED', 'credits-clicked', {
+  href: 'https://skribbl.io/credits', pathname: '/credits', navigationId: 'nav-1'
 }, { roundSessionId: null, drawerId: null, meId: null }));
 assert.equal(bloodline.getInstance('bloodline')?.status, 'completion-pending');
 const persisted = bloodline.exportSnapshot();
@@ -115,7 +114,7 @@ const restored = new ChallengeEngine({
 restored.register(bloodlineDefinition);
 await restored.restore();
 assert.equal(restored.getInstance('bloodline')?.status, 'completion-pending');
-assert.deepEqual(restored.getInstance('bloodline')?.completionCandidate?.evidenceEventIds, ['credits-opened']);
+assert.deepEqual(restored.getInstance('bloodline')?.completionCandidate?.evidenceEventIds, ['credits-clicked']);
 
 const ouchLate = engineFor(ouchDefinition, 'ouch-late');
 ouchLate.process(event('ROUND_STARTED', 'ouch-late-start', {}, { monotonicMs: 1_000 }));

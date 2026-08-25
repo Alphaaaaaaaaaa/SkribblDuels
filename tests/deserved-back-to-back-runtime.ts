@@ -143,6 +143,28 @@ zeroGuard.process(event('LOBBY_HYDRATED', 'zero-reset-hydrate', 20, {
 zeroGuard.process(event('SCORE_CHANGED', 'zero-reset-self', 21, scorePayload(21, 300, 0), 'zero-reset-game', self));
 assert(zeroGuard.getInstance('deserved')?.status === 'active', 'A temporary all-zero scoreboard at round rollover must never complete Deserved.');
 
+const partialRoundResults = new ChallengeEngine({ autoPersist: false });
+partialRoundResults.register(deservedDefinition);
+partialRoundResults.activate({ instanceId: 'deserved', challengeId: 'deserved' });
+partialRoundResults.process(event('LOBBY_HYDRATED', 'partial-results-hydrate', 22, hydrationPayload, 'partial-results-game', null));
+partialRoundResults.process(event('ROUND_RESULTS_AVAILABLE', 'partial-results-self-only', 23, {
+  previousStateId: 4,
+  stateId: 5,
+  stateName: 'ROUND_ENDED',
+  time: 0,
+  roundIndex: 1,
+  roundNumber: 2,
+  maxRounds: 3,
+  reason: 0,
+  reasonName: 'time-up',
+  word: 'Punkt',
+  scores: [{ playerId: 21, roundScore: 50, totalScore: 350 }]
+}, 'partial-results-game'));
+assert(
+  partialRoundResults.getInstance('deserved')?.status === 'active',
+  'A partial round-result packet must retain higher-scoring players and cannot invent first place for Deserved.'
+);
+
 const tieAllowed = new ChallengeEngine({ autoPersist: false });
 tieAllowed.register(deservedDefinition);
 tieAllowed.activate({ instanceId: 'deserved', challengeId: 'deserved' });
@@ -192,7 +214,7 @@ resetGuard.process(event('FIRST_GUESS', 'reset-old-game-first', 140, {
 }, 'reset-game', self));
 resetGuard.process(event('SCORE_CHANGED', 'reset-beta-to-zero', 150, scorePayload(62, 900, 0), 'reset-game', other));
 resetGuard.process(event('SCORE_CHANGED', 'reset-self-new-game-lead', 160, scorePayload(21, 0, 100), 'reset-game', self));
-assert(resetGuard.getInstance('deserved')?.status === 'completion-pending', 'A detected score reset must start a fresh Deserved attempt rather than carrying the old first-guesser flag.');
+assert(resetGuard.getInstance('deserved')?.status === 'active', 'A round score reset must not erase the first-guesser disqualification for the current game.');
 
 const backToBack = new ChallengeEngine({ autoPersist: false });
 backToBack.register(backToBackDefinition);

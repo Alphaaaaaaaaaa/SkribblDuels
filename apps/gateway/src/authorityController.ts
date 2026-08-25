@@ -312,6 +312,21 @@ export class GatewayAuthorityController {
     } else if (message.type === 'CLAIM_CANDIDATE') {
       decision = matchmaker.submitClaimCandidate(accountId, message);
     }
+    if (message.type === 'TELEMETRY_BATCH' && decision) {
+      const outcome = decision.ok ? 'accepted' : 'rejected';
+      this.options.metrics.increment('skribbl_duels_gateway_telemetry_batches_total', { outcome });
+      this.options.metrics.increment(
+        'skribbl_duels_gateway_telemetry_events_total',
+        { outcome },
+        message.envelopes.length
+      );
+    }
+    if (message.type === 'CLAIM_CANDIDATE' && decision) {
+      this.options.metrics.increment('skribbl_duels_gateway_claim_candidates_total', {
+        outcome: decision.ok ? 'processed' : 'transport-rejected',
+        challenge: message.challengeId
+      });
+    }
     if (!decision || decision.ok) return;
     if (decision.code === 'CHAT_SPAM_DETECTED') {
       this.options.metrics.increment('skribbl_duels_gateway_chat_spam_detected_total');

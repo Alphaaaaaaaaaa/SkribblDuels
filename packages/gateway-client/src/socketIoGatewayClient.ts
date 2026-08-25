@@ -14,6 +14,7 @@ import {
 } from '@skribbl-duels/gateway-contracts';
 import type {
   GatewayConnectionSnapshot,
+  GatewayTransportStats,
   SocketIoGatewayClientOptions
 } from './types';
 
@@ -91,6 +92,24 @@ export class SocketIoGatewayClient {
 
   public getState(): GatewayConnectionSnapshot {
     return structuredClone(this.state);
+  }
+
+  /** A read-only view of the durable telemetry/claim transport for live certification. */
+  public getTransportStats(): GatewayTransportStats {
+    const matchId = this.state.match?.matchId
+      ?? this.telemetryInFlight[0]?.matchId
+      ?? this.telemetryQueue[0]?.matchId
+      ?? this.pendingClaims[0]?.matchId
+      ?? null;
+    return {
+      matchId,
+      queuedTelemetry: this.telemetryQueue.length,
+      inFlightTelemetry: this.telemetryInFlight.length,
+      pendingClaimCandidates: this.pendingClaims.length,
+      acknowledgedSequence: this.state.telemetryAck?.matchId === matchId
+        ? this.state.telemetryAck.lastSequence
+        : 0
+    };
   }
 
   public subscribe(listener: (state: GatewayConnectionSnapshot) => void): () => void {
@@ -283,6 +302,10 @@ export class SocketIoGatewayClient {
     this.telemetryQueue.push(structuredClone(envelope));
     this.telemetryQueue.sort((left, right) => left.sequence - right.sequence);
     this.persistPendingTransport();
+    if (envelope.event.type === 'CREDITS_LINK_CLICKED') {
+      this.flushTelemetry();
+      return;
+    }
     if (this.telemetryQueue.length >= 64) {
       this.flushTelemetry();
       return;
@@ -500,7 +523,11 @@ export class SocketIoGatewayClient {
     if (value.type === 'CLAIM_RESOLUTION') {
       if (this.state.match?.matchId !== value.matchId) return;
       this.pendingClaims = this.pendingClaims.filter(candidate =>
-        candidate.matchId !== value.matchId || candidate.candidateId !== value.candidateId
+        candidate.matchId !== value.matchId
+        || (candidate.candidateId !== value.candidateId
+          && !(value.accepted
+            && value.ownerAccountId === this.state.identity?.accountId
+            && candidate.challengeId === value.challengeId))
       );
       this.persistPendingTransport();
       this.update({ ...this.state, lastClaimResolution: structuredClone(value), error: null });

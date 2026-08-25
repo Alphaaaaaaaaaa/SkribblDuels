@@ -6,7 +6,7 @@ import { SupabaseGatewayMatchAuthorityPersistence } from './matchPersistence';
 import { GatewayRealtimeInfrastructure } from './realtimeInfrastructure';
 
 const config = readGatewayServerConfig();
-await prepareGatewayOfficialWordLists();
+const wordListAuthority = await prepareGatewayOfficialWordLists();
 const persistence = config.supabaseServiceRoleKey
   ? new SupabaseGatewayMatchAuthorityPersistence(config.supabaseUrl, config.supabaseServiceRoleKey)
   : null;
@@ -27,7 +27,9 @@ console.info('[Skribbl Duels Gateway] Listening', {
   clientOrigin: config.clientOrigin,
   simulatedMatchmaking: config.simulatedPlayersEnabled,
   realtime: realtime ? 'redis-streams' : 'single-instance',
-  instanceId: config.instanceId
+  instanceId: config.instanceId,
+  authoritativeWordLists: wordListAuthority.ready.map(status => status.languageName),
+  unsupportedWordLists: wordListAuthority.unsupported.map(status => status.languageName)
 });
 
 let closing = false;

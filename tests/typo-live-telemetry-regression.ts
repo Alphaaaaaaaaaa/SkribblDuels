@@ -23,10 +23,10 @@ async function main(): Promise<void> {
   const detach = engine.attachProvider(replay, 'typo-live-regression');
   await replay.play({ mode: 'instant' });
   detach();
-  assert(engine.getInstance('deaf-guess')?.status === 'completion-pending', 'Deaf Guess should complete for Pasta without a prior state-change event.');
-  assert(engine.getInstance('drunk-vision')?.status === 'completion-pending', 'Drunk Vision should complete for Zweig.');
-  assert(engine.getInstance('blind-guess')?.status === 'completion-pending', 'Blind Guess should complete for Goldfisch after the fixed canvas snapshot.');
-  console.log('Pasta/Zweig/Goldfisch live telemetry regression passed.');
+  assert(engine.getInstance('deaf-guess')?.status === 'active', 'Deaf Guess must reject Pasta when no pre-round active state was observed.');
+  assert(engine.getInstance('drunk-vision')?.status === 'active', 'Drunk Vision must reject Zweig when it was enabled after ROUND_STARTED.');
+  assert(engine.getInstance('blind-guess')?.status === 'active', 'Blind Guess must reject Goldfisch when it was enabled after ROUND_STARTED.');
+  console.log('Pasta/Zweig/Goldfisch mid-turn activation rejection regression passed.');
 }
 
 void main();

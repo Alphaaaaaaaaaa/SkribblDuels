@@ -82,6 +82,7 @@ interface DuelChatMessage {
   author: string;
   message: string;
   occurredAt: number;
+  pending?: boolean;
 }
 
 interface PersistedProductMatch {
@@ -177,6 +178,7 @@ interface ProductPublicApi {
   };
   gateway: {
     getState(): GatewayConnectionSnapshot;
+    getTransportStats(): ReturnType<SocketIoGatewayClient['getTransportStats']>;
     subscribe(listener: (state: GatewayConnectionSnapshot) => void): () => void;
     reconnect(): void;
     joinMatchmaking(format: 'casual' | 'ranked'): string;
@@ -646,6 +648,7 @@ class CompletionChatAdapter {
 .scd-chat-log { max-height:330px;overflow:auto;min-width:0;transition:mask-image .12s;-webkit-transition:-webkit-mask-image .12s; }
 .scd-chat-log.has-overflow:not(.at-top) { mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%); }
 .scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
+.scd-chat-line.pending { opacity:.72; }
 .scd-chat-line.system { padding:6px 8px;border-left:3px solid var(--SCD_ACCENT);background:rgba(255,255,255,.055); }
 .scd-chat-line.spam { color:var(--COLOR_CHAT_TEXT_LEAVE);border-left-color:var(--COLOR_CHAT_TEXT_LEAVE);font-weight:700; }
 .scd-chat-rematch-request { width:100%;display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px;border-radius:7px;background:rgba(255,255,255,.055);box-sizing:border-box; }
@@ -693,9 +696,7 @@ class CompletionChatAdapter {
 .scd-duel-toast { padding:1rem 3rem 1rem 1rem;background-color:var(--COLOR_PANEL_HI);border-radius:5px;color:var(--COLOR_PANEL_TEXT);filter:drop-shadow(0 5px 10px rgba(0,0,0,.3));min-width:clamp(20rem,20rem,80%);position:relative;animation:scd-toast-in .15s ease-out;display:flex;flex-direction:column;align-items:flex-start;white-space:pre-wrap;gap:.5rem;pointer-events:auto; }
 .scd-duel-toast.clickable { cursor:pointer;transition:background-color 80ms; }
 .scd-duel-toast.clickable:hover { background:var(--COLOR_BUTTON_NORMAL_BG); }
-.scd-chat-toast { width:min(32rem,calc(100vw - 2rem));min-width:0;max-width:calc(100vw - 2rem);overflow:hidden;box-sizing:border-box; }
-.scd-chat-toast > span:not(.close-toast) { display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.scd-chat-toast .scd-toast-profile { display:flex;max-width:100%;overflow:hidden;white-space:nowrap; }
+.scd-chat-toast > span:not(.close-toast) { display:block;max-width:min(32rem,calc(100vw - 6rem));overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-duel-toast.closing { animation:scd-toast-out .15s ease-out forwards; }
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
@@ -954,7 +955,7 @@ export class DuelProductFoundation {
   private duelChatStickToBottom = true;
   private duelChatDraft = '';
   private duelChatSpam: DuelChatSpamState = emptyDuelChatSpamState();
-  private pendingDuelChatMessage: string | null = null;
+  private readonly pendingDuelChatMessages = new Map<string, string>();
   private notifiedRematchRequestKey: string | null = null;
   private matchActionError: string | null = null;
   private readonly chatNotificationStartedAt = Date.now();
@@ -1030,9 +1031,16 @@ export class DuelProductFoundation {
         || previous.identity?.displayName !== state.identity?.displayName;
       if (matchChanged) this.matchActionError = null;
       this.gatewayState = state;
-      if (state.error && state.error !== previous.error && this.pendingDuelChatMessage) {
-        if (!this.duelChatDraft) this.duelChatDraft = this.pendingDuelChatMessage;
-        this.pendingDuelChatMessage = null;
+      if (state.error && state.error !== previous.error && this.pendingDuelChatMessages.size > 0) {
+        const failed = this.pendingDuelChatMessages.entries().next().value as [string, string] | undefined;
+        if (failed) {
+          const [clientMessageId, message] = failed;
+          if (!this.duelChatDraft) this.duelChatDraft = message;
+          this.pendingDuelChatMessages.delete(clientMessageId);
+          this.duelChatMessages = this.duelChatMessages.filter(item =>
+            item.id !== `optimistic-${clientMessageId}`
+          );
+        }
       }
       if (state.error === DUEL_CHAT_SPAM_MESSAGE && state.error !== previous.error) {
         this.insertDuelChatSpamWarning();
@@ -1095,7 +1103,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.54.2',
+      version: '0.55.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1109,6 +1117,7 @@ export class DuelProductFoundation {
       },
       gateway: {
         getState: () => this.gatewayClient.getState(),
+        getTransportStats: () => this.gatewayClient.getTransportStats(),
         subscribe: listener => this.gatewayClient.subscribe(listener),
         reconnect: () => this.gatewayClient.reconnect(),
         joinMatchmaking: format => this.beginMatchmaking(format),
@@ -1227,7 +1236,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.54.2') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.55.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2529,6 +2538,9 @@ export class DuelProductFoundation {
       return;
     }
     const status = element('div', 'scd-card scd-stack');
+    const telemetryStats = this.telemetryGateway.getStats();
+    const transportStats = this.gatewayClient.getTransportStats();
+    const lastResolution = this.gatewayState.lastClaimResolution;
     status.append(
       element('strong', '', this.matchState.outcome === 'draw'
         ? 'Status: agreed Draw'
@@ -2536,8 +2548,20 @@ export class DuelProductFoundation {
           ? `Status: ${this.duelDisplayName(this.matchState.winner ?? 'opponent')} won`
           : `Status: ${this.matchState.phase}`),
       element('div', '', `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`),
-      element('div', 'scd-muted', 'Challenge claims are confirmed by the authoritative Gateway.')
+      element('div', 'scd-muted', 'Challenge claims are confirmed by the authoritative Gateway.'),
+      element(
+        'div',
+        'scd-muted scd-claim-pipeline',
+        `Claim pipeline: ${telemetryStats.locallyObserved} observed · ${telemetryStats.forwarded} forwarded · ${transportStats.acknowledgedSequence} ACK · ${transportStats.queuedTelemetry + transportStats.inFlightTelemetry} queued · ${transportStats.pendingClaimCandidates} fallback`
+      )
     );
+    if (lastResolution?.matchId === this.matchState.matchId) {
+      status.appendChild(element(
+        'div',
+        `scd-muted scd-claim-certification ${lastResolution.accepted ? 'accepted' : 'rejected'}`,
+        `Last certification: ${challengeName(this.manifest, lastResolution.challengeId)} · ${lastResolution.accepted ? 'accepted' : `rejected (${lastResolution.reason ?? 'unknown'})`}`
+      ));
+    }
     stack.append(status);
     const gatewayMatch = this.gatewayState.match?.matchId === this.matchState.matchId
       ? this.gatewayState.match
@@ -2735,6 +2759,11 @@ export class DuelProductFoundation {
     const ownRematchReady = Boolean(selfAccountId
       && gatewayMatch?.state.rematchReadyAccountIds.includes(selfAccountId));
     const opponentRematchReady = this.opponentRematchRequester() !== null;
+    const opponentAccountId = gatewayMatch?.state.participants.find(participant =>
+      participant.accountId !== selfAccountId
+    )?.accountId ?? null;
+    const opponentDeparted = Boolean(opponentAccountId
+      && gatewayMatch?.state.departedAccountIds.includes(opponentAccountId));
     rematch.disabled = !gatewayMatch
       || gatewayMatch.state.phase !== 'finished'
       || ownRematchReady
@@ -2747,7 +2776,7 @@ export class DuelProductFoundation {
       this.runMatchAction(() => this.gatewayClient.requestRematch(gatewayMatch.matchId), rematch);
     });
     actions.append(returnButton, newMatch);
-    if (opponentRematchReady) actions.classList.add('without-rematch');
+    if (opponentRematchReady || opponentDeparted) actions.classList.add('without-rematch');
     else actions.appendChild(rematch);
     card.append(visual, title, score, actions);
     const error = this.matchActionError ?? this.visibleGatewayError();
@@ -2779,7 +2808,7 @@ export class DuelProductFoundation {
         const winnerMessage = message.side === 'system' && message.id.startsWith('conclusion-')
           && this.matchState.outcome === 'win';
         const spamMessage = message.side === 'system' && message.id.startsWith('spam-');
-        const line = element('div', `scd-chat-line${message.side === 'system' ? ' system' : ''}${winnerMessage ? ' winner' : ''}${spamMessage ? ' spam' : ''}`);
+        const line = element('div', `scd-chat-line${message.side === 'system' ? ' system' : ''}${winnerMessage ? ' winner' : ''}${spamMessage ? ' spam' : ''}${message.pending ? ' pending' : ''}`);
         if (spamMessage) {
           line.append(
             element('strong', '', message.message),
@@ -2881,15 +2910,23 @@ export class DuelProductFoundation {
       }
       try {
         this.duelChatStickToBottom = true;
-        this.pendingDuelChatMessage = message;
-        this.gatewayClient.sendDuelChat(matchId, message);
+        const clientMessageId = this.gatewayClient.sendDuelChat(matchId, message);
+        this.pendingDuelChatMessages.set(clientMessageId, message);
+        this.duelChatMessages.push({
+          id: `optimistic-${clientMessageId}`,
+          side: 'self',
+          author: this.duelDisplayName('self'),
+          message,
+          occurredAt: Date.now(),
+          pending: true
+        });
         this.duelChatDraft = '';
         input.value = '';
         updateCount();
         log.scrollTop = log.scrollHeight;
+        this.renderPanel();
       } catch (error) {
         this.duelChatSpam = previousSpam;
-        this.pendingDuelChatMessage = null;
         this.restoreDuelChatFocus = false;
         this.matchmakingError = error instanceof Error ? error.message : String(error);
         this.renderPanel();
@@ -3635,15 +3672,21 @@ export class DuelProductFoundation {
       if (message.matchId !== this.matchState.matchId) continue;
       this.processedGatewayChatIds.add(message.messageId);
       const ownMessage = message.authorAccountId === state.identity?.accountId;
-      this.duelChatMessages.push({
+      const optimisticId = `optimistic-${message.clientMessageId}`;
+      const optimisticIndex = ownMessage
+        ? this.duelChatMessages.findIndex(item => item.id === optimisticId)
+        : -1;
+      const confirmed: DuelChatMessage = {
         id: message.messageId,
         side: ownMessage ? 'self' : 'opponent',
         author: message.authorDisplayName,
         message: message.message,
         occurredAt: message.occurredAt
-      });
+      };
+      if (optimisticIndex >= 0) this.duelChatMessages.splice(optimisticIndex, 1, confirmed);
+      else this.duelChatMessages.push(confirmed);
       if (ownMessage) {
-        this.pendingDuelChatMessage = null;
+        this.pendingDuelChatMessages.delete(message.clientMessageId);
         this.duelChatStickToBottom = true;
       }
       if (!ownMessage
@@ -4030,6 +4073,7 @@ export class DuelProductFoundation {
         || !selfAccountId) return null;
     return snapshot.state.participants.find(participant =>
       participant.accountId !== selfAccountId
+      && !snapshot.state.departedAccountIds.includes(participant.accountId)
       && snapshot.state.rematchReadyAccountIds.includes(participant.accountId)
     ) ?? null;
   }
@@ -4253,7 +4297,7 @@ export class DuelProductFoundation {
     this.duelChatStickToBottom = true;
     this.duelChatDraft = '';
     this.duelChatSpam = emptyDuelChatSpamState();
-    this.pendingDuelChatMessage = null;
+    this.pendingDuelChatMessages.clear();
     this.notifiedRematchRequestKey = null;
     this.matchActionError = null;
     this.lastConclusionMessageMatchId = null;

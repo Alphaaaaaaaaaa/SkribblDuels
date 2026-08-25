@@ -83,13 +83,12 @@ bloodlineEngine.process({
 assert(bloodlineEngine.getInstance('bloodline')?.progress.current === 0,
   'Direct Credits navigation must not complete Bloodline.');
 bloodlineEngine.process({
-  ...base, eventId: 'clicked-credits', type: 'CREDITS_OPENED', occurredAt: 3,
+  ...base, eventId: 'clicked-credits', type: 'CREDITS_LINK_CLICKED', occurredAt: 3,
   payload: {
-    pathname: '/credits', readyState: 'complete', linkClickObserved: true,
-    navigationId: 'nav-1', linkClickedAt: 2, loadElapsedMs: 500
+    href: 'https://skribbl.io/credits', pathname: '/credits', navigationId: 'nav-1'
   }
 } as TelemetryEvent);
 assert(bloodlineEngine.getInstance('bloodline')?.status === 'completion-pending',
-  'A clicked and fully loaded Credits page should complete Bloodline.');
+  'The observed homepage Credits click should complete Bloodline before navigation unloads the page.');
 
 console.log('Home interaction runtime test passed.');

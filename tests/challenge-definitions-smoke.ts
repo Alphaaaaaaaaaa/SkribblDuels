@@ -31,7 +31,6 @@ import {
   bigWordDefinition
 } from '@skribbl-duels/challenge-definitions';
 import {
-  TelemetryReplayProvider,
   validateTelemetryFixture
 } from '@skribbl-duels/telemetry-replay';
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
@@ -44,6 +43,16 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
   if (actual !== expected) {
     throw new Error(`${message} Expected ${String(expected)}, got ${String(actual)}.`);
   }
+}
+
+function asFirstGuesser(event: TelemetryEvent, eventId = event.eventId): TelemetryEvent {
+  const copy = structuredClone(event);
+  assert(copy.type === 'CORRECT_GUESS', 'A Sniper success fixture must be a correct guess.');
+  copy.eventId = eventId;
+  copy.payload.position = 1;
+  copy.payload.isFirstGuesser = true;
+  copy.payload.wrongGuessesBeforeCorrect = 0;
+  return copy;
 }
 
 async function main(): Promise<void> {
@@ -66,11 +75,35 @@ assertEqual(engine.getDefinitionIds().length, 46, 'Forty-six official starter de
 const activated = activateStarterSandbox(engine);
 assertEqual(activated.length, 46, 'Forty-six starter sandbox instances should activate.');
 
-const replay = new TelemetryReplayProvider();
-replay.load(fixture);
-const detach = engine.attachProvider(replay, 'starter-fixture');
-await replay.play({ mode: 'instant' });
-detach();
+// The v30 fixture predates the strict "active before the drawing" rule. At
+// each of its three Typo turn boundaries, inject the already-recorded active
+// state one millisecond before ROUND_STARTED. The original state event later
+// in the fixture still proves that the effect remains active during the turn.
+const typoChallengeIds = ['blind-guess', 'drunk-vision', 'deaf-guess'] as const;
+const typoActiveEvents = new Map(typoChallengeIds.map(challengeId => {
+  const recorded = fixture.events.find(entry =>
+    entry.event.type === 'TYPO_CHALLENGE_STATE_CHANGED'
+    && entry.event.payload.challengeKey === challengeId
+    && entry.event.payload.effectActive
+  )?.event;
+  assert(recorded?.type === 'TYPO_CHALLENGE_STATE_CHANGED', `${challengeId} needs an active-state fixture event.`);
+  return [challengeId, recorded] as const;
+}));
+for (const { event } of fixture.events) {
+  if (event.type === 'ROUND_STARTED') {
+    const challengeId = typoChallengeIds.find(id => event.context.roundSessionId === `typo-${id}-turn`);
+    const recorded = challengeId ? typoActiveEvents.get(challengeId) : null;
+    if (challengeId && recorded) {
+      engine.process({
+        ...structuredClone(recorded),
+        eventId: `${challengeId}-active-before-round`,
+        occurredAt: event.occurredAt - 1,
+        monotonicMs: event.monotonicMs - 1
+      });
+    }
+  }
+  engine.process(event);
+}
 
 for (const definition of starterChallengeDefinitions) {
   if (rebalancedChallengeIds.has(definition.id)) continue;
@@ -111,12 +144,12 @@ assert(
   'The dirty second round must not be Sniper completion evidence.'
 );
 for (const evidenceId of [
-  'starter-round-3',
-  'starter-ouch-self',
-  'starter-round-4',
-  'starter-sniper-round-4-correct',
-  'starter-round-5',
-  'starter-sniper-round-5-correct'
+  'blind-guess-round-start',
+  'blind-guess-correct',
+  'drunk-vision-round-start',
+  'drunk-vision-correct',
+  'deaf-guess-round-start',
+  'deaf-guess-correct'
 ]) {
   assert(
     sniper?.completionCandidate?.evidenceEventIds.includes(evidenceId),
@@ -277,10 +310,10 @@ for (const eventId of ['home-logo-avatar-click', 'home-special-avatar-stable']) 
 }
 
 const bloodline = engine.getInstance(starterSandboxInstanceIds.bloodline);
-assertEqual(bloodline?.progress.current, 1, 'Bloodline should complete after a homepage Credits click finishes loading.');
+assertEqual(bloodline?.progress.current, 1, 'Bloodline should complete as soon as the homepage Credits click is observed.');
 assert(
-  bloodline?.completionCandidate?.evidenceEventIds.includes('bloodline-credits-opened'),
-  'Bloodline evidence should include the fully loaded Credits page event.'
+  bloodline?.completionCandidate?.evidenceEventIds.includes('bloodline-credits-link-clicked'),
+  'Bloodline evidence should include the click event captured before navigation.'
 );
 
 const myEyes = engine.getInstance(starterSandboxInstanceIds['my-eyes-are-bleeding']);
@@ -615,7 +648,7 @@ assertEqual(
 );
 
 sniperRegression.process(structuredClone(round3));
-sniperRegression.process(structuredClone(selfOuchGuess));
+sniperRegression.process(asFirstGuesser(selfOuchGuess, 'sniper-first-after-reset'));
 assertEqual(
   sniperRegression.getInstance('sniper-regression')?.progress.current,
   1,
@@ -623,7 +656,7 @@ assertEqual(
 );
 
 sniperRegression.process(structuredClone(round4));
-sniperRegression.process(structuredClone(cleanRound4Correct));
+sniperRegression.process(asFirstGuesser(cleanRound4Correct, 'sniper-second-after-reset'));
 assertEqual(
   sniperRegression.getInstance('sniper-regression')?.progress.current,
   2,
@@ -631,7 +664,7 @@ assertEqual(
 );
 
 sniperRegression.process(structuredClone(round5));
-sniperRegression.process(structuredClone(cleanRound5Correct));
+sniperRegression.process(asFirstGuesser(cleanRound5Correct, 'sniper-third-after-reset'));
 assertEqual(
   sniperRegression.getInstance('sniper-regression')?.status,
   'completion-pending',
@@ -655,15 +688,15 @@ assertEqual(
 
 
 // Live regression: multiple drawing turns within the same visible server round
-// must still count as three different Sniper turns, and placement is irrelevant.
+// must count as different Sniper turns when every success is First Guesser.
 const sameServerRoundSniper = new ChallengeEngine({ autoPersist: false });
 sameServerRoundSniper.register(sniperDefinition);
 sameServerRoundSniper.activate({ instanceId: 'sniper-same-server-round', challengeId: 'sniper' });
 
 for (const [index, drawerId, position] of [
   [1, 164, 1],
-  [2, 147, 4],
-  [3, 118, 2]
+  [2, 147, 1],
+  [3, 118, 1]
 ] as const) {
   const start = structuredClone(roundStart) as TelemetryEvent;
   start.eventId = `sniper-live-turn-${index}-start`;
@@ -689,7 +722,20 @@ for (const [index, drawerId, position] of [
 assertEqual(
   sameServerRoundSniper.getInstance('sniper-same-server-round')?.status,
   'completion-pending',
-  'Sniper must count three separate drawer turns even while roundNumber stays 3, regardless of guess placement.'
+  'Sniper must count three First-Guesser successes in separate drawer turns even while roundNumber stays 3.'
+);
+
+const nonFirstSniper = new ChallengeEngine({ autoPersist: false });
+nonFirstSniper.register(sniperDefinition);
+nonFirstSniper.activate({ instanceId: 'sniper-non-first', challengeId: 'sniper' });
+nonFirstSniper.process(structuredClone(roundStart));
+nonFirstSniper.process(structuredClone(quickscopeGuess));
+nonFirstSniper.process(structuredClone(round4));
+nonFirstSniper.process(structuredClone(cleanRound4Correct));
+assertEqual(
+  nonFirstSniper.getInstance('sniper-non-first')?.progress.current,
+  0,
+  'A correct non-first guess must reset the complete Sniper streak.'
 );
 
 // Messages after a successful guess are normal chat and cannot erase progress.

@@ -6,7 +6,12 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
-Contract v9 retains private Duel chat, telemetry ACKs, authoritative Claims,
+Contract v10 adds the originating `clientMessageId` to confirmed Duel Chat
+messages so optimistic local messages can be reconciled without duplicates. A
+terminal snapshot also exposes `departedAccountIds`, allowing stale Rematch
+requests to disappear as soon as either participant leaves the result.
+
+Contract v9 retained private Duel chat, telemetry ACKs, authoritative Claims,
 Forfeit, Draw, idempotent Rematch and the v8 invite messages. It adds the
 terminal `player-disconnect` conclusion reason: after a running Match exceeds
 the reconnect grace period, the still-connected opponent receives an

@@ -32,9 +32,23 @@ assert.equal(requestIdForMessage({
 const metrics = new GatewayMetrics();
 metrics.increment('skribbl_duels_gateway_rate_limited_total', { scope: 'chat' });
 metrics.observe('skribbl_duels_gateway_queue_wait_seconds', 0.4, [0.25, 0.5, 1], { format: 'casual' });
+metrics.observeOutbound({
+  type: 'CLAIM_RESOLUTION',
+  matchId: 'match-redacted',
+  candidateId: 'candidate-redacted',
+  challengeId: 'bloodline',
+  definitionVersion: 4,
+  ownerAccountId: 'account-redacted',
+  accepted: true,
+  claimId: 'claim-redacted',
+  reason: 'server-telemetry-certified',
+  revision: 4,
+  occurredAt: 1_800_000_000_000
+});
 const prometheus = metrics.prometheus();
 assert.match(prometheus, /skribbl_duels_gateway_rate_limited_total\{scope="chat"\} 1/);
 assert.match(prometheus, /skribbl_duels_gateway_queue_wait_seconds_bucket\{format="casual",le="0.5"\} 1/);
+assert.match(prometheus, /skribbl_duels_gateway_claim_resolutions_total\{challenge="bloodline",outcome="accepted",reason="server-telemetry-certified",source="server-telemetry"\} 1/);
 assert.doesNotMatch(prometheus, /account-alpha|account-bravo/);
 
 console.log('Gateway abuse controls and PII-safe metrics runtime tests passed.');

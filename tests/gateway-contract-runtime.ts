@@ -13,7 +13,7 @@ const hello = {
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 9);
+assert.equal(GATEWAY_CONTRACT_VERSION, 10);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -149,6 +149,7 @@ assert.equal(isGatewayServerMessage({
     drawProposal: null,
     conclusion: null,
     rematchReadyAccountIds: [],
+    departedAccountIds: [],
     draft: null
   }
 }), true);
@@ -172,6 +173,7 @@ assert.equal(isGatewayServerMessage({
     drawProposal: null,
     conclusion: null,
     rematchReadyAccountIds: [],
+    departedAccountIds: [],
     draft: {
       status: 'selecting',
       requiredPickCount: 9,
@@ -199,6 +201,25 @@ assert.equal(isGatewayServerMessage({
   revision: 1,
   occurredAt: 1_500
 }), true);
+assert.equal(isGatewayServerMessage({
+  type: 'DUEL_CHAT_MESSAGE',
+  matchId: 'match-1',
+  messageId: 'message-1',
+  clientMessageId: 'chat-1',
+  authorAccountId: 'a',
+  authorDisplayName: 'Alpha',
+  message: 'Hello',
+  occurredAt: 1_500
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'DUEL_CHAT_MESSAGE',
+  matchId: 'match-1',
+  messageId: 'message-1',
+  authorAccountId: 'a',
+  authorDisplayName: 'Alpha',
+  message: 'Hello',
+  occurredAt: 1_500
+}), false);
 assert.equal(isGatewayServerMessage({
   type: 'INVITE_STATUS',
   requestId: 'invite-create-1',

@@ -137,8 +137,8 @@ assert(source.includes("element('div', 'typo-toast scd-duel-toast')"), 'Typo-com
 assert(source.includes("element('div', 'scd-toast-profile')") && source.includes("this.openPanel('match')"), 'Match Chat toast lacks the sender profile or click-to-open action');
 assert(source.includes('width:32px !important;height:32px !important'), 'Match Chat toast avatar is still overridden by Typo .avatar.fit sizing');
 assert(source.includes('.scd-duel-toast.clickable:hover { background:var(--COLOR_BUTTON_NORMAL_BG); }'), 'Clickable Match Chat toasts lack the requested Skribbl hover background');
-assert(source.includes('.scd-chat-toast { width:min(32rem,calc(100vw - 2rem))'), 'Match Chat toast width is not bounded to the viewport');
-assert(source.includes('text-overflow:ellipsis;white-space:nowrap'), 'Match Chat toast text does not use ellipsis overflow');
+assert(source.includes('.scd-chat-toast > span:not(.close-toast) { display:block;max-width:min(32rem,calc(100vw - 6rem));overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }'), 'Only the Match Chat message span should own ellipsis overflow');
+assert(!source.includes('.scd-chat-toast { width:'), 'Match Chat toast container still receives the message overflow width');
 assert(source.includes('private duelChatDraft =') && source.includes('this.duelChatDraft = input.value'), 'Duel Chat draft does not survive authoritative rerenders');
 assert(source.includes('evaluateDuelChatSpam(previousSpam, Date.now())'), 'Duel Chat does not mirror the authoritative Skribbl spam score');
 assert(source.includes("element('strong', '', message.message)"), 'Spam detected is not rendered as a bold Duel Chat system line');

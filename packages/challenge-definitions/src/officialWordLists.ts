@@ -54,13 +54,39 @@ declare const GM_xmlhttpRequest: XmlHttpRequester | undefined;
 
 const LIST_BASE = 'https://raw.githubusercontent.com/pospos21/words/main/lists/';
 const CACHE_PREFIX = 'skribblDuelsOfficialWordListV2:';
-const LANGUAGE_NAME_BY_ID: Record<number, string> = {
-  0: 'English',
-  1: 'German',
-  7: 'French',
-  14: 'Korean',
-  24: 'Spanish'
-};
+export const SKRIBBL_LANGUAGES = [
+  [0, 'English'],
+  [1, 'German'],
+  [2, 'Bulgarian'],
+  [3, 'Czech'],
+  [4, 'Danish'],
+  [5, 'Dutch'],
+  [6, 'Finnish'],
+  [7, 'French'],
+  [8, 'Estonian'],
+  [9, 'Greek'],
+  [10, 'Hebrew'],
+  [11, 'Hungarian'],
+  [12, 'Italian'],
+  [13, 'Japanese'],
+  [14, 'Korean'],
+  [15, 'Latvian'],
+  [16, 'Macedonian'],
+  [17, 'Norwegian'],
+  [18, 'Portuguese'],
+  [19, 'Polish'],
+  [20, 'Romanian'],
+  [21, 'Russian'],
+  [22, 'Serbian'],
+  [23, 'Slovakian'],
+  [24, 'Spanish'],
+  [25, 'Swedish'],
+  [26, 'Tagalog'],
+  [27, 'Turkish']
+] as const;
+
+export const SKRIBBL_LANGUAGE_NAME_BY_ID: Readonly<Record<number, string>> =
+  Object.freeze(Object.fromEntries(SKRIBBL_LANGUAGES));
 
 const lists = new Map<number, Set<string>>();
 const originalWords = new Map<number, string[]>();
@@ -207,8 +233,10 @@ function install(
 }
 
 function resolveLanguageName(languageId: number, languageName?: string | null): string | null {
+  const canonical = SKRIBBL_LANGUAGE_NAME_BY_ID[languageId];
+  if (canonical) return canonical;
   const candidate = languageName?.trim();
-  return candidate || statuses.get(languageId)?.languageName || LANGUAGE_NAME_BY_ID[languageId] || null;
+  return candidate || statuses.get(languageId)?.languageName || null;
 }
 
 function gmRequester(): XmlHttpRequester | null {
@@ -254,7 +282,7 @@ async function requestJson(url: string): Promise<unknown> {
 export function setOfficialWordListForTesting(
   languageId: number,
   words: readonly string[],
-  languageName = LANGUAGE_NAME_BY_ID[languageId] ?? `Test-${languageId}`
+  languageName = SKRIBBL_LANGUAGE_NAME_BY_ID[languageId] ?? `Test-${languageId}`
 ): void {
   install(languageId, languageName, words, 'test-fixture', false);
 }

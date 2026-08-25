@@ -21,6 +21,13 @@ export type ClaimValidationDecision =
   | { ok: true; instanceId: string; candidate: CompletionCandidate }
   | { ok: false; code: string; message: string };
 
+export interface GatewayPendingAuthorityCompletion {
+  instanceId: string;
+  challengeId: string;
+  definitionVersion: number;
+  candidate: CompletionCandidate;
+}
+
 export interface GatewayTelemetryAuthoritySnapshot {
   snapshotVersion: 1;
   accountId: string;
@@ -226,6 +233,26 @@ export class GatewayPlayerTelemetryAuthority {
       };
     }
     return { ok: true, instanceId, candidate };
+  }
+
+  /**
+   * The Gateway owns the same versioned Challenge Engine as the browser. A
+   * completion produced from accepted telemetry can therefore be awarded
+   * without waiting for a second, failure-prone browser Claim command.
+   */
+  public pendingCompletions(): GatewayPendingAuthorityCompletion[] {
+    const completions: GatewayPendingAuthorityCompletion[] = [];
+    for (const [challengeId, instanceId] of this.instanceIds) {
+      const runtime = this.engine.getInstance(instanceId);
+      if (runtime?.status !== 'completion-pending' || !runtime.completionCandidate) continue;
+      completions.push({
+        instanceId,
+        challengeId,
+        definitionVersion: runtime.definitionVersion,
+        candidate: runtime.completionCandidate
+      });
+    }
+    return completions;
   }
 
   public acceptClaim(instanceId: string, claimId: string, occurredAt: number): void {

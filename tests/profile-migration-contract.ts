@@ -27,6 +27,10 @@ const invisibleGrant = await readFile(resolve(
   process.cwd(),
   'supabase/admin/grant-invisible-avatar-template.sql'
 ), 'utf8');
+const nameColors = await readFile(resolve(
+  process.cwd(),
+  'supabase/migrations/202608280001_add_duel_name_colors.sql'
+), 'utf8');
 
 assert.match(migration, /create table if not exists public\.profiles/i);
 assert.match(migration, /id uuid primary key references auth\.users\(id\) on delete cascade/i);
@@ -72,6 +76,12 @@ assert.match(invisibleGrant, /insert into public\.avatar_invisible_entitlements/
 assert.match(invisibleGrant, /on conflict \(profile_id\) do nothing/i);
 assert.doesNotMatch(invisibleGrant, /c27ea4b9-984e-4efb-bfba-e9f77b28f1f4/i);
 assert.doesNotMatch(invisibleGrant, /service[_-]?role|secret|password|token/i);
+assert.match(nameColors, /name_color_index smallint not null default 26/i);
+assert.match(nameColors, /check \(name_color_index between 0 and 27\)/i);
+assert.match(nameColors, /duel_name_color_index smallint default 26/i);
+assert.match(nameColors, /name_color_index = duel_name_color_index/i);
+assert.match(nameColors, /grant execute on function public\.update_skribbl_duels_profile\(text,text,text,smallint\[\],text,smallint\) to authenticated/i);
+assert.doesNotMatch(nameColors, /grant\s+(insert|update|delete|all).*profiles.*to authenticated/i);
 
 console.log(JSON.stringify({
   profileTable: true,
@@ -87,4 +97,5 @@ console.log(JSON.stringify({
   , asciiAlphanumericDuelNames: true
   , invisibleAvatarEntitlements: true
   , safeInvisibleGrantTemplate: true
+  , duelNameColors: true
 }, null, 2));

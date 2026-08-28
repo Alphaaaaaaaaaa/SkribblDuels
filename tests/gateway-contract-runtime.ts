@@ -13,7 +13,7 @@ const hello = {
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 10);
+assert.equal(GATEWAY_CONTRACT_VERSION, 11);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -137,8 +137,8 @@ assert.equal(isGatewayServerMessage({
     format: 'ranked',
     phase: 'ready-check',
     participants: [
-      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null, invisibleAvatarEntitled: false },
-      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null, invisibleAvatarEntitled: false }
+      { accountId: 'a', displayName: 'Alpha', ready: false, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null, invisibleAvatarEntitled: false, nameColorIndex: 26 },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null, invisibleAvatarEntitled: false, nameColorIndex: 15 }
     ],
     readyDeadlineAt: 31_000,
     countdownEndsAt: null,
@@ -161,8 +161,8 @@ assert.equal(isGatewayServerMessage({
     format: 'casual',
     phase: 'draft',
     participants: [
-      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null, invisibleAvatarEntitled: false },
-      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null, invisibleAvatarEntitled: false }
+      { accountId: 'a', displayName: 'Alpha', ready: true, simulated: false, avatarSource: 'discord', avatarUrl: null, skribblAvatar: null, specialAvatarId: null, invisibleAvatarEntitled: false, nameColorIndex: 26 },
+      { accountId: 'b', displayName: 'Bot', ready: true, simulated: true, avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1], specialAvatarId: null, invisibleAvatarEntitled: false, nameColorIndex: 15 }
     ],
     readyDeadlineAt: null,
     countdownEndsAt: null,

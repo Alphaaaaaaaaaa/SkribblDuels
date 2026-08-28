@@ -70,7 +70,9 @@ function matchmakingParticipant(value: unknown): boolean {
     && nullableString(participant.avatarUrl)
     && skribblAvatar(participant.skribblAvatar)
     && nullableString(participant.specialAvatarId, 64)
-    && typeof participant.invisibleAvatarEntitled === 'boolean');
+    && typeof participant.invisibleAvatarEntitled === 'boolean'
+    && nonNegativeInteger(participant.nameColorIndex)
+    && Number(participant.nameColorIndex) <= 27);
 }
 
 function drawProposal(value: unknown): boolean {
@@ -434,7 +436,9 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
           && nonEmptyString(identity.displayName, 128)
           && (identity.discordUserId === null || nonEmptyString(identity.discordUserId))
           && (identity.invisibleAvatarEntitled === undefined
-            || typeof identity.invisibleAvatarEntitled === 'boolean'))
+            || typeof identity.invisibleAvatarEntitled === 'boolean')
+          && (identity.nameColorIndex === undefined
+            || (nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)))
         && finiteNumber(message.serverTime)
         && nonNegativeInteger(message.heartbeatIntervalMs)
         && (message.resumeStatus === 'not-requested'

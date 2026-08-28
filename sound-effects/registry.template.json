@@ -1,0 +1,18 @@
+{
+  "registryVersion": 1,
+  "assetRules": {
+    "acceptedFormats": ["ogg", "mp3", "wav"],
+    "missingAssetBehavior": "silent-noop",
+    "buttonEffectsDeferred": true
+  },
+  "sounds": {
+    "queueJoin": "sound-effects/queue-join.ogg",
+    "queueLeave": "sound-effects/queue-leave.ogg",
+    "countdownTick": "sound-effects/countdown.ogg",
+    "challengeCompletion": "sound-effects/challenge-completion.ogg",
+    "matchChatPing": "sound-effects/match-chat.ogg",
+    "matchFound": "sound-effects/match-found.ogg",
+    "intro": "sound-effects/intro.ogg",
+    "matchWin": "sound-effects/match-win.ogg"
+  }
+}

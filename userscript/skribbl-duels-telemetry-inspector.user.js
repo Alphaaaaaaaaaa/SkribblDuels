@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.56.0
+// @version      0.57.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif
@@ -1398,6 +1398,7 @@ var TELEMETRY_EVENT_CATEGORIES = {
 	CHAT_MESSAGE_RECEIVED: "chat",
 	SPAM_DETECTED: "chat",
 	TYPO_DROP_CLAIMED: "system",
+	TYPO_LOBBY_LEFT: "lobby",
 	TYPO_SKD_FILE_LOADED: "system",
 	TYPO_SKD_PASTED: "drawing",
 	TYPO_CHALLENGE_STATE_CHANGED: "system",
@@ -4299,6 +4300,7 @@ var CORE_SUPPORTED_TELEMETRY_EVENTS = [
 	"CHAT_MESSAGE_RECEIVED",
 	"SPAM_DETECTED",
 	"TYPO_DROP_CLAIMED",
+	"TYPO_LOBBY_LEFT",
 	"TYPO_SKD_FILE_LOADED",
 	"TYPO_SKD_PASTED",
 	"TYPO_CHALLENGE_STATE_CHANGED",
@@ -5056,6 +5058,32 @@ var TypoDropTelemetryAdapter = class {
 	pruneRecentClaims(now) {
 		for (const [key, timestamp] of this.recentClaimKeys) if (now - timestamp > this.duplicateWindowMs) this.recentClaimKeys.delete(key);
 	}
+};
+var TYPO_LOBBY_LEFT_DOM_EVENT_NAME = "leftLobby";
+/** Bridges Typo's public LobbyLeftEvent DOM signal into the versioned Contract. */
+var TypoLobbyLeftTelemetryAdapter = class {
+	telemetryStore;
+	started = false;
+	lastEmissionAt = 0;
+	constructor(telemetryStore) {
+		this.telemetryStore = telemetryStore;
+	}
+	start() {
+		if (this.started || typeof document === "undefined") return;
+		document.addEventListener(TYPO_LOBBY_LEFT_DOM_EVENT_NAME, this.handleLobbyLeft, true);
+		this.started = true;
+	}
+	stop() {
+		if (!this.started || typeof document === "undefined") return;
+		document.removeEventListener(TYPO_LOBBY_LEFT_DOM_EVENT_NAME, this.handleLobbyLeft, true);
+		this.started = false;
+	}
+	handleLobbyLeft = () => {
+		const now = Date.now();
+		if (now - this.lastEmissionAt < 250) return;
+		this.lastEmissionAt = now;
+		this.telemetryStore.emitDomEvent("TYPO_LOBBY_LEFT", { method: "typo-dom-event" }, { confidence: "confirmed" });
+	};
 };
 var TYPO_SKD_FILE_LOADED_EVENT_NAME = "skribbl-duels:typo-skd-loaded";
 var TYPO_SKD_PASTED_EVENT_NAME = "skribbl-duels:typo-skd-pasted";
@@ -12704,7 +12732,7 @@ var DebugPanel = class {
 		].join("\n");
 	}
 };
-var PRODUCT_CORE_VERSION = "0.5.0";
+var PRODUCT_CORE_VERSION = "0.6.0";
 var WORD_LIST_IDS = /* @__PURE__ */ new Set([
 	"mogged",
 	"smol-words",
@@ -13456,7 +13484,7 @@ var MatchTelemetryGateway = class {
 	}
 };
 var DEFAULT_PRODUCT_UI_SETTINGS = {
-	version: 4,
+	version: 5,
 	board: {
 		visible: true,
 		mode: "anchor",
@@ -13481,10 +13509,17 @@ var DEFAULT_PRODUCT_UI_SETTINGS = {
 	panelTab: "duel",
 	completionMessages: true,
 	winAnimation: true,
-	chatNotifications: true
+	chatNotifications: true,
+	matchChatMessages: true,
+	matchChatCommandPrefix: "/sdchat",
+	sfxVolume: 82,
+	matchChatPings: true
 };
 function clamp(value, min, max) {
 	return Math.min(max, Math.max(min, value));
+}
+function normalizeMatchChatCommandPrefix(value) {
+	return `/${(typeof value === "string" ? value.trim() : "").replace(/^\/+/, "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24).toLocaleLowerCase("en-US") || "sdchat"}`;
 }
 function normalizeProductUiSettings(value) {
 	const input = value && typeof value === "object" ? value : {};
@@ -13508,7 +13543,7 @@ function normalizeProductUiSettings(value) {
 		"bottom-right"
 	]);
 	return {
-		version: 4,
+		version: 5,
 		board: {
 			visible: typeof boardInput.visible === "boolean" ? boardInput.visible : DEFAULT_PRODUCT_UI_SETTINGS.board.visible,
 			mode: boardInput.mode === "custom" ? "custom" : "anchor",
@@ -13533,7 +13568,11 @@ function normalizeProductUiSettings(value) {
 		panelTab: validTabs.has(String(input.panelTab)) ? input.panelTab : DEFAULT_PRODUCT_UI_SETTINGS.panelTab,
 		completionMessages: typeof input.completionMessages === "boolean" ? input.completionMessages : DEFAULT_PRODUCT_UI_SETTINGS.completionMessages,
 		winAnimation: typeof input.winAnimation === "boolean" ? input.winAnimation : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation,
-		chatNotifications: typeof input.chatNotifications === "boolean" ? input.chatNotifications : DEFAULT_PRODUCT_UI_SETTINGS.chatNotifications
+		chatNotifications: typeof input.chatNotifications === "boolean" ? input.chatNotifications : DEFAULT_PRODUCT_UI_SETTINGS.chatNotifications,
+		matchChatMessages: typeof input.matchChatMessages === "boolean" ? input.matchChatMessages : DEFAULT_PRODUCT_UI_SETTINGS.matchChatMessages,
+		matchChatCommandPrefix: normalizeMatchChatCommandPrefix(input.matchChatCommandPrefix),
+		sfxVolume: Number.isFinite(input.sfxVolume) ? clamp(Math.round(Number(input.sfxVolume)), 0, 100) : DEFAULT_PRODUCT_UI_SETTINGS.sfxVolume,
+		matchChatPings: typeof input.matchChatPings === "boolean" ? input.matchChatPings : DEFAULT_PRODUCT_UI_SETTINGS.matchChatPings
 	};
 }
 var LocalStorageProductUiSettingsStore = class {
@@ -13647,7 +13686,7 @@ function skribblAvatar(value) {
 }
 function matchmakingParticipant(value) {
 	const participant = record(value);
-	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean" && (participant.avatarSource === "discord" || participant.avatarSource === "skribbl") && nullableString(participant.avatarUrl) && skribblAvatar(participant.skribblAvatar) && nullableString(participant.specialAvatarId, 64) && typeof participant.invisibleAvatarEntitled === "boolean");
+	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean" && (participant.avatarSource === "discord" || participant.avatarSource === "skribbl") && nullableString(participant.avatarUrl) && skribblAvatar(participant.skribblAvatar) && nullableString(participant.specialAvatarId, 64) && typeof participant.invisibleAvatarEntitled === "boolean" && nonNegativeInteger(participant.nameColorIndex) && Number(participant.nameColorIndex) <= 27);
 }
 function drawProposal(value) {
 	const proposal = record(value);
@@ -13715,7 +13754,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 10 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean")) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 11 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -13778,7 +13817,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.56.0";
+var GATEWAY_CLIENT_VERSION = "0.57.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -17333,7 +17372,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 10,
+				contractVersion: 11,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -17372,7 +17411,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v10 message.`
+				error: `Gateway sent an invalid Contract v11 message.`
 			});
 			return;
 		}
@@ -17693,7 +17732,7 @@ var SUPABASE_PROJECT_URL = configuredValue("https://kryznzijjlqkixdxqkft.supabas
 var SUPABASE_PUBLISHABLE_KEY = configuredValue("sb_publishable_6SOSKRreA8lHr-7aRZsq6w_361QcD9J", "sb_publishable_6SOSKRreA8lHr-7aRZsq6w_361QcD9J");
 var SUPABASE_AUTH_REDIRECT_URL = configuredValue("https://skribbl.io/", "https://skribbl.io/");
 var SUPABASE_AUTH_STORAGE_KEY = "skribblDuelsSupabaseAuthV1";
-var AUTH_CLIENT_VERSION = "0.35.2";
+var AUTH_CLIENT_VERSION = "0.36.0";
 var resolveFetch$3 = (customFetch) => {
 	if (customFetch) return (...args) => customFetch(...args);
 	return (...args) => fetch(...args);
@@ -38459,6 +38498,7 @@ var SupabaseDiscordAuthClient = class {
 		if (displayNameError === "too-long") throw new Error("Duel display name must contain no more than 24 characters.");
 		if (displayNameError === "non-alphanumeric") throw new Error("Duel display name may contain only A-Z, a-z and 0-9.");
 		if (update.avatarSource === "skribbl" && !update.skribblAvatar) throw new Error("Select or capture a Skribbl avatar first.");
+		if (!Number.isInteger(update.nameColorIndex) || update.nameColorIndex < 0 || update.nameColorIndex > 27) throw new Error("Duel name color index must be between 0 and 27.");
 		const client = await this.ensureClient();
 		if (!client.rpc) throw new Error("Profile updates are unavailable in this client build.");
 		const { error } = await client.rpc("update_skribbl_duels_profile", {
@@ -38466,7 +38506,8 @@ var SupabaseDiscordAuthClient = class {
 			duel_preferred_language: update.preferredLanguage,
 			duel_avatar_source: update.avatarSource,
 			duel_skribbl_avatar: update.avatarSource === "skribbl" ? update.skribblAvatar : null,
-			duel_special_avatar_id: update.avatarSource === "skribbl" ? update.specialAvatarId : null
+			duel_special_avatar_id: update.avatarSource === "skribbl" ? update.specialAvatarId : null,
+			duel_name_color_index: update.nameColorIndex
 		});
 		if (error) throw new Error(error.message ?? "Unable to update the Skribbl Duels profile.");
 	}
@@ -38630,22 +38671,235 @@ function bindReliableButtonAction(button, action) {
 		suppressionTimer = null;
 	});
 }
+var EMBEDDED_SOUND_ASSETS = {};
+var SoundEffectPlayer = class {
+	assets;
+	createAudio;
+	volume = .82;
+	constructor(assets = EMBEDDED_SOUND_ASSETS, createAudio = (source) => new Audio(source)) {
+		this.assets = assets;
+		this.createAudio = createAudio;
+	}
+	setVolume(percent) {
+		const normalized = Number.isFinite(percent) ? Math.round(percent) : 82;
+		this.volume = Math.min(100, Math.max(0, normalized)) / 100;
+	}
+	play(soundId) {
+		const source = this.assets[soundId];
+		if (!source || this.volume <= 0) return false;
+		try {
+			const audio = this.createAudio(source);
+			audio.volume = this.volume;
+			audio.currentTime = 0;
+			const attempt = audio.play();
+			if (attempt && typeof attempt.catch === "function") attempt.catch(() => void 0);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+};
+var DUEL_NAME_COLORS = [
+	{
+		index: 0,
+		colors: ["#ed2b34"]
+	},
+	{
+		index: 1,
+		colors: ["#ff7b00"]
+	},
+	{
+		index: 2,
+		colors: ["#ffff1b"]
+	},
+	{
+		index: 3,
+		colors: ["#67db14"]
+	},
+	{
+		index: 4,
+		colors: ["#00f2ff"]
+	},
+	{
+		index: 5,
+		colors: ["#4058f6"]
+	},
+	{
+		index: 6,
+		colors: ["#ab04f9"]
+	},
+	{
+		index: 7,
+		colors: ["#ff75db"]
+	},
+	{
+		index: 8,
+		colors: ["#00eda2"]
+	},
+	{
+		index: 9,
+		colors: ["#ff7a7d"]
+	},
+	{
+		index: 10,
+		colors: ["#847e87"]
+	},
+	{
+		index: 11,
+		colors: ["#423f43"]
+	},
+	{
+		index: 12,
+		colors: ["#8f563b"]
+	},
+	{
+		index: 13,
+		colors: ["#663931"]
+	},
+	{
+		index: 14,
+		colors: ["#eec39a"]
+	},
+	{
+		index: 15,
+		colors: ["#ed2b34", "#aa1f00"]
+	},
+	{
+		index: 16,
+		colors: ["#ffff1b", "#fecc10"]
+	},
+	{
+		index: 17,
+		colors: ["#67db14", "#4f8b01"]
+	},
+	{
+		index: 18,
+		colors: ["#1cffff", "#45beff"]
+	},
+	{
+		index: 19,
+		colors: ["#4058f6", "#3f25d7"]
+	},
+	{
+		index: 20,
+		colors: ["#e23af2", "#ab04f9"]
+	},
+	{
+		index: 21,
+		colors: ["#9badb7", "#847e87"]
+	},
+	{
+		index: 22,
+		colors: ["#8f563b", "#663931"]
+	},
+	{
+		index: 23,
+		colors: ["#eec39a", "#ed9e6d"]
+	},
+	{
+		index: 24,
+		colors: ["#00eda2", "#09a98f"]
+	},
+	{
+		index: 25,
+		colors: ["#ff7a7d", "#d84c69"]
+	},
+	{
+		index: 26,
+		colors: ["#ffffff"]
+	},
+	{
+		index: 27,
+		colors: ["#ffffff", "#e8e8e8"]
+	}
+];
+function normalizeDuelNameColorIndex(value) {
+	const index = Number(value);
+	return Number.isInteger(index) && index >= 0 && index < DUEL_NAME_COLORS.length ? index : 26;
+}
+function duelNameColorAtlasPosition(indexValue) {
+	const index = normalizeDuelNameColorIndex(indexValue);
+	return `${-(index % 10) * 100}% ${-Math.floor(index / 10) * 100}%`;
+}
+function duelClaimColorBackground(indexValue) {
+	const definition = DUEL_NAME_COLORS[normalizeDuelNameColorIndex(indexValue)];
+	if (definition.colors.length === 1) return `color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 35%,${definition.colors[0]})`;
+	return `repeating-linear-gradient(135deg,${definition.colors[0]} 0 12px,${definition.colors[1]} 12px 24px)`;
+}
+function splitNameGraphemes(value) {
+	const Segmenter = Intl.Segmenter;
+	if (!Segmenter) return Array.from(value);
+	return [...new Segmenter(void 0, { granularity: "grapheme" }).segment(value)].map((item) => item.segment);
+}
+function appendColoredDuelName(target, name, indexValue) {
+	const definition = DUEL_NAME_COLORS[normalizeDuelNameColorIndex(indexValue)];
+	splitNameGraphemes(name).forEach((grapheme, index) => {
+		const span = document.createElement("span");
+		span.className = "scd-colored-name-grapheme";
+		span.style.color = definition.colors[index % definition.colors.length];
+		span.textContent = grapheme;
+		target.appendChild(span);
+	});
+}
+function parseMatchChatCommand(value, configuredPrefix) {
+	const prefix = normalizeMatchChatCommandPrefix(configuredPrefix);
+	if (value.toLocaleLowerCase("en-US") === prefix) return {
+		matched: true,
+		message: ""
+	};
+	if (!value.toLocaleLowerCase("en-US").startsWith(`${prefix} `) && !value.toLocaleLowerCase("en-US").startsWith(`${prefix}\t`)) return {
+		matched: false,
+		message: ""
+	};
+	return {
+		matched: true,
+		message: value.slice(prefix.length).trim()
+	};
+}
+function isMatchChatCommandPreviewRelevant(value, configuredPrefix) {
+	const prefix = normalizeMatchChatCommandPrefix(configuredPrefix);
+	const typed = value.trimStart().toLocaleLowerCase("en-US");
+	return typed === "/" || prefix.startsWith(typed) || typed === prefix || typed.startsWith(`${prefix} `) || typed.startsWith(`${prefix}\t`);
+}
 var SAFE_HOME_EVENT_TYPES = /* @__PURE__ */ new Set([
 	"AVATAR_RANDOMIZED",
 	"LOGO_AVATAR_CLICKED",
 	"SPECIAL_AVATAR_FOUND"
 ]);
 var SAFE_LEAVE_REASONS = new Set(Object.values(LEAVE_REASON_NAMES));
+var LOBBY_ENTRY_EVENT_TYPES = /* @__PURE__ */ new Set([
+	"LOBBY_JOIN_REQUESTED",
+	"PRIVATE_LOBBY_CREATE_REQUESTED",
+	"LOGIN_SUBMITTED"
+]);
+function createHomepageMatchmakingAuthority(startedOnVisibleHomepage, lobby) {
+	const lobbyIsEmpty = !lobby.hydrated && lobby.lobbySessionId === null && lobby.lobbyId === null && lobby.playerCount === 0 && (lobby.gameStateName === "DISCONNECTED" || lobby.gameStateName === "HOME");
+	if (startedOnVisibleHomepage && lobbyIsEmpty) return "home";
+	return lobby.lobbySessionId !== null || lobby.lobbyId !== null || lobby.playerCount > 0 ? "lobby" : "unknown";
+}
+function confirmsHomepage(event) {
+	if (event.type === "TYPO_LOBBY_LEFT") return true;
+	if (SAFE_HOME_EVENT_TYPES.has(event.type)) return true;
+	if (event.type !== "PLAYER_LEFT" || event.actor?.isSelf !== true) return false;
+	return typeof event.payload.reasonName === "string" && SAFE_LEAVE_REASONS.has(event.payload.reasonName);
+}
+/**
+* Reduces the current-runtime authority instead of blindly inspecting the
+* newest event. Neutral bootstrap noise must not invalidate a clean homepage
+* reload, while lobby context or an outgoing join request fails closed.
+*/
+function reduceHomepageMatchmakingAuthority(current, event) {
+	if (confirmsHomepage(event)) return "home";
+	if (LOBBY_ENTRY_EVENT_TYPES.has(event.type) || event.context.lobbySessionId !== null || event.context.lobbyId !== null) return "lobby";
+	return current;
+}
 /**
 * DOM visibility can be forged from DevTools. The latest accepted Telemetry
 * event therefore also has to describe either an untouched homepage, a benign
 * homepage interaction, or the local player's confirmed lobby departure.
 */
-function isHomepageTelemetryEligible(lastEvent) {
-	if (lastEvent === null) return true;
-	if (SAFE_HOME_EVENT_TYPES.has(lastEvent.type)) return true;
-	if (lastEvent.type !== "PLAYER_LEFT" || lastEvent.actor?.isSelf !== true) return false;
-	return typeof lastEvent.payload.reasonName === "string" && SAFE_LEAVE_REASONS.has(lastEvent.payload.reasonName);
+function isHomepageTelemetryEligible(authority) {
+	return authority === "home";
 }
 var ISOLATED_POINTER_EVENTS = [
 	"pointerdown",
@@ -38665,6 +38919,7 @@ var PROFILE_COPY = {
 		displayName: "Duel display name",
 		preferredLanguage: "Preferred language",
 		versusAvatar: "Versus avatar",
+		nameColor: "Custom name and claim color",
 		discordAvatar: "Discord profile image",
 		skribblAvatar: "Current Skribbl avatar",
 		save: "Save profile",
@@ -38684,6 +38939,7 @@ var PROFILE_COPY = {
 		displayName: "Duel-Anzeigename",
 		preferredLanguage: "Bevorzugte Sprache",
 		versusAvatar: "Versus-Avatar",
+		nameColor: "Benutzerdefinierte Namens- und Claim-Farbe",
 		discordAvatar: "Discord-Profilbild",
 		skribblAvatar: "Aktueller Skribbl-Avatar",
 		save: "Profil speichern",
@@ -38843,14 +39099,16 @@ function wrapTooltipText(value, width = 50) {
 }
 var CompletionChatAdapter = class {
 	enabled;
+	matchChatEnabled;
 	runtimeId;
 	insertedClaimIds = /* @__PURE__ */ new Set();
 	pending = [];
 	pendingWins = [];
 	pendingMatchChat = [];
 	mountGuard = null;
-	constructor(enabled, runtimeId) {
+	constructor(enabled, matchChatEnabled, runtimeId) {
 		this.enabled = enabled;
+		this.matchChatEnabled = matchChatEnabled;
 		this.runtimeId = runtimeId;
 	}
 	start() {
@@ -38874,6 +39132,7 @@ var CompletionChatAdapter = class {
 		const messageId = `match-chat:${message.messageId}`;
 		if (this.insertedClaimIds.has(messageId)) return;
 		this.insertedClaimIds.add(messageId);
+		if (!this.matchChatEnabled()) return;
 		this.pendingMatchChat.push(message);
 		queueMicrotask(() => this.flush());
 	}
@@ -39064,6 +39323,28 @@ var CompletionChatAdapter = class {
 .scd-profile-field .scd-label { min-width:0; }
 .scd-profile-field input { min-width:0;max-width:100%; }
 .scd-profile-error { color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800;white-space:pre-wrap; }
+.scd-profile-color-button { min-height:36px;font-weight:800;letter-spacing:.02em; }
+.scd-colored-name-grapheme { text-shadow:1px 1px 0 rgba(0,0,0,.35); }
+.scd-profile-color-modal { width:min(420px,calc(100vw - 24px)); }
+.scd-profile-color-header { display:flex;justify-content:flex-end;padding:8px; }
+.scd-profile-color-body { display:flex;flex-direction:column;align-items:center;gap:18px;padding:12px 22px 28px; }
+.scd-color-customizer { display:flex;align-items:stretch;justify-content:center;gap:14px; }
+.scd-color-customizer .arrows { display:flex;flex-direction:column;justify-content:space-around; }
+.scd-color-customizer .arrow { filter:drop-shadow(0 0 3px rgba(0,0,0,.15));flex:0 0 auto;cursor:pointer;width:34px;height:34px;background-image:url('/img/arrow.gif');background-size:200%;background-repeat:no-repeat; }
+.scd-color-customizer .arrows.left .arrow { background-position:0 0; }
+.scd-color-customizer .arrows.left .arrow:hover { background-position:100% 0; }
+.scd-color-customizer .arrows.right .arrow { background-position:0 100%; }
+.scd-color-customizer .arrows.right .arrow:hover { background-position:100% 100%; }
+.scd-color-customizer .container { width:130px;height:130px;display:grid;place-items:center; }
+.scd-color-customizer .avatar { position:relative;width:110px;height:110px; }
+.scd-color-customizer .avatar .color { position:absolute;inset:0;background-image:url('/img/avatar/color_atlas.gif');background-size:1000% 1000%;image-rendering:pixelated; }
+.scd-color-name-preview { min-height:36px;display:flex;align-items:center;justify-content:center;font-size:1.5em;font-weight:900; }
+.scd-volume-group .scd-volume-title { position:relative;display:flex;align-items:center;font-size:1.3em;font-weight:700;margin-bottom:.1em; }
+.scd-volume-group .scd-volume-icon { display:inline-block;width:1.4em;height:1.4em;margin-right:.5ch;background-image:url('/img/audio.gif');background-size:contain;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)); }
+.scd-volume-group .scd-volume-icon.muted { background-image:url('/img/audio_off.gif'); }
+.scd-volume-group .scd-volume-value { margin-left:.5ch; }
+.scd-volume-group input[type='range'] { width:100%; }
+.scd-match-chat-command-preview { border-left:3px solid var(--COLOR_PANEL_BUTTON,#2a51d1);padding-left:.5rem; }
 .scd-skribbl-avatar { position:relative;width:100%;height:100%;image-rendering:pixelated; }
 .scd-skribbl-avatar .color,.scd-skribbl-avatar .eyes,.scd-skribbl-avatar .mouth { position:absolute;width:100%;height:100%;background-size:1000% 1000%; }
 .scd-skribbl-avatar .color { background-image:url('https://skribbl.io/img/avatar/color_atlas.gif'); }
@@ -39195,7 +39476,8 @@ var CompletionChatAdapter = class {
 			paragraph.dataset.scdRuntimeId = this.runtimeId;
 			paragraph.dataset.skribblDuelsClaimId = message.claimId;
 			const bold = document.createElement("b");
-			bold.textContent = `${message.playerName} has completed '${message.challengeName}'!`;
+			appendColoredDuelName(bold, message.playerName, message.nameColorIndex);
+			bold.appendChild(document.createTextNode(` has completed '${message.challengeName}'!`));
 			paragraph.append(bold, document.createElement("span"));
 			target.appendChild(paragraph);
 			target.scrollTop = target.scrollHeight;
@@ -39210,7 +39492,10 @@ var CompletionChatAdapter = class {
 			paragraph.className = `skribbl-duels-completion win ${parity}`;
 			paragraph.dataset.scdRuntimeId = this.runtimeId;
 			paragraph.dataset.skribblDuelsClaimId = messageId;
-			paragraph.appendChild(element("b", "", `${message.playerName} won after ${formatDurationWords(message.elapsedMs)}!`));
+			const bold = element("b");
+			appendColoredDuelName(bold, message.playerName, message.nameColorIndex);
+			bold.appendChild(document.createTextNode(` won after ${formatDurationWords(message.elapsedMs)}!`));
+			paragraph.appendChild(bold);
 			target.appendChild(paragraph);
 			target.scrollTop = target.scrollHeight;
 		}
@@ -39224,7 +39509,10 @@ var CompletionChatAdapter = class {
 			paragraph.dataset.scdRuntimeId = this.runtimeId;
 			paragraph.dataset.skribblDuelsMatchChatId = messageId;
 			const copy = element("span", "scd-match-chat-message");
-			copy.append(element("b", "", `${message.author}: `), document.createTextNode(message.message));
+			const author = element("b");
+			appendColoredDuelName(author, message.author, message.nameColorIndex);
+			author.appendChild(document.createTextNode(": "));
+			copy.append(author, document.createTextNode(message.message));
 			paragraph.append(message.avatar, copy);
 			target.appendChild(paragraph);
 			target.scrollTop = target.scrollHeight;
@@ -39356,6 +39644,9 @@ var DuelProductFoundation = class {
 	board = null;
 	boardGrid = null;
 	winAnimation = null;
+	profileColorPicker = null;
+	profileColorDraftIndex = null;
+	showProfileEntitlementFeedback = false;
 	mountGuard = null;
 	draftSlotTimer = null;
 	introTimer = null;
@@ -39370,6 +39661,7 @@ var DuelProductFoundation = class {
 	duelChatMessages = [];
 	activeTab;
 	tooltips;
+	soundEffects;
 	authClient = new SupabaseDiscordAuthClient();
 	gatewayClient;
 	authState;
@@ -39391,10 +39683,12 @@ var DuelProductFoundation = class {
 	forfeitAfterReconnectMatchId = null;
 	processedGatewayChatIds = /* @__PURE__ */ new Set();
 	processedClaimResolutionIds = /* @__PURE__ */ new Set();
+	playedCompletionSoundIds = /* @__PURE__ */ new Set();
 	submittedClaimCandidateIds = /* @__PURE__ */ new Set();
 	deferredTelemetryEvents = [];
 	awaitingTelemetryResumeCursor = false;
 	lastTelemetryEvent;
+	homepageMatchmakingAuthority;
 	restoreDuelChatFocus = false;
 	duelChatScrollTop = 0;
 	duelChatStickToBottom = true;
@@ -39407,6 +39701,10 @@ var DuelProductFoundation = class {
 	chatNotificationStartedAt = Date.now();
 	draftKeydown = (event) => this.handleDraftKeydown(event);
 	duelChatKeydown = (event) => this.handleDuelChatKeydown(event);
+	typoCommandPreviewInput = (event) => {
+		if (!(event.target instanceof HTMLInputElement) || event.target.id !== "typo-command-input") return;
+		queueMicrotask(() => this.ensureTypoCommandPreview());
+	};
 	visibilityRecovery = () => this.reconcileAfterVisibilityRecovery();
 	pendingRestoredMatchId;
 	suppressExternalConclusionForMatchIds = /* @__PURE__ */ new Set();
@@ -39428,12 +39726,16 @@ var DuelProductFoundation = class {
 		this.matchStore = new MatchStateStore(persisted?.state);
 		this.awaitingTelemetryResumeCursor = persisted?.state.phase === "running" && persisted.state.matchId !== null;
 		this.lastTelemetryEvent = options.getLastTelemetryEvent();
+		this.homepageMatchmakingAuthority = createHomepageMatchmakingAuthority(this.isHomepageDomVisible(), options.getLobbyAuthoritySnapshot());
+		if (this.lastTelemetryEvent) this.homepageMatchmakingAuthority = reduceHomepageMatchmakingAuthority(this.homepageMatchmakingAuthority, this.lastTelemetryEvent);
 		this.telemetryGateway = new MatchTelemetryGateway(this.matchStore);
 		const restoredSettings = this.settingsStore.get();
 		this.settings = restoredSettings.panelOpen ? this.settingsStore.update({ panelOpen: false }) : restoredSettings;
+		this.soundEffects = new SoundEffectPlayer();
+		this.soundEffects.setVolume(this.settings.sfxVolume);
 		this.matchState = this.matchStore.getState();
 		this.activeTab = this.settings.panelTab;
-		this.chatAdapter = new CompletionChatAdapter(() => this.settings.completionMessages, options.runtimeId);
+		this.chatAdapter = new CompletionChatAdapter(() => this.settings.completionMessages, () => this.settings.matchChatMessages, options.runtimeId);
 		this.authState = this.authClient.getState();
 		this.gatewayClient = new SocketIoGatewayClient({
 			endpoint: GATEWAY_URL,
@@ -39452,6 +39754,7 @@ var DuelProductFoundation = class {
 		this.tooltips.start();
 		document.addEventListener("keydown", this.draftKeydown, true);
 		document.addEventListener("visibilitychange", this.visibilityRecovery, true);
+		document.addEventListener("input", this.typoCommandPreviewInput, true);
 		window.addEventListener("keydown", this.duelChatKeydown, true);
 		window.addEventListener("focus", this.visibilityRecovery, false);
 		this.unsubscribers.push(this.gatewayClient.subscribe((state) => {
@@ -39461,7 +39764,8 @@ var DuelProductFoundation = class {
 			const drawProposalAppeared = nextDrawProposalId !== null && nextDrawProposalId !== previousDrawProposalId;
 			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
 			const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
-			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName;
+			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName || previous.identity?.nameColorIndex !== state.identity?.nameColorIndex;
+			if (previous.queue && !state.queue && state.match && previous.match?.matchId !== state.match.matchId) this.soundEffects.play("matchFound");
 			if (matchChanged) this.matchActionError = null;
 			this.gatewayState = state;
 			if (drawProposalAppeared) this.lastVisibleDrawProposalId = nextDrawProposalId;
@@ -39501,6 +39805,7 @@ var DuelProductFoundation = class {
 		this.unsubscribers.push(this.settingsStore.subscribe((settings) => {
 			const tabChanged = this.activeTab !== settings.panelTab;
 			this.settings = settings;
+			this.soundEffects.setVolume(settings.sfxVolume);
 			this.activeTab = settings.panelTab;
 			this.renderVisibility();
 			this.renderBoardPosition();
@@ -39528,13 +39833,14 @@ var DuelProductFoundation = class {
 		this.mountGuard = window.setInterval(() => {
 			this.removeForeignRuntimeDom();
 			this.ensureMounted();
+			this.ensureTypoCommandPreview();
 			this.tickGatewayClock();
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.56.0",
+			version: "0.57.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 10,
+			gatewayContractVersion: 11,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -39619,6 +39925,7 @@ var DuelProductFoundation = class {
 		this.tooltips.stop();
 		document.removeEventListener("keydown", this.draftKeydown, true);
 		document.removeEventListener("visibilitychange", this.visibilityRecovery, true);
+		document.removeEventListener("input", this.typoCommandPreviewInput, true);
 		window.removeEventListener("keydown", this.duelChatKeydown, true);
 		window.removeEventListener("focus", this.visibilityRecovery, false);
 		this.gatewayClient.stop();
@@ -39630,9 +39937,11 @@ var DuelProductFoundation = class {
 		this.homeButton?.remove();
 		this.board?.remove();
 		this.winAnimation?.remove();
+		this.profileColorPicker?.remove();
 		document.querySelectorAll(".scd-duel-toast").forEach((toast) => {
 			if (toast.dataset.scdRuntimeId === this.options.runtimeId) toast.remove();
 		});
+		document.querySelectorAll("[data-scd-match-chat-command-preview]").forEach((node) => node.remove());
 		if (this.introTimer !== null) window.clearTimeout(this.introTimer);
 		this.introTimer = null;
 		if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
@@ -39653,9 +39962,10 @@ var DuelProductFoundation = class {
 		this.board = null;
 		this.boardGrid = null;
 		this.winAnimation = null;
+		this.profileColorPicker = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.56.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.57.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -39946,6 +40256,7 @@ var DuelProductFoundation = class {
 		try {
 			sessionStorage.setItem("skribblDuelsIntroSeenV1", "1");
 		} catch {}
+		this.soundEffects.play("intro");
 		this.intro?.remove();
 		const intro = element("div", "scd-modal-overlay");
 		intro.id = "skribbl-duels-intro";
@@ -40204,7 +40515,10 @@ var DuelProductFoundation = class {
 			const node = element("div", "scd-field");
 			this.tooltips.register(node, challengeTooltip(this.manifest, field.challengeId));
 			if (field.status === "pending") node.classList.add("pending");
-			if (field.status === "claimed" && field.owner) node.classList.add(field.owner);
+			if (field.status === "claimed" && field.owner) {
+				node.classList.add(field.owner);
+				node.style.background = duelClaimColorBackground(this.duelNameColorIndex(field.owner));
+			}
 			node.appendChild(this.createChallengeIcon(field.challengeId));
 			if (this.settings.board.showNames) node.appendChild(element("span", "scd-field-name", challengeName(this.manifest, field.challengeId)));
 			this.boardGrid.appendChild(node);
@@ -40266,7 +40580,9 @@ var DuelProductFoundation = class {
 		const avatar = this.createParticipantAvatar(displayName, participant, "scd-versus-avatar");
 		const status = element("div", "scd-ready-state");
 		status.append(this.createIconAsset(ready ? "challenge-icons/checkmark.gif" : "challenge-icons/crossmark.gif", ready ? "\u2713" : "\u00D7", ready ? "Ready" : "Not ready"), element("span", "", ready ? "Ready" : "Not ready"));
-		player.append(avatar, element("div", "scd-versus-name", displayName), status);
+		const name = element("div", "scd-versus-name");
+		appendColoredDuelName(name, displayName, participant?.nameColorIndex);
+		player.append(avatar, name, status);
 		return player;
 	}
 	createParticipantAvatar(displayName, participant, className = "scd-result-avatar") {
@@ -40379,6 +40695,7 @@ var DuelProductFoundation = class {
 				flight.dataset.scdCountdownPhase = phase;
 				flight.replaceChildren();
 				if (phase !== "waiting") {
+					if (phase !== "GO") this.soundEffects.play("countdownTick");
 					const phaseNode = element("div", `scd-countdown-phase${phase === "GO" ? " go" : ""}`);
 					(phase === "GO" ? [
 						"challenge-icons/countdown_G.gif",
@@ -40940,8 +41257,14 @@ var DuelProductFoundation = class {
 				log.appendChild(line);
 				continue;
 			}
-			const author = element("strong", "", `${message.author} `);
-			author.style.color = winnerMessage ? "var(--COLOR_CHAT_TEXT_OWNER,#ffa844)" : message.side === "self" ? "var(--SCD_SELF)" : message.side === "opponent" ? "var(--SCD_OPPONENT)" : "var(--SCD_ACCENT)";
+			const author = element("strong");
+			if (message.side === "self" || message.side === "opponent") {
+				appendColoredDuelName(author, message.author, message.nameColorIndex ?? this.duelNameColorIndex(message.side));
+				author.appendChild(document.createTextNode(" "));
+			} else {
+				author.textContent = `${message.author} `;
+				author.style.color = winnerMessage ? "var(--COLOR_CHAT_TEXT_OWNER,#ffa844)" : "var(--SCD_ACCENT)";
+			}
 			line.append(author, document.createTextNode(message.message), element("small", "scd-muted", ` \u00B7 ${formatTime(message.occurredAt)}`));
 			log.appendChild(line);
 		}
@@ -40951,8 +41274,8 @@ var DuelProductFoundation = class {
 			const row = element("div", "scd-chat-rematch-request-row");
 			const avatar = this.createParticipantAvatar(rematchRequester.displayName, rematchRequester, "scd-chat-rematch-avatar");
 			if (this.gatewayState.match?.state.conclusion?.winnerAccountId === rematchRequester.accountId) avatar.appendChild(element("span", "owner"));
-			const name = element("strong", "", rematchRequester.displayName);
-			name.style.color = "var(--SCD_OPPONENT)";
+			const name = element("strong");
+			appendColoredDuelName(name, rematchRequester.displayName, rematchRequester.nameColorIndex);
 			row.append(avatar, name, element("span", "", "requests a Rematch."));
 			const accept = element("button", "scd-button scd-chat-rematch-accept", "Rematch");
 			accept.type = "button";
@@ -41032,6 +41355,32 @@ var DuelProductFoundation = class {
 			this.lastVisibleDrawProposalId = null;
 		});
 	}
+	ensureTypoCommandPreview() {
+		const input = document.querySelector("#typo-command-input");
+		const existing = document.querySelector("[data-scd-match-chat-command-preview]");
+		if (!input || !isMatchChatCommandPreviewRelevant(input.value, this.settings.matchChatCommandPrefix)) {
+			existing?.remove();
+			return;
+		}
+		const preview = document.querySelector(".typo-command-preview");
+		if (!preview) return;
+		const parsed = parseMatchChatCommand(input.value, this.settings.matchChatCommandPrefix);
+		const row = existing ?? element("div", "typo-command-result scd-match-chat-command-preview");
+		row.dataset.scdMatchChatCommandPreview = "true";
+		row.dataset.scdRuntimeId = this.options.runtimeId;
+		row.replaceChildren();
+		const synopsis = element("div", "typo-command-result-synopsis");
+		synopsis.append(element("div", "typo-command-result-id current", this.settings.matchChatCommandPrefix), element("div", `typo-command-result-arg${parsed.message ? " current" : ""}`, "text"));
+		const description = element("div", "typo-command-result-description", "Send a private Skribbl Duels Match Chat message.");
+		const state = element("div", "typo-command-result-state");
+		const icon = document.createElement("img");
+		icon.src = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+		icon.alt = parsed.message ? "enabled" : "message required";
+		icon.style.content = `var(--${parsed.message ? "file-img-enabled-gif" : "file-img-disabled-gif"})`;
+		state.append(icon, element("span", "", parsed.message ? "Press Enter to submit" : "Enter a message"));
+		row.append(synopsis, description, state);
+		if (!row.isConnected) preview.prepend(row);
+	}
 	handleDuelChatKeydown(event) {
 		const target = event.target;
 		if (!(target instanceof HTMLInputElement)) return;
@@ -41051,8 +41400,8 @@ var DuelProductFoundation = class {
 		const vanillaChatInput = target.matches("#newChat, #game-chat input:not([type=\"hidden\"])");
 		const typoCommandInput = target.id === "typo-command-input";
 		if (!vanillaChatInput && !typoCommandInput) return;
-		const command = target.value.match(/^\/(?:sdchat|msg|chat)(?:\s+([\s\S]*))?$/iu);
-		if (!command) return;
+		const command = parseMatchChatCommand(target.value, this.settings.matchChatCommandPrefix);
+		if (!command.matched) return;
 		event.preventDefault();
 		event.stopImmediatePropagation();
 		target.value = "";
@@ -41064,9 +41413,9 @@ var DuelProductFoundation = class {
 				original.dispatchEvent(new Event("input", { bubbles: true }));
 			}
 		}
-		const message = command[1]?.trim() ?? "";
+		const message = command.message;
 		if (!message) {
-			this.showSimpleToast("Match chat command", "Use /sdchat, /msg or /chat followed by a message.");
+			this.showSimpleToast("Match chat command", `Use ${this.settings.matchChatCommandPrefix} followed by a message.`);
 			return;
 		}
 		if (!this.submitDuelChatMessage(message, false, false)) this.showSimpleToast("Match chat unavailable", "An active connected Duel match is required.");
@@ -41094,7 +41443,8 @@ var DuelProductFoundation = class {
 				author: this.duelDisplayName("self"),
 				message,
 				occurredAt: Date.now(),
-				pending: true
+				pending: true,
+				nameColorIndex: this.duelNameColorIndex("self")
 			});
 			if (clearDuelDraft) {
 				this.duelChatDraft = "";
@@ -41111,11 +41461,93 @@ var DuelProductFoundation = class {
 			return false;
 		}
 	}
+	renderColoredNamePreview(target, name, colorIndex) {
+		target.replaceChildren();
+		appendColoredDuelName(target, name || "Preview", colorIndex);
+	}
+	openProfileColorPicker(getDisplayName, onSelectionChanged) {
+		this.profileColorPicker?.remove();
+		const overlay = element("div", "scd-modal-overlay");
+		overlay.id = "skribbl-duels-profile-color-picker";
+		overlay.dataset.scdRuntimeId = this.options.runtimeId;
+		isolateScrollRoot(overlay);
+		const wrapper = element("div", "scd-modal-wrapper");
+		const modal = element("div", "scd-modal-container scd-profile-color-modal");
+		isolatePointerRoot(modal);
+		const header = element("div", "scd-profile-color-header");
+		const close = element("button", "scd-icon-button scd-modal-close", "\u00D7");
+		close.type = "button";
+		close.setAttribute("aria-label", "Close color selection");
+		header.appendChild(close);
+		const body = element("div", "scd-profile-color-body");
+		const customizer = element("div", "avatar-customizer typo-customize-player-display scd-color-customizer");
+		const leftArrows = element("div", "arrows left");
+		const left = element("div", "arrow left");
+		left.dataset.avatarIndex = "0";
+		left.tabIndex = 0;
+		left.setAttribute("role", "button");
+		left.setAttribute("aria-label", "Previous color");
+		leftArrows.appendChild(left);
+		const container = element("div", "container");
+		const avatar = element("div", "avatar fit");
+		const color = element("div", "color");
+		avatar.appendChild(color);
+		container.appendChild(avatar);
+		const rightArrows = element("div", "arrows right");
+		const right = element("div", "arrow right");
+		right.dataset.avatarIndex = "0";
+		right.tabIndex = 0;
+		right.setAttribute("role", "button");
+		right.setAttribute("aria-label", "Next color");
+		rightArrows.appendChild(right);
+		customizer.append(leftArrows, container, rightArrows);
+		const preview = element("div", "scd-color-name-preview");
+		const indexLabel = element("div", "scd-muted");
+		const render = () => {
+			const index = normalizeDuelNameColorIndex(this.profileColorDraftIndex);
+			this.profileColorDraftIndex = index;
+			color.style.backgroundPosition = duelNameColorAtlasPosition(index);
+			indexLabel.textContent = `Color ${index + 1} / 28`;
+			this.renderColoredNamePreview(preview, getDisplayName(), index);
+			onSelectionChanged(index);
+		};
+		const selectRelative = (delta) => {
+			const current = normalizeDuelNameColorIndex(this.profileColorDraftIndex);
+			this.profileColorDraftIndex = (current + delta + 28) % 28;
+			render();
+		};
+		left.addEventListener("click", () => selectRelative(-1));
+		right.addEventListener("click", () => selectRelative(1));
+		left.addEventListener("keydown", (event) => {
+			if (event.key === "Enter" || event.key === " ") selectRelative(-1);
+		});
+		right.addEventListener("keydown", (event) => {
+			if (event.key === "Enter" || event.key === " ") selectRelative(1);
+		});
+		const closePicker = () => {
+			overlay.remove();
+			if (this.profileColorPicker === overlay) this.profileColorPicker = null;
+			this.renderVisibility();
+		};
+		close.addEventListener("click", closePicker);
+		overlay.addEventListener("click", (event) => {
+			if (event.target === overlay) closePicker();
+		});
+		body.append(customizer, preview, indexLabel);
+		modal.append(header, body);
+		wrapper.appendChild(modal);
+		overlay.appendChild(wrapper);
+		(document.body ?? document.documentElement).appendChild(overlay);
+		this.profileColorPicker = overlay;
+		if (this.panel) this.panel.style.display = "none";
+		render();
+	}
 	renderSettingsTab() {
 		if (!this.panelBody) return;
 		const stack = element("div", "scd-stack");
 		const identity = this.gatewayState.identity;
 		if (this.authState.status === "signed-in" && identity) {
+			if (this.profileColorDraftIndex === null) this.profileColorDraftIndex = normalizeDuelNameColorIndex(identity.nameColorIndex);
 			const copy = PROFILE_COPY[profileLanguage(identity.preferredLanguage)];
 			const profile = element("form", "scd-card scd-stack");
 			profile.noValidate = true;
@@ -41154,7 +41586,16 @@ var DuelProductFoundation = class {
 				avatarSource.appendChild(option);
 			}
 			avatarLabel.append(element("span", "", copy.versusAvatar), avatarSource);
-			const feedback = element("div", "scd-muted", [identity.specialAvatarId ? `${copy.specialEntitlement}: ${identity.specialAvatarId}` : copy.specialControlled, ...identity.invisibleAvatarEntitled ? [`${copy.invisibleEntitlement}: enabled`] : []].join(" \u00B7 "));
+			const colorLabel = element("label", "scd-label");
+			const colorButton = element("button", "scd-button scd-profile-color-button");
+			colorButton.type = "button";
+			const renderColorButton = () => this.renderColoredNamePreview(colorButton, name.value || identity.displayName, normalizeDuelNameColorIndex(this.profileColorDraftIndex));
+			renderColorButton();
+			colorButton.addEventListener("click", () => this.openProfileColorPicker(() => name.value || identity.displayName, () => renderColorButton()));
+			colorLabel.append(element("span", "", copy.nameColor), colorButton);
+			const entitlementText = [identity.specialAvatarId ? `${copy.specialEntitlement}: ${identity.specialAvatarId}` : copy.specialControlled, ...identity.invisibleAvatarEntitled ? [`${copy.invisibleEntitlement}: enabled`] : []].join(" \u00B7 ");
+			const feedback = element("div", "scd-muted", entitlementText);
+			feedback.hidden = !this.showProfileEntitlementFeedback;
 			const save = element("button", "scd-button primary", copy.save);
 			save.type = "submit";
 			const validateName = () => {
@@ -41164,7 +41605,10 @@ var DuelProductFoundation = class {
 				name.setAttribute("aria-invalid", String(message !== null));
 				return message;
 			};
-			name.addEventListener("input", () => validateName());
+			name.addEventListener("input", () => {
+				validateName();
+				renderColorButton();
+			});
 			language.addEventListener("change", () => validateName());
 			profile.addEventListener("submit", (event) => {
 				event.preventDefault();
@@ -41186,24 +41630,29 @@ var DuelProductFoundation = class {
 					return;
 				}
 				save.disabled = true;
+				this.showProfileEntitlementFeedback = true;
+				feedback.hidden = false;
 				feedback.textContent = PROFILE_COPY[profileLanguage(language.value)].saving;
 				this.authClient.updateDuelProfile({
 					displayName: name.value,
 					preferredLanguage: language.value === "de" ? "de" : "en",
 					avatarSource: avatarSource.value === "skribbl" ? "skribbl" : "discord",
 					skribblAvatar: currentAvatar,
-					specialAvatarId: avatarSource.value === "skribbl" ? identity.specialAvatarId ?? null : null
+					specialAvatarId: avatarSource.value === "skribbl" ? identity.specialAvatarId ?? null : null,
+					nameColorIndex: normalizeDuelNameColorIndex(this.profileColorDraftIndex)
 				}).then(() => {
-					feedback.textContent = PROFILE_COPY[profileLanguage(language.value)].saved;
+					feedback.textContent = `${PROFILE_COPY[profileLanguage(language.value)].saved} \u00B7 ${entitlementText}`;
 					this.gatewayClient.reconnect();
 				}).catch((error) => {
+					feedback.hidden = true;
+					this.showProfileEntitlementFeedback = false;
 					nameError.textContent = profileUpdateErrorMessage(error, profileLanguage(language.value));
 					nameError.hidden = false;
 					name.setAttribute("aria-invalid", "true");
 					save.disabled = false;
 				});
 			});
-			profile.append(nameField, languageLabel, avatarLabel, feedback, save);
+			profile.append(nameField, languageLabel, avatarLabel, colorLabel, feedback, save);
 			stack.appendChild(profile);
 		}
 		const board = element("div", "scd-card scd-stack");
@@ -41298,8 +41747,56 @@ var DuelProductFoundation = class {
 		this.tooltips.register(resetBoard, "Restore the default panel, board and Quick Access settings");
 		quickAccess.appendChild(resetBoard);
 		const chat = element("div", "scd-card scd-stack");
-		chat.append(element("strong", "", "Game-chat integration"), this.checkbox("Show confirmed completion messages", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })), this.checkbox("Show Match Chat toast notifications", this.settings.chatNotifications, (checked) => this.settingsStore.update({ chatNotifications: checked })), this.checkbox("Play Win animation", this.settings.winAnimation, (checked) => this.settingsStore.update({ winAnimation: checked })));
-		stack.append(board, quickAccess, chat);
+		const commandLabel = element("label", "scd-label");
+		const commandInput = element("input");
+		commandInput.type = "text";
+		commandInput.value = this.settings.matchChatCommandPrefix;
+		commandInput.placeholder = "/sdchat";
+		commandInput.maxLength = 25;
+		commandInput.autocomplete = "off";
+		commandInput.spellcheck = false;
+		commandInput.addEventListener("input", () => {
+			if (commandInput.value !== "" && !commandInput.value.startsWith("/")) {
+				const cursor = commandInput.selectionStart ?? commandInput.value.length;
+				commandInput.value = `/${commandInput.value}`;
+				commandInput.setSelectionRange(cursor + 1, cursor + 1);
+			}
+		});
+		const commitCommandPrefix = () => {
+			const normalized = normalizeMatchChatCommandPrefix(commandInput.value);
+			commandInput.value = normalized;
+			if (normalized !== this.settings.matchChatCommandPrefix) this.settingsStore.update({ matchChatCommandPrefix: normalized });
+			this.ensureTypoCommandPreview();
+		};
+		commandInput.addEventListener("change", commitCommandPrefix);
+		commandInput.addEventListener("blur", commitCommandPrefix);
+		commandLabel.append(element("span", "", "Match Chat command prefix"), commandInput);
+		chat.append(element("strong", "", "UI integration"), this.checkbox("Show challenge completions in skribbl chat", this.settings.completionMessages, (checked) => this.settingsStore.update({ completionMessages: checked })), this.checkbox("Show Match Chat toast notifications", this.settings.chatNotifications, (checked) => this.settingsStore.update({ chatNotifications: checked })), this.checkbox("Show Match Chat messages in skribbl chat", this.settings.matchChatMessages, (checked) => this.settingsStore.update({ matchChatMessages: checked })), commandLabel, this.checkbox("Display win animation", this.settings.winAnimation, (checked) => this.settingsStore.update({ winAnimation: checked })));
+		const sfx = element("div", "scd-card scd-stack");
+		sfx.appendChild(element("strong", "", "SFX integration"));
+		const volumeGroup = element("div", "scd-volume-group");
+		const volumeTitle = element("div", "scd-volume-title");
+		const volumeIcon = element("span", `scd-volume-icon${this.settings.sfxVolume === 0 ? " muted" : ""}`);
+		const volumeValue = element("span", "scd-volume-value", this.settings.sfxVolume === 0 ? "Muted" : `${this.settings.sfxVolume}%`);
+		volumeTitle.append(volumeIcon, element("span", "", "Volume"), volumeValue);
+		const volumeInput = element("input");
+		volumeInput.type = "range";
+		volumeInput.min = "0";
+		volumeInput.max = "100";
+		volumeInput.step = "1";
+		volumeInput.value = String(this.settings.sfxVolume);
+		volumeInput.addEventListener("input", () => {
+			const next = Number(volumeInput.value);
+			volumeValue.textContent = next === 0 ? "Muted" : `${next}%`;
+			volumeIcon.classList.toggle("muted", next === 0);
+			this.soundEffects.setVolume(next);
+		});
+		volumeInput.addEventListener("change", () => {
+			this.settingsStore.update({ sfxVolume: Number(volumeInput.value) });
+		});
+		volumeGroup.append(volumeTitle, volumeInput);
+		sfx.append(volumeGroup, this.checkbox("Enable Match Chat pings", this.settings.matchChatPings, (checked) => this.settingsStore.update({ matchChatPings: checked })));
+		stack.append(board, quickAccess, chat, sfx);
 		this.panelBody.appendChild(stack);
 	}
 	renderAboutTab() {
@@ -41312,7 +41809,7 @@ var DuelProductFoundation = class {
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		const gateway = element("div", "scd-card");
-		gateway.append(element("strong", "", `Gateway Contract v10`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
+		gateway.append(element("strong", "", `Gateway Contract v11`), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`));
 		stack.append(rules, authentication, freeze, gateway);
 		this.panelBody.appendChild(stack);
 	}
@@ -41375,12 +41872,15 @@ var DuelProductFoundation = class {
 			return null;
 		}
 	}
-	isHomepageVisible() {
+	isHomepageDomVisible() {
 		if (window.location.pathname !== "/") return false;
 		const home = document.querySelector("#home");
 		if (!home) return false;
 		const style = getComputedStyle(home);
-		return style.display !== "none" && style.visibility !== "hidden" && home.getClientRects().length > 0 && isHomepageTelemetryEligible(this.lastTelemetryEvent);
+		return style.display !== "none" && style.visibility !== "hidden" && home.getClientRects().length > 0;
+	}
+	isHomepageVisible() {
+		return this.isHomepageDomVisible() && isHomepageTelemetryEligible(this.homepageMatchmakingAuthority);
 	}
 	beginMatchmaking(format) {
 		this.matchmakingError = null;
@@ -41392,6 +41892,7 @@ var DuelProductFoundation = class {
 		this.abortLocalMatch("new-matchmaking-request");
 		try {
 			const requestId = this.gatewayClient.joinMatchmaking(format);
+			this.soundEffects.play("queueJoin");
 			this.openPanel("duel");
 			return requestId;
 		} catch (error) {
@@ -41507,8 +42008,10 @@ var DuelProductFoundation = class {
 	}
 	cancelMatchmaking() {
 		this.matchmakingError = null;
+		const wasQueued = this.gatewayState.queue !== null;
 		try {
 			const requestId = this.gatewayClient.leaveMatchmaking();
+			if (wasQueued) this.soundEffects.play("queueLeave");
 			this.abortLocalMatch("matchmaking-cancelled");
 			return requestId;
 		} catch (error) {
@@ -41675,28 +42178,29 @@ var DuelProductFoundation = class {
 			const ownMessage = message.authorAccountId === state.identity?.accountId;
 			const optimisticId = `optimistic-${message.clientMessageId}`;
 			const optimisticIndex = ownMessage ? this.duelChatMessages.findIndex((item) => item.id === optimisticId) : -1;
+			const participant = state.match?.state.participants.find((item) => item.accountId === message.authorAccountId) ?? null;
 			const confirmed = {
 				id: message.messageId,
 				side: ownMessage ? "self" : "opponent",
 				author: message.authorDisplayName,
 				message: message.message,
-				occurredAt: message.occurredAt
+				occurredAt: message.occurredAt,
+				nameColorIndex: participant?.nameColorIndex
 			};
 			if (optimisticIndex >= 0) this.duelChatMessages.splice(optimisticIndex, 1, confirmed);
 			else this.duelChatMessages.push(confirmed);
-			if (message.occurredAt >= this.chatNotificationStartedAt - 5e3) {
-				const participant = state.match?.state.participants.find((item) => item.accountId === message.authorAccountId) ?? null;
-				this.chatAdapter.insertMatchChat({
-					messageId: message.messageId,
-					author: message.authorDisplayName,
-					message: message.message,
-					avatar: this.createParticipantAvatar(message.authorDisplayName, participant, "scd-vanilla-match-chat-avatar")
-				});
-			}
+			if (message.occurredAt >= this.chatNotificationStartedAt - 5e3) this.chatAdapter.insertMatchChat({
+				messageId: message.messageId,
+				author: message.authorDisplayName,
+				message: message.message,
+				avatar: this.createParticipantAvatar(message.authorDisplayName, participant, "scd-vanilla-match-chat-avatar"),
+				nameColorIndex: participant?.nameColorIndex
+			});
 			if (ownMessage) {
 				this.pendingDuelChatMessages.delete(message.clientMessageId);
 				this.duelChatStickToBottom = true;
 			}
+			if (!ownMessage && this.settings.matchChatPings && message.occurredAt >= this.chatNotificationStartedAt - 5e3) this.soundEffects.play("matchChatPing");
 			if (!ownMessage && this.settings.chatNotifications && message.occurredAt >= this.chatNotificationStartedAt - 5e3 && (!this.settings.panelOpen || this.mainPanelTab() !== "match" || document.hidden)) this.showChatToast(message.authorAccountId, message.authorDisplayName, message.message);
 		}
 		const resolution = state.lastClaimResolution;
@@ -41716,7 +42220,8 @@ var DuelProductFoundation = class {
 	showChatToast(authorAccountId, author, message) {
 		const participant = this.gatewayState.match?.state.participants.find((item) => item.accountId === authorAccountId) ?? null;
 		const profile = element("div", "scd-toast-profile");
-		const authorName = element("strong", "", author);
+		const authorName = element("strong");
+		appendColoredDuelName(authorName, author, participant?.nameColorIndex);
 		authorName.title = author;
 		profile.append(this.createParticipantAvatar(author, participant, "scd-toast-avatar"), authorName);
 		this.showSimpleToast(profile, message, 3500, () => {
@@ -41972,6 +42477,13 @@ var DuelProductFoundation = class {
 		if (side === "self") return this.gatewayState.identity?.displayName ?? this.authState.profile?.displayName ?? this.options.getSelfName();
 		return "Opponent";
 	}
+	duelNameColorIndex(side) {
+		const selfAccountId = this.gatewayState.identity?.accountId;
+		const participant = this.gatewayState.match?.state.participants.find((item) => side === "self" ? item.accountId === selfAccountId : item.accountId !== selfAccountId);
+		if (participant) return normalizeDuelNameColorIndex(participant.nameColorIndex);
+		if (side === "self") return normalizeDuelNameColorIndex(this.gatewayState.identity?.nameColorIndex);
+		return 26;
+	}
 	opponentRematchRequester() {
 		const snapshot = this.gatewayState.match;
 		const selfAccountId = this.gatewayState.identity?.accountId;
@@ -42059,6 +42571,7 @@ var DuelProductFoundation = class {
 	}
 	observeDuelTelemetry(event) {
 		this.lastTelemetryEvent = structuredClone(event);
+		this.homepageMatchmakingAuthority = reduceHomepageMatchmakingAuthority(this.homepageMatchmakingAuthority, event);
 		const state = this.matchStore.getState();
 		if (this.awaitingTelemetryResumeCursor && state.phase === "running" && state.matchId !== null) {
 			this.deferredTelemetryEvents.push(structuredClone(event));
@@ -42136,6 +42649,7 @@ var DuelProductFoundation = class {
 		this.duelChatMessages = [];
 		this.processedGatewayChatIds.clear();
 		this.processedClaimResolutionIds.clear();
+		this.playedCompletionSoundIds.clear();
 		this.submittedClaimCandidateIds.clear();
 		this.deferredTelemetryEvents = [];
 		this.awaitingTelemetryResumeCursor = false;
@@ -42179,6 +42693,10 @@ var DuelProductFoundation = class {
 	openPanel(tab) {
 		if (this.currentStagePhase()) return;
 		const requested = tab === "chat" ? "match" : tab;
+		if (requested !== "settings") {
+			this.showProfileEntitlementFeedback = false;
+			this.profileColorDraftIndex = null;
+		}
 		const resolved = requested === "settings" || requested === "about" ? requested : this.mainPanelTab();
 		this.settingsStore.update({
 			panelOpen: true,
@@ -42186,6 +42704,10 @@ var DuelProductFoundation = class {
 		});
 	}
 	closePanel() {
+		this.profileColorPicker?.remove();
+		this.profileColorPicker = null;
+		this.showProfileEntitlementFeedback = false;
+		this.profileColorDraftIndex = null;
 		this.settingsStore.update({ panelOpen: false });
 	}
 	togglePanel() {
@@ -42293,12 +42815,14 @@ var DuelProductFoundation = class {
 			this.lastConclusionMessageMatchId = matchId;
 			this.insertConclusionMessage(snapshot, elapsedMs, occurredAt);
 			this.suppressExternalConclusionForMatchIds.delete(matchId);
+			if (snapshot.outcome === "win" && snapshot.winner === "self") this.soundEffects.play("matchWin");
 			if (suppressExternal || snapshot.outcome !== "win" || !snapshot.winner) return;
 			const winner = snapshot.participants.find((participant) => participant.side === snapshot.winner);
 			this.chatAdapter.insertWin({
 				matchId,
 				playerName: winner?.displayName ?? "Opponent",
-				elapsedMs
+				elapsedMs,
+				nameColorIndex: snapshot.winner ? this.duelNameColorIndex(snapshot.winner) : void 0
 			});
 			if (!this.settings.winAnimation || this.lastWinAnimationMatchId === matchId) return;
 			this.lastWinAnimationMatchId = matchId;
@@ -42363,13 +42887,22 @@ var DuelProductFoundation = class {
 		}, 3500);
 	}
 	insertCompletion(message, mirrorToSkribbl = true) {
-		if (mirrorToSkribbl) this.chatAdapter.insert(message);
+		const coloredMessage = {
+			...message,
+			nameColorIndex: message.nameColorIndex ?? this.duelNameColorIndex(message.side)
+		};
+		if (mirrorToSkribbl) this.chatAdapter.insert(coloredMessage);
+		if (!this.playedCompletionSoundIds.has(message.claimId)) {
+			this.playedCompletionSoundIds.add(message.claimId);
+			this.soundEffects.play("challengeCompletion");
+		}
 		this.duelChatMessages.push({
 			id: `completion-${message.claimId}`,
-			side: message.side,
-			author: message.playerName,
-			message: `completed '${message.challengeName}'`,
-			occurredAt: message.occurredAt
+			side: coloredMessage.side,
+			author: coloredMessage.playerName,
+			message: `completed '${coloredMessage.challengeName}'`,
+			occurredAt: coloredMessage.occurredAt,
+			nameColorIndex: coloredMessage.nameColorIndex
 		});
 		if (this.settings.panelOpen && this.mainPanelTab() === "match") this.renderPanel();
 	}
@@ -42378,7 +42911,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.56.0";
+var BUILD_VERSION = "0.57.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
@@ -42431,6 +42964,7 @@ async function bootstrap(runtime) {
 	const canvasWhiteTelemetryAdapter = new CanvasWhiteTelemetryAdapter(telemetryStore);
 	const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
 	const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
+	const typoLobbyLeftTelemetryAdapter = new TypoLobbyLeftTelemetryAdapter(telemetryStore);
 	const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
 	const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
 	const replayProvider = new TelemetryReplayProvider();
@@ -42447,6 +42981,7 @@ async function bootstrap(runtime) {
 	runtime.addCleanup(() => avatarTelemetryAdapter.stop());
 	runtime.addCleanup(() => homeInteractionTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoDropTelemetryAdapter.stop());
+	runtime.addCleanup(() => typoLobbyLeftTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
 	runtime.addCleanup(() => replayProvider.destroy());
@@ -42767,6 +43302,16 @@ async function bootstrap(runtime) {
 		getLastTelemetryEvent() {
 			return telemetryStore.getStats().lastEvent;
 		},
+		getLobbyAuthoritySnapshot() {
+			const lobby = lobbyStore.getSnapshot();
+			return {
+				hydrated: lobby.hydrated,
+				lobbySessionId: lobby.lobbySessionId,
+				lobbyId: lobby.lobbyId,
+				playerCount: lobby.userOrder.length,
+				gameStateName: lobby.game.stateName
+			};
+		},
 		getSelfName() {
 			return selectSelf(lobbyStore.getSnapshot())?.name ?? "Alpha";
 		}
@@ -42777,6 +43322,7 @@ async function bootstrap(runtime) {
 	avatarTelemetryAdapter.start();
 	homeInteractionTelemetryAdapter.start();
 	typoDropTelemetryAdapter.start();
+	typoLobbyLeftTelemetryAdapter.start();
 	typoAutodrawTelemetryAdapter.start();
 	typoChallengeTelemetryAdapter.start();
 	const inspectorApi = {

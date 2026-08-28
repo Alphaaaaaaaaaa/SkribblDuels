@@ -38,6 +38,7 @@
 | v0.54 production infrastructure | Complete | Redis Streams delivery, fenced Match Authority, readiness/metrics/diagnostics, alert rules, shared limits, sanctions and replay hardening |
 | v0.55 Challenge live certification | Complete | Telemetry-triggered server Claims, per-challenge certification metrics, visible transport cursors and false-positive regressions |
 | v0.56 Challenge/chat hardening | Complete | Telemetry-gated homepage matchmaking, strict Back to back/Deserved?, 28-language TL;DR v2 and Typo-compatible mirrored Match Chat |
+| v0.57 UI/profile integration | Complete | Reload-safe lobby authority, Typo `leftLobby`, configurable Match Chat command/preview, optional SFX registry and authoritative 28-color names/Claims |
 
 ## Active development sequence
 
@@ -98,3 +99,6 @@ The complete post-v0.50 build gate is recorded in
 `docs/full-build-roadmap-post-v0.50.0.md`.
 The complete approved UI direction is recorded in
 `docs/ui-product-direction-v0.41.0.md`.
+The current prioritized implementation sequence, confirmed Bingo MVP and all
+remaining Challenge candidates are consolidated in
+`docs/home-authority-ui-sfx-profile-colors-v0.57.0.md`.

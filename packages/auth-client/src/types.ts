@@ -1,4 +1,4 @@
-export const AUTH_CLIENT_VERSION = '0.35.2' as const;
+export const AUTH_CLIENT_VERSION = '0.36.0' as const;
 
 export type AuthStatus = 'initializing' | 'signed-out' | 'signed-in' | 'error';
 
@@ -78,6 +78,7 @@ export interface DuelProfileUpdate {
   avatarSource: 'discord' | 'skribbl';
   skribblAvatar: readonly [number, number, number, number] | null;
   specialAvatarId: string | null;
+  nameColorIndex: number;
 }
 
 export interface SupabaseBrowserLibrary {

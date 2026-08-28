@@ -93,6 +93,10 @@ export interface TelemetryPayloadMap {
     method: 'typo-relay' | 'chat-fallback';
   };
 
+  TYPO_LOBBY_LEFT: {
+    method: 'typo-dom-event';
+  };
+
   TYPO_SKD_FILE_LOADED: {
     fileName: string;
     fingerprint: string;
@@ -249,6 +253,7 @@ export const TELEMETRY_EVENT_CATEGORIES = {
   CHAT_MESSAGE_RECEIVED: 'chat',
   SPAM_DETECTED: 'chat',
   TYPO_DROP_CLAIMED: 'system',
+  TYPO_LOBBY_LEFT: 'lobby',
   TYPO_SKD_FILE_LOADED: 'system',
   TYPO_SKD_PASTED: 'drawing',
   TYPO_CHALLENGE_STATE_CHANGED: 'system',

@@ -233,6 +233,11 @@ export class SupabaseDiscordAuthClient {
     if (update.avatarSource === 'skribbl' && !update.skribblAvatar) {
       throw new Error('Select or capture a Skribbl avatar first.');
     }
+    if (!Number.isInteger(update.nameColorIndex)
+        || update.nameColorIndex < 0
+        || update.nameColorIndex > 27) {
+      throw new Error('Duel name color index must be between 0 and 27.');
+    }
     const client = await this.ensureClient();
     if (!client.rpc) throw new Error('Profile updates are unavailable in this client build.');
     const { error } = await client.rpc('update_skribbl_duels_profile', {
@@ -240,7 +245,8 @@ export class SupabaseDiscordAuthClient {
       duel_preferred_language: update.preferredLanguage,
       duel_avatar_source: update.avatarSource,
       duel_skribbl_avatar: update.avatarSource === 'skribbl' ? update.skribblAvatar : null,
-      duel_special_avatar_id: update.avatarSource === 'skribbl' ? update.specialAvatarId : null
+      duel_special_avatar_id: update.avatarSource === 'skribbl' ? update.specialAvatarId : null,
+      duel_name_color_index: update.nameColorIndex
     });
     if (error) throw new Error(error.message ?? 'Unable to update the Skribbl Duels profile.');
   }

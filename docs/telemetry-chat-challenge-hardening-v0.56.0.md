@@ -1,10 +1,15 @@
 # Telemetry, chat and Challenge hardening v0.56.0
 
+> Historical release note. v0.57.0 replaces the latest-event matchmaking
+> heuristic, Match Chat aliases, deferred SFX design and preliminary color
+> order below. The current contract is documented in
+> `home-authority-ui-sfx-profile-colors-v0.57.0.md`.
+
 ## Matchmaking authority
 
-Matchmaking still requires a visible `/` homepage and a rendered `#home`, but
-DOM state alone is no longer sufficient. The most recent Telemetry event must
-also be one of:
+In v0.56, matchmaking required a visible `/` homepage and a rendered `#home`,
+but DOM state alone was no longer sufficient. The most recent Telemetry event
+also had to be one of:
 
 - no event in the current runtime;
 - `AVATAR_RANDOMIZED`, `LOGO_AVATAR_CLICKED` or `SPECIAL_AVATAR_FOUND`;
@@ -13,7 +18,8 @@ also be one of:
 
 An active-lobby event therefore keeps matchmaking locked even when `#home` is
 changed to `display:flex` in developer tools. Opponents leaving do not unlock
-the state.
+the state. v0.57 replaces this reload-fragile rule with a current-runtime
+homepage/lobby authority state and explicit Typo `leftLobby` confirmation.
 
 ## Challenge corrections
 
@@ -58,11 +64,11 @@ repetition and 90% thresholds prevent random strings from qualifying.
 - Confirmed private messages are mirrored into vanilla Skribbl chat with the
   sender's Versus avatar, Duel display name and message. Historical reconnect
   replay is not mirrored.
-- `/sdchat message`, `/msg message` and `/chat message` send only to Match Chat.
-  The capture path supports both the vanilla input and Typo's
-  `#typo-command-input`, and stops the command before Skribbl can publish it.
+- In v0.56, `/sdchat message`, `/msg message` and `/chat message` sent only to
+  Match Chat. v0.57 removes the aliases and uses one configurable prefix with
+  `/sdchat` as its default, including Typo command-preview injection.
 
-## Deferred sound system
+## Sound-system design at v0.56
 
 Implement sounds behind one shared audio controller rather than separate event
 listeners. Store a `masterVolume` value from 0–1 and independent toggles for at
@@ -70,17 +76,18 @@ least button feedback and Match Chat pings; Challenge completion, countdown and
 queue transition sounds can use the same controller. Audio should unlock after
 the first user gesture, respect reduced-motion/sound preferences, avoid pinging
 for replayed or self-authored history, and use repository-owned versioned
-assets. The feature waits for the final sound pack.
+assets. v0.57 implements the registry/controller with absent-file no-op
+fallback; the repository-owned final sound pack can be added later.
 
-## Deferred custom name and Claim colors
+## Name and Claim color design at v0.56
 
 Persist only a server-validated palette index from 0–27, never arbitrary CSS.
-The first 16 indexes map to one supplied color; the remaining 12 map to a pair.
+The corrected atlas has solid colors at 0–14 and 26; the other 12 map to a pair.
 For paired colors, alternate by visible grapheme parity in the display name and
 Claim name rendering. The profile RPC, database constraint, Gateway identity
 projection and participant contract must all be updated together so an edited
-client cannot inject markup or CSS. The user's supplied 28-color atlas palette
-is the canonical design input for that migration.
+client cannot inject markup or CSS. The corrected v0.57 palette below is the
+canonical migration and rendering contract.
 
 | Index | Primary | Alternating color |
 | ---: | --- | --- |
@@ -99,21 +106,21 @@ is the canonical design input for that migration.
 | 12 | `#8f563b` | — |
 | 13 | `#663931` | — |
 | 14 | `#eec39a` | — |
-| 15 | `#ffffff` | — |
-| 16 | `#ed2b34` | `#aa1f00` |
-| 17 | `#ffff1b` | `#fecc10` |
-| 18 | `#67db14` | `#4f8b01` |
-| 19 | `#1cffff` | `#45beff` |
-| 20 | `#4058f6` | `#3f25d7` |
-| 21 | `#e23af2` | `#ab04f9` |
-| 22 | `#9badb7` | `#847e87` |
-| 23 | `#8f563b` | `#663931` |
-| 24 | `#eec39a` | `#ed9e6d` |
-| 25 | `#00eda2` | `#09a98f` |
-| 26 | `#ff7a7d` | `#d84c69` |
+| 15 | `#ed2b34` | `#aa1f00` |
+| 16 | `#ffff1b` | `#fecc10` |
+| 17 | `#67db14` | `#4f8b01` |
+| 18 | `#1cffff` | `#45beff` |
+| 19 | `#4058f6` | `#3f25d7` |
+| 20 | `#e23af2` | `#ab04f9` |
+| 21 | `#9badb7` | `#847e87` |
+| 22 | `#8f563b` | `#663931` |
+| 23 | `#eec39a` | `#ed9e6d` |
+| 24 | `#00eda2` | `#09a98f` |
+| 25 | `#ff7a7d` | `#d84c69` |
+| 26 | `#ffffff` | — |
 | 27 | `#ffffff` | `#e8e8e8` |
 
-## Bingo recommendation and open product decisions
+## Bingo recommendation and confirmed product decisions
 
 Bingo is a strong invite-only format and should not enter Ranked. The safe MVP
 is 1v1, one server-seeded shared 5×5 board, no free center, local per-player
@@ -127,13 +134,8 @@ possible lines, and finalization must be idempotent to handle simultaneous
 wins. This preserves the lightweight local UI without making DevTools a win
 button.
 
-Product choices needed before implementation:
-
-1. shared identical board (recommended) or a different deterministic board per
-   player;
-2. 1v1 MVP (recommended) or group lobbies in the first release;
-3. first line wins (recommended), best-of-lines, or full-house continuation;
-4. no free center (recommended) or a traditional free square.
+The confirmed deferred MVP uses a shared identical board, 1v1 only, first line
+wins and no free center.
 
 Group Bingo is a later architecture step because the current Match authority,
 ready check, chat, conclusion and participant contracts are pair-based.

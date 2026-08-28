@@ -23,6 +23,7 @@ export * from './drawing/strokeTelemetryAdapter';
 export * from './drawing/canvasSnapshotTelemetryAdapter';
 
 export * from './typo/typoDropTelemetryAdapter';
+export * from './typo/typoLobbyLeftTelemetryAdapter';
 
 export * from './typo/typoAutodrawTelemetryAdapter';
 export * from './typo/typoChallengeTelemetryAdapter';

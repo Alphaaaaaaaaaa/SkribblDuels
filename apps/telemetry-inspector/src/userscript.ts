@@ -21,6 +21,7 @@ import {
   RawPacketRecorder,
   StrokeTelemetryAdapter,
   TypoDropTelemetryAdapter,
+  TypoLobbyLeftTelemetryAdapter,
   TypoAutodrawTelemetryAdapter,
   TypoChallengeTelemetryAdapter,
   TelemetryStore,
@@ -81,7 +82,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.56.0';
+const BUILD_VERSION = '0.57.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -288,6 +289,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   const canvasWhiteTelemetryAdapter = new CanvasWhiteTelemetryAdapter(telemetryStore);
   const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
   const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
+  const typoLobbyLeftTelemetryAdapter = new TypoLobbyLeftTelemetryAdapter(telemetryStore);
   const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
   const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
   const replayProvider = new TelemetryReplayProvider();
@@ -304,6 +306,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   runtime.addCleanup(() => avatarTelemetryAdapter.stop());
   runtime.addCleanup(() => homeInteractionTelemetryAdapter.stop());
   runtime.addCleanup(() => typoDropTelemetryAdapter.stop());
+  runtime.addCleanup(() => typoLobbyLeftTelemetryAdapter.stop());
   runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
   runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
   runtime.addCleanup(() => replayProvider.destroy());
@@ -690,6 +693,16 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     getLastTelemetryEvent() {
       return telemetryStore.getStats().lastEvent;
     },
+    getLobbyAuthoritySnapshot() {
+      const lobby = lobbyStore.getSnapshot();
+      return {
+        hydrated: lobby.hydrated,
+        lobbySessionId: lobby.lobbySessionId,
+        lobbyId: lobby.lobbyId,
+        playerCount: lobby.userOrder.length,
+        gameStateName: lobby.game.stateName
+      };
+    },
     getSelfName() {
       return selectSelf(lobbyStore.getSnapshot())?.name ?? 'Alpha';
     }
@@ -701,6 +714,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   avatarTelemetryAdapter.start();
   homeInteractionTelemetryAdapter.start();
   typoDropTelemetryAdapter.start();
+  typoLobbyLeftTelemetryAdapter.start();
   typoAutodrawTelemetryAdapter.start();
   typoChallengeTelemetryAdapter.start();
 

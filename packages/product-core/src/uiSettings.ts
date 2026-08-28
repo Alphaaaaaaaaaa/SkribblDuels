@@ -29,11 +29,25 @@ export const DEFAULT_PRODUCT_UI_SETTINGS: ProductUiSettings = {
   panelTab: 'duel',
   completionMessages: true,
   winAnimation: true,
-  chatNotifications: true
+  chatNotifications: true,
+  matchChatMessages: true,
+  matchChatCommandPrefix: '/sdchat',
+  sfxVolume: 82,
+  matchChatPings: true
 };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+export function normalizeMatchChatCommandPrefix(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  const withoutSlashes = raw.replace(/^\/+/, '');
+  const commandId = withoutSlashes
+    .replace(/[^A-Za-z0-9_-]/g, '')
+    .slice(0, 24)
+    .toLocaleLowerCase('en-US');
+  return `/${commandId || 'sdchat'}`;
 }
 
 export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
@@ -102,7 +116,17 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
       : DEFAULT_PRODUCT_UI_SETTINGS.winAnimation,
     chatNotifications: typeof input.chatNotifications === 'boolean'
       ? input.chatNotifications
-      : DEFAULT_PRODUCT_UI_SETTINGS.chatNotifications
+      : DEFAULT_PRODUCT_UI_SETTINGS.chatNotifications,
+    matchChatMessages: typeof input.matchChatMessages === 'boolean'
+      ? input.matchChatMessages
+      : DEFAULT_PRODUCT_UI_SETTINGS.matchChatMessages,
+    matchChatCommandPrefix: normalizeMatchChatCommandPrefix(input.matchChatCommandPrefix),
+    sfxVolume: Number.isFinite(input.sfxVolume)
+      ? clamp(Math.round(Number(input.sfxVolume)), 0, 100)
+      : DEFAULT_PRODUCT_UI_SETTINGS.sfxVolume,
+    matchChatPings: typeof input.matchChatPings === 'boolean'
+      ? input.matchChatPings
+      : DEFAULT_PRODUCT_UI_SETTINGS.matchChatPings
   };
 }
 

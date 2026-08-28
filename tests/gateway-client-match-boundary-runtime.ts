@@ -32,11 +32,13 @@ function snapshot(matchId: string, revision: number): GatewayMatchSnapshotMessag
           accountId: 'alpha', displayName: 'Alpha', ready: false, simulated: false,
           avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [1, 2, 3, -1],
           specialAvatarId: null, invisibleAvatarEntitled: false
+          , nameColorIndex: 26
         },
         {
           accountId: 'beta', displayName: 'Beta', ready: false, simulated: true,
           avatarSource: 'skribbl', avatarUrl: null, skribblAvatar: [2, 3, 4, -1],
           specialAvatarId: null, invisibleAvatarEntitled: false
+          , nameColorIndex: 26
         }
       ],
       readyDeadlineAt: 2_000,
@@ -130,7 +132,7 @@ reloadedInternals.socket = {
 };
 reloadedInternals.receive({
   type: 'WELCOME',
-  contractVersion: 10,
+  contractVersion: 11,
   connectionId: 'reloaded-connection',
   identity: {
     accountId: 'alpha',

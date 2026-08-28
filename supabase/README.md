@@ -33,6 +33,11 @@ function. Run `select * from public.purge_duel_operational_data();` daily from a
 trusted job to enforce 30-day Match/Invite/evidence retention and 90-day abuse-
 signal retention.
 
+For v0.57.0, apply `202608280001_add_duel_name_colors.sql` after the abuse-
+control migration and before deploying Contract v11. It adds the constrained
+0–27 `profiles.name_color_index`, replaces the profile-update RPC with its
+six-argument version and keeps arbitrary CSS or markup out of profile data.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

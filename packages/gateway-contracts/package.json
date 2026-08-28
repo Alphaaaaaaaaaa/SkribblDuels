@@ -1,6 +1,6 @@
 {
   "name": "@skribbl-duels/gateway-contracts",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "private": true,
   "exports": "./src/index.ts",

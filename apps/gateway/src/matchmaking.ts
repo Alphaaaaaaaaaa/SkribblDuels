@@ -2344,7 +2344,8 @@ export class GatewayMatchmaker {
         avatarUrl: participant.identity.avatarUrl ?? null,
         skribblAvatar: participant.identity.skribblAvatar ?? null,
         specialAvatarId: participant.identity.specialAvatarId ?? null,
-        invisibleAvatarEntitled: participant.identity.invisibleAvatarEntitled === true
+        invisibleAvatarEntitled: participant.identity.invisibleAvatarEntitled === true,
+        nameColorIndex: participant.identity.nameColorIndex ?? 26
       })),
       readyDeadlineAt: match.readyDeadlineAt,
       countdownEndsAt: match.countdownEndsAt,
@@ -2398,7 +2399,8 @@ export class GatewayMatchmaker {
         skribblAvatar: [this.simulatedNameIndex % 16, 0, 0, -1],
         specialAvatarId: null,
         invisibleAvatarEntitled: false,
-        preferredLanguage: 'en'
+        preferredLanguage: 'en',
+        nameColorIndex: 26
       },
       capabilities: [
         'skribbl-telemetry',

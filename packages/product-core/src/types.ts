@@ -4,9 +4,9 @@ import type {
 } from '@skribbl-duels/challenge-engine';
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const PRODUCT_CORE_VERSION = '0.5.0' as const;
+export const PRODUCT_CORE_VERSION = '0.6.0' as const;
 export const MATCH_STATE_CONTRACT_VERSION = 3 as const;
-export const UI_SETTINGS_VERSION = 4 as const;
+export const UI_SETTINGS_VERSION = 5 as const;
 
 export type DuelFormat = 'casual' | 'ranked';
 export type DuelPlayerSide = 'self' | 'opponent';
@@ -220,6 +220,10 @@ export interface ProductUiSettings {
   completionMessages: boolean;
   winAnimation: boolean;
   chatNotifications: boolean;
+  matchChatMessages: boolean;
+  matchChatCommandPrefix: string;
+  sfxVolume: number;
+  matchChatPings: boolean;
 }
 
 export interface ChallengeManifestSource {

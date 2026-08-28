@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 10 as const;
+export const GATEWAY_CONTRACT_VERSION = 11 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -26,6 +26,7 @@ export interface GatewayClientIdentity {
   specialAvatarId?: string | null;
   invisibleAvatarEntitled?: boolean;
   preferredLanguage?: 'de' | 'en';
+  nameColorIndex?: number;
 }
 
 export interface GatewayHelloMessage {
@@ -220,6 +221,7 @@ export interface GatewayMatchmakingParticipant {
   skribblAvatar: readonly [number, number, number, number] | null;
   specialAvatarId: string | null;
   invisibleAvatarEntitled: boolean;
+  nameColorIndex: number;
 }
 
 export interface GatewayDraftPick {

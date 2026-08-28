@@ -1,12 +1,13 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v10 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v11 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness.
 
 ## Local server
 
-1. Apply `supabase/migrations/202608190001_create_durable_match_authority.sql`
-   then `202608200001_create_duel_invites.sql`, and finally
-   `202608210001_create_gateway_abuse_controls.sql`.
+1. Apply `supabase/migrations/202608190001_create_durable_match_authority.sql`,
+   `202608200001_create_duel_invites.sql`,
+   `202608210001_create_gateway_abuse_controls.sql`, and finally
+   `202608280001_add_duel_name_colors.sql` in that order.
 2. Copy `.env.example` to `.env` and set the server-only
    `SUPABASE_SERVICE_ROLE_KEY`. Add `REDIS_URL` and `OBSERVABILITY_TOKEN` for
    the production-equivalent multi-instance path.
@@ -19,7 +20,7 @@ cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v10 resume
+change closes cluster sockets once and reuses the durable Contract v11 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require

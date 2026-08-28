@@ -1,9 +1,31 @@
-# Skribbl Duels v0.56.0
+# Skribbl Duels v0.57.0
 
 This monorepo contains the growing 47-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v10, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.57.0
+
+- Replaces the fragile latest-event matchmaking check with a current-runtime
+  homepage/lobby authority state. A clean homepage reload is immediately valid,
+  active lobby context still fails closed, and Typo's `leftLobby` DOM event is
+  a versioned explicit exit confirmation.
+- Splits UI integration controls into Challenge chat lines, Match Chat toasts,
+  Match Chat mirroring, the one configurable Match Chat command prefix and Win
+  animation. `/sdchat` is the default; `/msg` and `/chat` are no longer aliases.
+- Injects the configured Match Chat command into Typo's command preview.
+- Adds an optional embedded sound registry for `.ogg`, `.mp3` and `.wav`, a
+  native-style 0–100 volume slider and independent Match Chat ping control.
+  Missing sound files are silent no-ops; button SFX remain deferred.
+- Adds 28 server-validated Duel name/Claim colors, alternating grapheme colors,
+  striped two-color board Claims and the simplified color-atlas picker.
+- Hides avatar-entitlement feedback until Profile Save is clicked and clears it
+  when the Duel profile is closed.
+
+Run `supabase/migrations/202608280001_add_duel_name_colors.sql`, deploy the
+v0.57.0 Gateway, verify `/readyz`, then update the userscript. Gateway Contract
+v11 is required on both sides; no new Railway variable is required.
 
 ## v0.56.0
 

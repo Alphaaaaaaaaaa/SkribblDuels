@@ -85,7 +85,7 @@ export function createSupabaseGatewayAuthenticator(
     });
     const { data: profile, error: profileError } = await scopedClient
       .from('profiles')
-      .select('id, discord_id, username, display_name, avatar_url, preferred_language, avatar_source, skribbl_avatar, special_avatar_id')
+      .select('id, discord_id, username, display_name, avatar_url, preferred_language, avatar_source, skribbl_avatar, special_avatar_id, name_color_index')
       .eq('id', accountId)
       .maybeSingle();
 
@@ -132,7 +132,12 @@ export function createSupabaseGatewayAuthenticator(
             : null,
           specialAvatarId: typeof profile.special_avatar_id === 'string' ? profile.special_avatar_id : null,
           invisibleAvatarEntitled: Boolean(invisibleEntitlement),
-          preferredLanguage: profile.preferred_language === 'de' ? 'de' : 'en'
+          preferredLanguage: profile.preferred_language === 'de' ? 'de' : 'en',
+          nameColorIndex: Number.isInteger(Number(profile.name_color_index))
+            && Number(profile.name_color_index) >= 0
+            && Number(profile.name_color_index) <= 27
+            ? Number(profile.name_color_index)
+            : 26
         },
         accessTokenExpiresAt
       }

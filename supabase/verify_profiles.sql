@@ -23,6 +23,7 @@ select
         discord_id,
         username,
         display_name,
+        name_color_index,
         avatar_url is not null as has_avatar,
         created_at,
         updated_at

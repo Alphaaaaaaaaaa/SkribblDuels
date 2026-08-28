@@ -69,7 +69,7 @@ assert(source.includes("backgroundPosition = `${-(index % 10) * 100}% ${-Math.fl
 assert(source.includes("'https://skribbl.io/img/avatar/special_atlas.gif'"), 'Skribbl special atlas is missing');
 assert(source.includes('displayNameValidationMessage(name.value'), 'inline Duel-name validation is missing');
 assert(source.includes('color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800'), 'Duel-name errors are not bold leave-colored text');
-assert(source.includes('${message.playerName} won after ${formatDurationWords(message.elapsedMs)}!'), 'Duel win chat message is missing');
+assert(source.includes('won after ${formatDurationWords(message.elapsedMs)}!'), 'Duel win chat message is missing');
 assert(source.includes('private renderLauncherPosition()') && source.includes('this.settings.launcher'), 'Quick Access launcher positioning is not settings-backed');
 assert(source.includes("'Button size'") && source.includes('this.settingsStore.updateLauncher'), 'Quick Access launcher resize controls are missing');
 assert(!source.includes("this.tooltips.register(button, 'Open Skribbl Duels'"), 'homepage Skribbl Duels tooltip still exists');
@@ -95,7 +95,12 @@ assert(source.includes('input::placeholder') && source.includes('var(--COLOR_PAN
 assert(source.includes('var(--COLOR_INPUT_BORDER_FOCUS)'), 'native Skribbl input focus styling is missing');
 assert(source.includes("image.addEventListener('error'"), 'asset-error fallback is missing');
 assert(!source.includes('wrapper.textContent = fallbackText;\n    wrapper.appendChild(image);'), 'challenge fallback is displayed before the asset resolves');
-assert(source.includes("this.checkbox('Play Win animation'"), 'Win animation setting is missing');
+assert(source.includes("this.checkbox('Display win animation'"), 'Win animation setting is missing');
+assert(source.includes("this.checkbox('Show Match Chat messages in skribbl chat'"), 'Match Chat mirror setting is missing');
+assert(source.includes("commandInput.placeholder = '/sdchat'"), 'Configurable Match Chat prefix input is missing');
+assert(source.includes("element('strong', '', 'SFX integration')"), 'SFX integration settings are missing');
+assert(source.includes("background-image:url('/img/audio_off.gif')"), 'Muted volume icon is missing');
+assert(source.includes('duelNameColorAtlasPosition(index)'), 'Profile color-atlas selector is missing');
 assert(source.includes('this.showWinAnimation('), 'Win animation renderer is missing');
 assert(source.includes('@keyframes player_winner'), 'winner avatar animation is missing');
 assert(source.includes("background-image:url('/img/trophy.gif')"), 'winner trophy asset is missing');
@@ -154,7 +159,12 @@ assert(source.includes("element('div', 'scd-chat-rematch-request')"), 'Opponent 
 assert(source.includes("element('button', 'scd-button scd-chat-rematch-accept', 'Rematch')"), 'Match Chat lacks the Rematch acceptance button');
 assert(source.includes("actions.classList.add('without-rematch')"), 'Result actions do not move Rematch into Chat when the opponent requests it');
 assert(source.includes('private showConfirmToast('), 'Typo-compatible confirm toast is missing');
-assert(source.includes("target.id === 'typo-command-input'") && source.includes('/(?:sdchat|msg|chat)'), 'Vanilla and Typo Match Chat commands are not intercepted');
+assert(
+  source.includes("target.id === 'typo-command-input'")
+    && source.includes("target.matches('#newChat, #game-chat input:not([type=\"hidden\"])')")
+    && source.includes('parseMatchChatCommand(target.value, this.settings.matchChatCommandPrefix)'),
+  'Vanilla and Typo Match Chat commands are not intercepted through the configured prefix'
+);
 assert(source.includes('this.chatAdapter.insertMatchChat({'), 'Confirmed Match Chat messages are not mirrored into Skribbl chat');
 assert(source.includes('p.skribbl-duels-completion.match-chat') && source.includes('color:var(--COLOR_PANEL_BUTTON) !important'), 'Mirrored Match Chat styling is missing');
 assert(source.includes('padding:.2em;margin:0;opacity:1;animation:chat_msg .1s ease-in-out 1'), 'Completion message spacing/animation does not match the requested Skribbl rule');

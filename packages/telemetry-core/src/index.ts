@@ -3,6 +3,7 @@ export * from './bridge/relayTypes';
 export * from './bridge/typoRelayBridge';
 export * from './export/exportFilters';
 export * from './protocol/protocolDecoder';
+export * from './protocol/enums';
 export * from './protocol/types';
 export * from './recorder/rawPacketRecorder';
 export * from './recorder/rawRecord';

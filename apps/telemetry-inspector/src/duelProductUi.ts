@@ -51,6 +51,7 @@ import {
   EMBEDDED_ICON_ASSETS
 } from './generatedIconAssets';
 import { bindReliableButtonAction } from './reliableButtonAction';
+import { isHomepageTelemetryEligible } from './homepageMatchmakingEligibility';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -58,6 +59,7 @@ interface ProductFoundationOptions {
   challengeDefinitions: ReturnType<ChallengeEngine['getDefinitions']>;
   challengeEngine: ChallengeEngine;
   subscribeTelemetry(listener: (event: TelemetryEvent) => void): () => void;
+  getLastTelemetryEvent(): TelemetryEvent | null;
   getSelfName(): string;
 }
 
@@ -74,6 +76,13 @@ interface WinMessage {
   matchId: string;
   playerName: string;
   elapsedMs: number;
+}
+
+interface MatchChatMirrorMessage {
+  messageId: string;
+  author: string;
+  message: string;
+  avatar: HTMLElement;
 }
 
 interface DuelChatMessage {
@@ -412,6 +421,7 @@ class CompletionChatAdapter {
   private insertedClaimIds = new Set<string>();
   private pending: CompletionMessage[] = [];
   private pendingWins: WinMessage[] = [];
+  private pendingMatchChat: MatchChatMirrorMessage[] = [];
   private mountGuard: number | null = null;
 
   public constructor(
@@ -441,10 +451,19 @@ class CompletionChatAdapter {
     queueMicrotask(() => this.flush());
   }
 
+  public insertMatchChat(message: MatchChatMirrorMessage): void {
+    const messageId = `match-chat:${message.messageId}`;
+    if (this.insertedClaimIds.has(messageId)) return;
+    this.insertedClaimIds.add(messageId);
+    this.pendingMatchChat.push(message);
+    queueMicrotask(() => this.flush());
+  }
+
   public reset(): void {
     this.insertedClaimIds.clear();
     this.pending = [];
     this.pendingWins = [];
+    this.pendingMatchChat = [];
     document.querySelectorAll('.skribbl-duels-completion').forEach(node => node.remove());
   }
 
@@ -470,13 +489,17 @@ class CompletionChatAdapter {
   --SCD_SELF: #8ee087;
   --SCD_OPPONENT: #ff9f72;
 }
-#game-chat .chat-content p.skribbl-duels-completion { padding: 2px 6px; box-sizing: border-box; }
+#game-chat .chat-content p.skribbl-duels-completion { padding:.2em;margin:0;opacity:1;animation:chat_msg .1s ease-in-out 1; }
 #game-chat .chat-content p.skribbl-duels-completion.own.base { color: var(--COLOR_CHAT_TEXT_GUESSED) !important; background-color: var(--COLOR_CHAT_BG_GUESSED_BASE) !important; }
 #game-chat .chat-content p.skribbl-duels-completion.own.alt { color: var(--COLOR_CHAT_TEXT_GUESSED) !important; background-color: var(--COLOR_CHAT_BG_GUESSED_ALT) !important; }
 #game-chat .chat-content p.skribbl-duels-completion.opponent.base { color: var(--COLOR_CHAT_TEXT_LEAVE) !important; background-color: var(--COLOR_CHAT_BG_LEAVE_BASE) !important; }
 #game-chat .chat-content p.skribbl-duels-completion.opponent.alt { color: var(--COLOR_CHAT_TEXT_LEAVE) !important; background-color: var(--COLOR_CHAT_BG_LEAVE_ALT) !important; }
 #game-chat .chat-content p.skribbl-duels-completion.win.base { color: var(--COLOR_CHAT_TEXT_OWNER) !important; background-color: var(--COLOR_CHAT_BG_LEAVE_BASE) !important; }
 #game-chat .chat-content p.skribbl-duels-completion.win.alt { color: var(--COLOR_CHAT_TEXT_OWNER) !important; background-color: var(--COLOR_CHAT_BG_LEAVE_ALT) !important; }
+#game-chat .chat-content p.skribbl-duels-completion.match-chat { display:flex;align-items:center;gap:.35em;color:var(--COLOR_PANEL_BUTTON) !important; }
+#game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-vanilla-match-chat-avatar { position:relative;display:grid;place-items:center;flex:0 0 1.6em;width:1.6em !important;height:1.6em !important;border-radius:50%;font-size:.7em;overflow:visible; }
+#game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-vanilla-match-chat-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }
+#game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-match-chat-message { min-width:0;overflow-wrap:anywhere; }
 .scd-tooltip { position:fixed;display:flex;z-index:2147483647;align-items:center;pointer-events:none;transform-origin:0 0;animation:scd-tooltip-appear .1s forwards ease-out; }
 .scd-tooltip-title { background:var(--COLOR_TOOL_TIP_BG,#20232c);color:var(--COLOR_PANEL_TEXT,#fff);border-radius:var(--BORDER_RADIUS,6px);padding:7px;text-shadow:1px 1px 0 #00000038;text-align:center;font-size:13px;font-weight:700;white-space:pre;max-width:320px; }
 .scd-tooltip-arrow { height:0;width:0; }
@@ -645,7 +668,7 @@ class CompletionChatAdapter {
 .scd-draft-option { min-width:0;min-height:76px;text-align:center;font-size:13px;line-height:1.2; }
 .scd-draft-option-key { display:block;margin-top:5px;color:rgba(255,255,255,.62);font-size:10px;font-weight:400; }
 .scd-draft-board { display:grid;gap:4px; }
-.scd-chat-log { max-height:330px;overflow:auto;min-width:0;transition:mask-image .12s;-webkit-transition:-webkit-mask-image .12s; }
+.scd-chat-log { min-height:0;max-height:330px;overflow:auto;min-width:0;transition:mask-image .12s;-webkit-transition:-webkit-mask-image .12s; }
 .scd-chat-log.has-overflow:not(.at-top) { mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%);-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18%,#000 100%); }
 .scd-chat-line { min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word; }
 .scd-chat-line.pending { opacity:.72; }
@@ -658,8 +681,8 @@ class CompletionChatAdapter {
 .scd-chat-rematch-accept { width:100%;background:#2c8de7; }
 .scd-chat-rematch-accept:hover:not(:disabled) { background:#1671c5; }
 .scd-chat-rematch-accept:active:not(:disabled) { background:#1361a9; }
-.scd-chat-section { min-width:0; }
-.scd-chat-form { position:sticky;bottom:0;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:.35em .2em;background:linear-gradient(to bottom,transparent 0,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 28%); }
+.scd-chat-section { min-width:0;display:grid;grid-template-rows:minmax(0,330px) auto;gap:9px; }
+.scd-chat-form { position:relative;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:.35em .2em;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)); }
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
 .scd-chat-characters.visible { top:.5em;opacity:1; }
@@ -743,11 +766,13 @@ class CompletionChatAdapter {
   }
 
   private flush(): void {
-    if (!this.enabled() || (this.pending.length === 0 && this.pendingWins.length === 0)) return;
+    const completionEnabled = this.enabled();
+    if ((!completionEnabled || (this.pending.length === 0 && this.pendingWins.length === 0))
+        && this.pendingMatchChat.length === 0) return;
     const target = document.querySelector<HTMLElement>('#game-chat .chat-content');
     if (!target) return;
 
-    while (this.pending.length > 0) {
+    while (completionEnabled && this.pending.length > 0) {
       const message = this.pending.shift();
       if (!message) break;
       if (target.querySelector(`[data-skribbl-duels-claim-id="${CSS.escape(message.claimId)}"]`)) continue;
@@ -764,7 +789,7 @@ class CompletionChatAdapter {
       target.scrollTop = target.scrollHeight;
     }
 
-    while (this.pendingWins.length > 0) {
+    while (completionEnabled && this.pendingWins.length > 0) {
       const message = this.pendingWins.shift();
       if (!message) break;
       const messageId = `win:${message.matchId}`;
@@ -779,6 +804,25 @@ class CompletionChatAdapter {
         '',
         `${message.playerName} won after ${formatDurationWords(message.elapsedMs)}!`
       ));
+      target.appendChild(paragraph);
+      target.scrollTop = target.scrollHeight;
+    }
+
+    while (this.pendingMatchChat.length > 0) {
+      const message = this.pendingMatchChat.shift();
+      if (!message) break;
+      const messageId = `match-chat:${message.messageId}`;
+      if (target.querySelector(`[data-skribbl-duels-match-chat-id="${CSS.escape(messageId)}"]`)) continue;
+      const paragraph = document.createElement('p');
+      paragraph.className = 'skribbl-duels-completion match-chat';
+      paragraph.dataset.scdRuntimeId = this.runtimeId;
+      paragraph.dataset.skribblDuelsMatchChatId = messageId;
+      const copy = element('span', 'scd-match-chat-message');
+      copy.append(
+        element('b', '', `${message.author}: `),
+        document.createTextNode(message.message)
+      );
+      paragraph.append(message.avatar, copy);
       target.appendChild(paragraph);
       target.scrollTop = target.scrollHeight;
     }
@@ -951,6 +995,7 @@ export class DuelProductFoundation {
   private readonly submittedClaimCandidateIds = new Set<string>();
   private deferredTelemetryEvents: TelemetryEvent[] = [];
   private awaitingTelemetryResumeCursor = false;
+  private lastTelemetryEvent: TelemetryEvent | null;
   private restoreDuelChatFocus = false;
   private duelChatScrollTop = 0;
   private duelChatStickToBottom = true;
@@ -984,6 +1029,7 @@ export class DuelProductFoundation {
     this.matchStore = new MatchStateStore(persisted?.state);
     this.awaitingTelemetryResumeCursor = persisted?.state.phase === 'running'
       && persisted.state.matchId !== null;
+    this.lastTelemetryEvent = options.getLastTelemetryEvent();
     this.telemetryGateway = new MatchTelemetryGateway(this.matchStore);
     const restoredSettings = this.settingsStore.get();
     this.settings = restoredSettings.panelOpen
@@ -1113,7 +1159,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.55.1',
+      version: '0.56.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1246,7 +1292,7 @@ export class DuelProductFoundation {
     this.winAnimation = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.55.1') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.56.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1419,7 +1465,7 @@ export class DuelProductFoundation {
   private createChallengeIcon(challengeId: string, className = 'scd-field-icon'): HTMLSpanElement {
     const name = challengeName(this.manifest, challengeId);
     const assetPath = CHALLENGE_ICON_ASSET_PATHS[challengeId];
-    const icon = assetPath
+    const icon = assetPath && EMBEDDED_ICON_ASSETS[assetPath]
       ? this.createIconAsset(assetPath, name.slice(0, 1).toUpperCase(), name)
       : element('span', 'scd-icon scd-icon-fallback', name.slice(0, 1).toUpperCase());
     icon.classList.add(...className.split(' ').filter(Boolean));
@@ -2209,6 +2255,14 @@ export class DuelProductFoundation {
     if (!this.panel || !this.panelBody) return;
     const previousScrollTop = this.panelBody.scrollTop;
     const previousChatLog = this.panelBody.querySelector<HTMLElement>('[data-scd-chat-log="true"]');
+    const previousChatInput = this.panelBody.querySelector<HTMLInputElement>(
+      '[data-scd-duel-chat-input="true"]'
+    );
+    const restoreFocusedChatInput = previousChatInput !== null
+      && document.activeElement === previousChatInput;
+    const previousSelectionStart = previousChatInput?.selectionStart ?? null;
+    const previousSelectionEnd = previousChatInput?.selectionEnd ?? null;
+    if (previousChatInput) this.duelChatDraft = previousChatInput.value;
     if (previousChatLog) {
       this.duelChatScrollTop = previousChatLog.scrollTop;
       this.duelChatStickToBottom = previousChatLog.scrollHeight - previousChatLog.scrollTop
@@ -2232,6 +2286,18 @@ export class DuelProductFoundation {
       case 'about': this.renderAboutTab(); break;
     }
     this.panelBody.scrollTop = previousScrollTop;
+    if (restoreFocusedChatInput) {
+      queueMicrotask(() => {
+        const input = this.panelBody?.querySelector<HTMLInputElement>(
+          '[data-scd-duel-chat-input="true"]'
+        );
+        if (!input?.isConnected || input.disabled) return;
+        input.focus({ preventScroll: true });
+        if (previousSelectionStart !== null && previousSelectionEnd !== null) {
+          input.setSelectionRange(previousSelectionStart, previousSelectionEnd);
+        }
+      });
+    }
   }
 
   private renderPanelAccountSummary(): void {
@@ -2321,7 +2387,6 @@ export class DuelProductFoundation {
       });
       this.tooltips.register(signIn, 'Open Discord authorization and return to skribbl.io');
       account.appendChild(signIn);
-      account.appendChild(element('div', 'scd-muted', 'Development flow: Discord redirects back to https://skribbl.io/. Your Supabase Redirect URLs must allow that exact URL.'));
     }
 
     const gatewayConnection = element('div', 'scd-card scd-stack');
@@ -2365,7 +2430,7 @@ export class DuelProductFoundation {
     const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 
     if (!homepage) {
-      card.appendChild(element('div', 'scd-muted', 'Matchmaking is available only on the Skribbl homepage. Return home before entering a queue.'));
+      card.appendChild(element('div', 'scd-muted', 'Matchmaking requires the visible Skribbl homepage and Telemetry confirming that no lobby is active.'));
     }
     if (this.matchmakingError) card.appendChild(element('div', 'scd-auth-error', this.matchmakingError));
     const gatewayError = this.visibleGatewayError();
@@ -2907,40 +2972,7 @@ export class DuelProductFoundation {
     form.append(inputShell, send);
     form.addEventListener('submit', event => {
       event.preventDefault();
-      const message = input.value.trim();
-      const matchId = this.gatewayState.match?.matchId;
-      if (!message || !gatewayChatActive || !matchId) return;
-      this.restoreDuelChatFocus = document.activeElement === input;
-      const previousSpam = this.duelChatSpam;
-      const spam = evaluateDuelChatSpam(previousSpam, Date.now());
-      this.duelChatSpam = spam.state;
-      if (!spam.allowed) {
-        this.insertDuelChatSpamWarning();
-        return;
-      }
-      try {
-        this.duelChatStickToBottom = true;
-        const clientMessageId = this.gatewayClient.sendDuelChat(matchId, message);
-        this.pendingDuelChatMessages.set(clientMessageId, message);
-        this.duelChatMessages.push({
-          id: `optimistic-${clientMessageId}`,
-          side: 'self',
-          author: this.duelDisplayName('self'),
-          message,
-          occurredAt: Date.now(),
-          pending: true
-        });
-        this.duelChatDraft = '';
-        input.value = '';
-        updateCount();
-        log.scrollTop = log.scrollHeight;
-        this.renderPanel();
-      } catch (error) {
-        this.duelChatSpam = previousSpam;
-        this.restoreDuelChatFocus = false;
-        this.matchmakingError = error instanceof Error ? error.message : String(error);
-        this.renderPanel();
-      }
+      this.submitDuelChatMessage(input.value, document.activeElement === input);
     });
 
     stack.append(log, form);
@@ -2972,17 +3004,100 @@ export class DuelProductFoundation {
 
   private handleDuelChatKeydown(event: KeyboardEvent): void {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement) || target.dataset.scdDuelChatInput !== 'true') return;
-    if (event.key === 'Escape') {
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.dataset.scdDuelChatInput === 'true' && event.key === 'Escape') {
       event.preventDefault();
       event.stopImmediatePropagation();
       target.blur();
       return;
     }
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.isComposing) return;
+    if (target.dataset.scdDuelChatInput === 'true') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      target.form?.requestSubmit();
+      return;
+    }
+
+    const vanillaChatInput = target.matches('#newChat, #game-chat input:not([type="hidden"])');
+    const typoCommandInput = target.id === 'typo-command-input';
+    if (!vanillaChatInput && !typoCommandInput) return;
+    const command = target.value.match(/^\/(?:sdchat|msg|chat)(?:\s+([\s\S]*))?$/iu);
+    if (!command) return;
+
     event.preventDefault();
     event.stopImmediatePropagation();
-    target.form?.requestSubmit();
+    target.value = '';
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    if (typoCommandInput) {
+      const original = document.querySelector<HTMLInputElement>(
+        '#newChat, #game-chat input:not(#typo-command-input):not([type="hidden"])'
+      );
+      if (original) {
+        original.value = '';
+        original.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+
+    const message = command[1]?.trim() ?? '';
+    if (!message) {
+      this.showSimpleToast('Match chat command', 'Use /sdchat, /msg or /chat followed by a message.');
+      return;
+    }
+    if (!this.submitDuelChatMessage(message, false, false)) {
+      this.showSimpleToast('Match chat unavailable', 'An active connected Duel match is required.');
+    }
+  }
+
+  private submitDuelChatMessage(
+    rawMessage: string,
+    restoreFocus: boolean,
+    clearDuelDraft = true
+  ): boolean {
+    const message = rawMessage.trim();
+    const matchId = this.gatewayState.match?.matchId;
+    const gatewayChatActive = this.gatewayState.status === 'connected'
+      && matchId === this.matchState.matchId
+      && this.gatewayState.match?.state.phase !== 'cancelled';
+    if (!message || !gatewayChatActive || !matchId) return false;
+
+    this.restoreDuelChatFocus = restoreFocus;
+    const previousSpam = this.duelChatSpam;
+    const spam = evaluateDuelChatSpam(previousSpam, Date.now());
+    this.duelChatSpam = spam.state;
+    if (!spam.allowed) {
+      this.insertDuelChatSpamWarning();
+      return true;
+    }
+
+    try {
+      this.duelChatStickToBottom = true;
+      const clientMessageId = this.gatewayClient.sendDuelChat(matchId, message);
+      this.pendingDuelChatMessages.set(clientMessageId, message);
+      this.duelChatMessages.push({
+        id: `optimistic-${clientMessageId}`,
+        side: 'self',
+        author: this.duelDisplayName('self'),
+        message,
+        occurredAt: Date.now(),
+        pending: true
+      });
+      if (clearDuelDraft) {
+        this.duelChatDraft = '';
+        const input = this.panelBody?.querySelector<HTMLInputElement>(
+          '[data-scd-duel-chat-input="true"]'
+        );
+        if (input) input.value = '';
+      }
+      this.renderPanel();
+      return true;
+    } catch (error) {
+      this.duelChatSpam = previousSpam;
+      this.restoreDuelChatFocus = false;
+      this.matchmakingError = error instanceof Error ? error.message : String(error);
+      this.renderPanel();
+      return false;
+    }
   }
 
   private renderSettingsTab(): void {
@@ -3339,13 +3454,14 @@ export class DuelProductFoundation {
     const style = getComputedStyle(home);
     return style.display !== 'none'
       && style.visibility !== 'hidden'
-      && home.getClientRects().length > 0;
+      && home.getClientRects().length > 0
+      && isHomepageTelemetryEligible(this.lastTelemetryEvent);
   }
 
   private beginMatchmaking(format: 'casual' | 'ranked'): string {
     this.matchmakingError = null;
     if (!this.isHomepageVisible()) {
-      this.matchmakingError = 'Matchmaking can only start from the visible Skribbl homepage.';
+      this.matchmakingError = 'Matchmaking requires the visible Skribbl homepage and a confirmed lobby-exit Telemetry state.';
       this.renderPanel();
       throw new Error(this.matchmakingError);
     }
@@ -3706,6 +3822,21 @@ export class DuelProductFoundation {
       };
       if (optimisticIndex >= 0) this.duelChatMessages.splice(optimisticIndex, 1, confirmed);
       else this.duelChatMessages.push(confirmed);
+      if (message.occurredAt >= this.chatNotificationStartedAt - 5_000) {
+        const participant = state.match?.state.participants.find(item =>
+          item.accountId === message.authorAccountId
+        ) ?? null;
+        this.chatAdapter.insertMatchChat({
+          messageId: message.messageId,
+          author: message.authorDisplayName,
+          message: message.message,
+          avatar: this.createParticipantAvatar(
+            message.authorDisplayName,
+            participant,
+            'scd-vanilla-match-chat-avatar'
+          )
+        });
+      }
       if (ownMessage) {
         this.pendingDuelChatMessages.delete(message.clientMessageId);
         this.duelChatStickToBottom = true;
@@ -4222,6 +4353,7 @@ export class DuelProductFoundation {
   }
 
   private observeDuelTelemetry(event: TelemetryEvent): void {
+    this.lastTelemetryEvent = structuredClone(event);
     const state = this.matchStore.getState();
     if (this.awaitingTelemetryResumeCursor
         && state.phase === 'running'

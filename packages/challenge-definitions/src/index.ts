@@ -27,6 +27,7 @@ export * from './definitions/ultimateComeback';
 
 export * from './definitions/mogged';
 export * from './officialWordLists';
+export * from './proseDictionary';
 
 export * from './definitions/smolWords';
 export * from './definitions/bigWord';

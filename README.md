@@ -1,9 +1,28 @@
-# Skribbl Duels v0.55.1
+# Skribbl Duels v0.56.0
 
 This monorepo contains the growing 47-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v10, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.56.0
+
+- Locks matchmaking behind both a genuinely visible homepage and the latest
+  Telemetry state, preventing an active lobby from being hidden with DevTools.
+- Fixes Back to back for consecutive same-lobby wins and makes Deserved? require
+  a sole positive first place from a coherent result without First Guesser.
+- Replaces TL;DR's length-only rule with an offline 28-language prose detector,
+  one-edit typo tolerance and random/repeated-text rejection.
+- Keeps Match Chat focus/caret across incoming state, separates its scroll log
+  from the form, mirrors confirmed messages into Skribbl chat and supports
+  `/sdchat`, `/msg` and `/chat`, including Typo's command input.
+- Removes the development redirect copy and the Discord `email` OAuth scope.
+- Gives all 47 Challenges unique future-proof icon paths; Transcended reserves
+  `challenge-icons/transcended.gif` and uses the normal fallback until supplied.
+
+Deploy the v0.56.0 Gateway first, verify `/readyz`, then install or update the
+v0.56.0 userscript. Gateway Contract v10 remains compatible; no Supabase
+migration or new Railway variable is required.
 
 ## v0.55.1
 

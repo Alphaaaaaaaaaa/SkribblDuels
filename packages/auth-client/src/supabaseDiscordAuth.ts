@@ -199,7 +199,7 @@ export class SupabaseDiscordAuthClient {
       provider: 'discord',
       options: {
         redirectTo: SUPABASE_AUTH_REDIRECT_URL,
-        scopes: 'identify email'
+        scopes: 'identify'
       }
     });
     if (error) {

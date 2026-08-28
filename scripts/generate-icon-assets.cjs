@@ -1,4 +1,4 @@
-const { readFileSync, writeFileSync } = require('node:fs');
+const { existsSync, readFileSync, writeFileSync } = require('node:fs');
 const { resolve, extname } = require('node:path');
 
 const root = resolve(__dirname, '..');
@@ -8,6 +8,7 @@ const paths = new Set([
   ...Object.values(registry.countdown),
   ...registry.challenges.map(entry => entry.assetPath)
 ]);
+const optionalChallengePaths = new Set(registry.challenges.map(entry => entry.assetPath));
 const mime = { '.gif': 'image/gif', '.png': 'image/png' };
 const assets = {};
 const challengePaths = Object.fromEntries(
@@ -16,7 +17,12 @@ const challengePaths = Object.fromEntries(
 for (const assetPath of [...paths].sort()) {
   const mediaType = mime[extname(assetPath).toLowerCase()];
   if (!mediaType) throw new Error(`Unsupported icon format: ${assetPath}`);
-  const bytes = readFileSync(resolve(root, assetPath));
+  const absolutePath = resolve(root, assetPath);
+  if (!existsSync(absolutePath)) {
+    if (optionalChallengePaths.has(assetPath)) continue;
+    throw new Error(`Required UI icon is missing: ${assetPath}`);
+  }
+  const bytes = readFileSync(absolutePath);
   assets[assetPath] = `data:${mediaType};base64,${bytes.toString('base64')}`;
 }
 writeFileSync(

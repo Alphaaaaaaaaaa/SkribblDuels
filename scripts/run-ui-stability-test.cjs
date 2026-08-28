@@ -46,7 +46,7 @@ assert(source.includes('handleGatewayClaimResolution'), 'Gateway Claim resolutio
 assert(source.includes('synchronizeGatewayClaims'), 'authoritative reconnect Claims are not restored');
 assert(source.includes("window.addEventListener('keydown', this.duelChatKeydown, true)"), 'Duel chat does not intercept Enter before Skribbl handlers');
 assert(source.includes('event.stopImmediatePropagation();'), 'Duel chat Enter isolation is missing');
-assert(source.includes("if (event.key === 'Escape')"), 'Escape does not unfocus Duel chat');
+assert(source.includes("event.key === 'Escape')") && source.includes('target.blur();'), 'Escape does not unfocus Duel chat');
 assert(source.includes("[data-scd-duel-chat-input=\"true\"]") && source.includes('?.focus()'), 'Duel chat focus is not restored after Enter');
 assert(source.includes('CHALLENGE_ICON_ASSET_PATHS[challengeId]'), 'challenge IDs are not resolved to real assets');
 assert(source.includes('this.createChallengeIcon(pick.challengeId)'), 'draft fields still use placeholder letters');
@@ -88,7 +88,8 @@ assert(source.includes('background-color:var(--COLOR_PANEL_HI)'), 'Skribbl scrol
 assert(source.includes('::-webkit-scrollbar-button') && source.includes('display:none;width:0;height:0'), 'scrollbar arrow buttons are not suppressed');
 assert(source.includes('background-clip:border-box'), 'scrollbar thumb does not use the full scrollbar width');
 assert(source.includes('this.duelChatStickToBottom ? log.scrollHeight : this.duelChatScrollTop'), 'Duel chat does not preserve reader scroll position');
-assert(source.includes('.scd-chat-form { position:sticky;bottom:0'), 'Duel Chat form is not pinned when Draw controls expand a long Match panel');
+assert(source.includes('.scd-chat-section { min-width:0;display:grid;grid-template-rows:minmax(0,330px) auto'), 'Duel Chat does not separate its scroll log and fixed-bottom form into grid rows');
+assert(source.includes('.scd-chat-form { position:relative;z-index:3'), 'Duel Chat form can still overlap its message log');
 assert(source.includes("input.scrollIntoView({ block: 'nearest', inline: 'nearest' })"), 'A newly visible Draw proposal does not recover the Chat input into view');
 assert(source.includes('input::placeholder') && source.includes('var(--COLOR_PANEL_TEXT_PLACEHOLDER)'), 'native Skribbl placeholder styling is missing');
 assert(source.includes('var(--COLOR_INPUT_BORDER_FOCUS)'), 'native Skribbl input focus styling is missing');
@@ -144,6 +145,8 @@ assert(source.includes('.scd-duel-toast.clickable:hover { background:var(--COLOR
 assert(source.includes('.scd-chat-toast > span:not(.close-toast) { display:block;max-width:min(32rem,calc(100vw - 6rem));overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }'), 'Only the Match Chat message span should own ellipsis overflow');
 assert(!source.includes('.scd-chat-toast { width:'), 'Match Chat toast container still receives the message overflow width');
 assert(source.includes('private duelChatDraft =') && source.includes('this.duelChatDraft = input.value'), 'Duel Chat draft does not survive authoritative rerenders');
+assert(source.includes('const restoreFocusedChatInput = previousChatInput !== null') && source.includes('input.focus({ preventScroll: true })'), 'Incoming Match state can still steal Duel Chat focus');
+assert(source.includes('input.setSelectionRange(previousSelectionStart, previousSelectionEnd)'), 'Incoming Match state does not restore the Duel Chat caret');
 assert(source.includes('evaluateDuelChatSpam(previousSpam, Date.now())'), 'Duel Chat does not mirror the authoritative Skribbl spam score');
 assert(source.includes("element('strong', '', message.message)"), 'Spam detected is not rendered as a bold Duel Chat system line');
 assert(source.includes('var(--COLOR_CHAT_TEXT_LEAVE);border-left-color:var(--COLOR_CHAT_TEXT_LEAVE)'), 'Spam detected does not use the Skribbl leave color');
@@ -151,6 +154,11 @@ assert(source.includes("element('div', 'scd-chat-rematch-request')"), 'Opponent 
 assert(source.includes("element('button', 'scd-button scd-chat-rematch-accept', 'Rematch')"), 'Match Chat lacks the Rematch acceptance button');
 assert(source.includes("actions.classList.add('without-rematch')"), 'Result actions do not move Rematch into Chat when the opponent requests it');
 assert(source.includes('private showConfirmToast('), 'Typo-compatible confirm toast is missing');
+assert(source.includes("target.id === 'typo-command-input'") && source.includes('/(?:sdchat|msg|chat)'), 'Vanilla and Typo Match Chat commands are not intercepted');
+assert(source.includes('this.chatAdapter.insertMatchChat({'), 'Confirmed Match Chat messages are not mirrored into Skribbl chat');
+assert(source.includes('p.skribbl-duels-completion.match-chat') && source.includes('color:var(--COLOR_PANEL_BUTTON) !important'), 'Mirrored Match Chat styling is missing');
+assert(source.includes('padding:.2em;margin:0;opacity:1;animation:chat_msg .1s ease-in-out 1'), 'Completion message spacing/animation does not match the requested Skribbl rule');
+assert(!source.includes('Development flow: Discord redirects back'), 'Development OAuth redirect copy is still visible in the login panel');
 assert(!source.includes('window.confirm('), 'Forfeit still uses the browser confirm dialog');
 assert(!source.includes("heading.textContent = 'Telemetry gateway'"), 'finished Match UI still exposes telemetry diagnostics');
 assert(!source.includes('Match frozen. Skribbl continues normally'), 'finished Match UI still exposes the telemetry freeze note');

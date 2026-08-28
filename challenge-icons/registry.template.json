@@ -1,5 +1,5 @@
 {
-  "registryVersion": 1,
+  "registryVersion": 2,
   "assetRules": {
     "format": "gif",
     "recommendedWidth": 40,
@@ -38,7 +38,7 @@
     { "challengeId": "deaf-guess", "assetPath": "challenge-icons/deaf-guess.gif", "currentMetadataIcon": "typo-deaf-guess" },
     { "challengeId": "better-late-than-never", "assetPath": "challenge-icons/better-late-than-never.gif", "currentMetadataIcon": null },
     { "challengeId": "cool-number-detected", "assetPath": "challenge-icons/cool-number-detected.gif", "currentMetadataIcon": null },
-    { "challengeId": "tldr", "assetPath": "challenge-icons/tldr.gif", "currentMetadataIcon": null },
+    { "challengeId": "tldr", "assetPath": "challenge-icons/tldr.gif", "currentMetadataIcon": "tldr-prose" },
     { "challengeId": "ouch", "assetPath": "challenge-icons/ouch.gif", "currentMetadataIcon": null },
     { "challengeId": "sniper", "assetPath": "challenge-icons/sniper.gif", "currentMetadataIcon": "sniper-crosshair" },
     { "challengeId": "omg-hacker", "assetPath": "challenge-icons/omg-hacker.gif", "currentMetadataIcon": "hacker-first-guess" },
@@ -71,6 +71,6 @@
     { "challengeId": "noob-vs-pro-vs-hacker", "assetPath": "challenge-icons/noob-vs-pro-vs-hacker.gif", "currentMetadataIcon": "noob-pro-hacker-positions" },
     { "challengeId": "reflexes-like-a-cat", "assetPath": "challenge-icons/reflexes-like-a-cat.gif", "currentMetadataIcon": "hot-drop" },
     { "challengeId": "drop-down", "assetPath": "challenge-icons/drop-down.gif", "currentMetadataIcon": "final-drop" },
-    { "challengeId": "transcended", "assetPath": "challenge-icons/pointsmaxxing.gif", "currentMetadataIcon": "transcended-lead" }
+    { "challengeId": "transcended", "assetPath": "challenge-icons/transcended.gif", "currentMetadataIcon": "transcended-lead" }
   ]
 }

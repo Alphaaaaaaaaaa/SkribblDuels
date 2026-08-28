@@ -116,22 +116,35 @@ const finalPayload = (selfScore: number, betaScore: number, gammaScore = 0) => (
   ]
 });
 
-const startingPayload = {
-  previousStateId: 0,
-  stateId: 1,
-  stateName: 'GAME_STARTING',
-  time: 3,
-  roundIndex: 0,
-  roundNumber: 1,
-  maxRounds: 3
-};
+const roundResultsPayload = (scores: Array<{ playerId: number; roundScore: number; totalScore: number }>) => ({
+  previousStateId: 4,
+  stateId: 5,
+  stateName: 'ROUND_ENDED',
+  time: 0,
+  roundIndex: 1,
+  roundNumber: 2,
+  maxRounds: 3,
+  reason: 0,
+  reasonName: 'TIME_UP',
+  word: 'Punkt',
+  scores
+});
 
 const deserved = new ChallengeEngine({ autoPersist: false });
 deserved.register(deservedDefinition);
 deserved.activate({ instanceId: 'deserved', challengeId: 'deserved' });
 deserved.process(event('LOBBY_HYDRATED', 'deserved-mid-game-hydrate', 1, hydrationPayload, 'deserved-game', null, 'PROGRESS1', 4, 'DRAWING'));
 deserved.process(event('SCORE_CHANGED', 'deserved-self-catches-up', 10, scorePayload(21, 300, 901), 'deserved-game', self));
-assert(deserved.getInstance('deserved')?.status === 'completion-pending', 'Deserved should complete after reaching positive first place in a game joined mid-progress.');
+assert(
+  deserved.getInstance('deserved')?.status === 'active',
+  'A single score component must not certify Deserved before the scoreboard batch is coherent.'
+);
+deserved.process(event('ROUND_RESULTS_AVAILABLE', 'deserved-coherent-lead', 11, roundResultsPayload([
+  { playerId: 21, roundScore: 601, totalScore: 901 },
+  { playerId: 62, roundScore: 0, totalScore: 900 },
+  { playerId: 63, roundScore: 0, totalScore: 700 }
+]), 'deserved-game'));
+assert(deserved.getInstance('deserved')?.status === 'completion-pending', 'Deserved should complete after a coherent strict positive lead in a game joined mid-progress.');
 
 const zeroGuard = new ChallengeEngine({ autoPersist: false });
 zeroGuard.register(deservedDefinition);
@@ -165,10 +178,10 @@ assert(
   'A partial round-result packet must retain higher-scoring players and cannot invent first place for Deserved.'
 );
 
-const tieAllowed = new ChallengeEngine({ autoPersist: false });
-tieAllowed.register(deservedDefinition);
-tieAllowed.activate({ instanceId: 'deserved', challengeId: 'deserved' });
-tieAllowed.process(event('LOBBY_HYDRATED', 'tie-hydrate', 30, {
+const tieRejected = new ChallengeEngine({ autoPersist: false });
+tieRejected.register(deservedDefinition);
+tieRejected.activate({ instanceId: 'deserved', challengeId: 'deserved' });
+tieRejected.process(event('LOBBY_HYDRATED', 'tie-hydrate', 30, {
   ...hydrationPayload,
   players: [
     { ...midGamePlayers[0]!, score: 300 },
@@ -176,8 +189,13 @@ tieAllowed.process(event('LOBBY_HYDRATED', 'tie-hydrate', 30, {
     { ...midGamePlayers[2]!, score: 400 }
   ]
 }, 'tie-game', null));
-tieAllowed.process(event('SCORE_CHANGED', 'tie-self-reaches-first', 31, scorePayload(21, 300, 500), 'tie-game', self));
-assert(tieAllowed.getInstance('deserved')?.status === 'completion-pending', 'A positive tie for first place must count for Deserved.');
+tieRejected.process(event('SCORE_CHANGED', 'tie-self-reaches-first', 31, scorePayload(21, 300, 500), 'tie-game', self));
+tieRejected.process(event('ROUND_RESULTS_AVAILABLE', 'tie-coherent-ranking', 32, roundResultsPayload([
+  { playerId: 21, roundScore: 200, totalScore: 500 },
+  { playerId: 62, roundScore: 0, totalScore: 500 },
+  { playerId: 63, roundScore: 0, totalScore: 400 }
+]), 'tie-game'));
+assert(tieRejected.getInstance('deserved')?.status === 'active', 'A positive tie for first place must not count for Deserved.');
 
 const disqualified = new ChallengeEngine({ autoPersist: false });
 disqualified.register(deservedDefinition);
@@ -195,6 +213,11 @@ disqualified.process(event('FIRST_GUESS', 'dq-self-first-guesser', 110, {
   isFirstGuesser: true
 }, 'dq-game', self));
 disqualified.process(event('SCORE_CHANGED', 'dq-self-first-place', 120, scorePayload(21, 300, 901), 'dq-game', self));
+disqualified.process(event('ROUND_RESULTS_AVAILABLE', 'dq-coherent-first-place', 121, roundResultsPayload([
+  { playerId: 21, roundScore: 601, totalScore: 901 },
+  { playerId: 62, roundScore: 0, totalScore: 900 },
+  { playerId: 63, roundScore: 0, totalScore: 700 }
+]), 'dq-game'));
 assert(disqualified.getInstance('deserved')?.status === 'active', 'A self first guess after joining the current game must block Deserved.');
 
 const resetGuard = new ChallengeEngine({ autoPersist: false });
@@ -214,6 +237,11 @@ resetGuard.process(event('FIRST_GUESS', 'reset-old-game-first', 140, {
 }, 'reset-game', self));
 resetGuard.process(event('SCORE_CHANGED', 'reset-beta-to-zero', 150, scorePayload(62, 900, 0), 'reset-game', other));
 resetGuard.process(event('SCORE_CHANGED', 'reset-self-new-game-lead', 160, scorePayload(21, 0, 100), 'reset-game', self));
+resetGuard.process(event('ROUND_RESULTS_AVAILABLE', 'reset-coherent-lead', 161, roundResultsPayload([
+  { playerId: 21, roundScore: 100, totalScore: 100 },
+  { playerId: 62, roundScore: 0, totalScore: 0 },
+  { playerId: 63, roundScore: 0, totalScore: 0 }
+]), 'reset-game'));
 assert(resetGuard.getInstance('deserved')?.status === 'active', 'A round score reset must not erase the first-guesser disqualification for the current game.');
 
 const backToBack = new ChallengeEngine({ autoPersist: false });
@@ -222,10 +250,7 @@ backToBack.activate({ instanceId: 'b2b', challengeId: 'back-to-back' });
 backToBack.process(event('GAME_ENDED', 'b2b-mid-game-win-1', 200, finalPayload(1200, 1100), 'b2b-game-1', null, 'PROGRESS1', 6, 'GAME_ENDED'));
 assert(backToBack.getInstance('b2b')?.progress.current === 1, 'A first win may count even when GAME_STARTING was never observed.');
 backToBack.process(event('GAME_ENDED', 'b2b-win-2', 210, finalPayload(1400, 1300), 'b2b-game-2', null, 'PROGRESS1', 6, 'GAME_ENDED'));
-assert(backToBack.getInstance('b2b')?.progress.current === 1, 'An unobserved second win must restart the streak at 1/2.');
-backToBack.process(event('GAME_STARTING', 'b2b-game-3-start', 220, startingPayload, 'b2b-game-3', null, 'PROGRESS1', 1, 'GAME_STARTING'));
-backToBack.process(event('GAME_ENDED', 'b2b-win-3', 230, finalPayload(1500, 1400), 'b2b-game-3', null, 'PROGRESS1', 6, 'GAME_ENDED'));
-assert(backToBack.getInstance('b2b')?.status === 'completion-pending', 'A fully observed second consecutive win in the same lobby should complete Back to back.');
+assert(backToBack.getInstance('b2b')?.status === 'completion-pending', 'A second consecutive win in the same lobby must complete Back to back even when its start was not observed.');
 
 const lobbyRestricted = new ChallengeEngine({ autoPersist: false });
 lobbyRestricted.register(backToBackDefinition);
@@ -251,4 +276,4 @@ zeroScore.activate({ instanceId: 'b2b', challengeId: 'back-to-back' });
 zeroScore.process(event('GAME_ENDED', 'zero-score-tie', 500, finalPayload(0, 0), 'zero-score-game', null, 'PROGRESS1', 6, 'GAME_ENDED'));
 assert(zeroScore.getInstance('b2b')?.progress.current === 0, 'A 0-point first-place tie must not count as a win.');
 
-console.log('Deserved v3 and Back to back v5 runtime tests passed.');
+console.log('Deserved v5 and Back to back v6 runtime tests passed.');

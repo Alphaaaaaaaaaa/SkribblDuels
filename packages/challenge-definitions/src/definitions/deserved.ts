@@ -58,12 +58,12 @@ function resetScores(players: readonly DeservedPlayerScore[]): DeservedPlayerSco
   return players.map(player => ({ ...player, score: 0, departed: false }));
 }
 
-function isPositiveFirst(players: readonly DeservedPlayerScore[], selfPlayerId: number): boolean {
+function isStrictPositiveFirst(players: readonly DeservedPlayerScore[], selfPlayerId: number): boolean {
   const active = players.filter(player => !player.departed);
   const self = active.find(player => player.playerId === selfPlayerId);
   const opponents = active.filter(player => player.playerId !== selfPlayerId);
   if (!self || self.score <= 0 || opponents.length === 0) return false;
-  return opponents.every(player => self.score >= player.score);
+  return opponents.every(player => self.score > player.score);
 }
 
 function initialState(): DeservedState {
@@ -104,14 +104,14 @@ function startTracking(
 
 export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedParameters> = {
   id: 'deserved',
-  version: 4,
+  version: 5,
   metadata: {
     category: 'progress',
     localization: localization(
       'Deserved?',
-      'Reach first place in a public game with a positive score, ties included, without having been the first guesser since joining that game.',
+      'Reach sole first place in a public game with a positive score, without ever being the first guesser during the observed part of that game. Zero points and tied leads do not count.',
       'Deserved?',
-      'Erreiche in einem öffentlichen Spiel mit positiver Punktzahl Platz 1, Gleichstand eingeschlossen, ohne seit deinem Beitritt zu diesem Spiel jemals First Guesser gewesen zu sein.'
+      'Erreiche in einem öffentlichen Spiel allein Platz 1 mit positiver Punktzahl, ohne im beobachteten Teil dieses Spiels jemals First Guesser gewesen zu sein. Null Punkte und Gleichstände zählen nicht.'
     ),
     icon: 'deserved-first-place',
     rankedEligible: true,
@@ -268,11 +268,11 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
         ? state
         : startTracking(state, gameSessionId, selfPlayerId, event.eventId);
       const players = upsertPlayer(active.players, playerId, totalScore, false);
-      const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
-      const evidenceEventIds = [
-        ...(active.trackingStartedEventId ? [active.trackingStartedEventId] : []),
-        event.eventId
-      ];
+      // Skribbl can deliver the per-player score changes that make up one
+      // visible scoreboard update sequentially. Certifying on the first item
+      // in that batch creates a transient false lead before the remaining
+      // players have been updated. Keep the roster current here and certify
+      // only on coherent ROUND_RESULTS_AVAILABLE / GAME_ENDED snapshots.
       return {
         internalState: {
           ...active,
@@ -280,12 +280,8 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
           players,
           lobbyPlayers: upsertPlayer(active.lobbyPlayers, playerId, totalScore, false)
         },
-        progress: reachedFirst ? 1 : 0,
-        complete: reachedFirst,
-        reason: reachedFirst
-            ? 'deserved-positive-first-place-reached-without-first-guess'
-            : 'deserved-scoreboard-updated',
-        evidenceEventIds
+        progress: 0,
+        reason: 'deserved-scoreboard-component-updated'
       };
     }
 
@@ -303,7 +299,7 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
       for (const score of event.payload.scores) {
         players = upsertPlayer(players, score.playerId, score.totalScore, false);
       }
-      const reachedFirst = !active.selfWasFirstGuesser && isPositiveFirst(players, selfPlayerId);
+      const reachedFirst = !active.selfWasFirstGuesser && isStrictPositiveFirst(players, selfPlayerId);
       const evidenceEventIds = [
         ...(active.trackingStartedEventId ? [active.trackingStartedEventId] : []),
         event.eventId
@@ -318,7 +314,7 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
         progress: reachedFirst ? 1 : 0,
         complete: reachedFirst,
         reason: reachedFirst
-          ? 'deserved-coherent-positive-first-place-without-first-guess'
+          ? 'deserved-coherent-strict-positive-first-place-without-first-guess'
           : active.selfWasFirstGuesser
             ? 'deserved-round-finished-after-self-first-guess'
             : 'deserved-coherent-round-ranking-not-first',
@@ -335,7 +331,7 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
       }
       const reachedFirst = selfPlayerId !== null
         && !state.selfWasFirstGuesser
-        && isPositiveFirst(finalPlayers, selfPlayerId);
+        && isStrictPositiveFirst(finalPlayers, selfPlayerId);
       if (reachedFirst) {
         return {
           internalState: {
@@ -346,7 +342,7 @@ export const deservedDefinition: ChallengeDefinition<DeservedState, DeservedPara
           },
           progress: 1,
           complete: true,
-          reason: 'deserved-positive-final-ranking-without-first-guess',
+          reason: 'deserved-strict-positive-final-ranking-without-first-guess',
           evidenceEventIds: [
             ...(state.trackingStartedEventId ? [state.trackingStartedEventId] : []),
             event.eventId

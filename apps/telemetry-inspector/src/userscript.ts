@@ -81,7 +81,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.55.1';
+const BUILD_VERSION = '0.56.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -686,6 +686,9 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     subscribeTelemetry(listener) {
       const subscription = telemetryStore.events$.subscribe(event => listener(event));
       return () => subscription.unsubscribe();
+    },
+    getLastTelemetryEvent() {
+      return telemetryStore.getStats().lastEvent;
     },
     getSelfName() {
       return selectSelf(lobbyStore.getSnapshot())?.name ?? 'Alpha';

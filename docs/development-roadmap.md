@@ -37,6 +37,7 @@
 | Reload-safe Challenge transport | Complete | Pending telemetry, in-flight batches and Claim candidates survive `/credits` navigation and runtime reloads until server ACK/resolution |
 | v0.54 production infrastructure | Complete | Redis Streams delivery, fenced Match Authority, readiness/metrics/diagnostics, alert rules, shared limits, sanctions and replay hardening |
 | v0.55 Challenge live certification | Complete | Telemetry-triggered server Claims, per-challenge certification metrics, visible transport cursors and false-positive regressions |
+| v0.56 Challenge/chat hardening | Complete | Telemetry-gated homepage matchmaking, strict Back to back/Deserved?, 28-language TL;DR v2 and Typo-compatible mirrored Match Chat |
 
 ## Active development sequence
 
@@ -64,8 +65,9 @@
   dedicated live/false-positive regressions.
 - Aggregate telemetry, Claim-source and rejection-reason metrics plus a visible
   client ACK/queue cursor make two-client certification measurable.
-- Transcended expands the Casual pool in v0.55.1; TL;DR v2 and the other six
-  proposed additions remain gated by the deterministic data/events recorded in
+- Transcended expands the Casual pool in v0.55.1. TL;DR v2 ships in v0.56.0
+  with deterministic offline dictionaries for all 28 languages; the other six
+  proposed additions remain gated by the events recorded in
   `docs/challenge-live-certification-v0.55.0.md`.
 
 ### 4. Ranked competition and history

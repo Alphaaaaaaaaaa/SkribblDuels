@@ -73,7 +73,7 @@ assert.deepEqual(signInInput, {
   provider: 'discord',
   options: {
     redirectTo: 'https://skribbl.io/',
-    scopes: 'identify email'
+    scopes: 'identify'
   }
 });
 

@@ -4,14 +4,16 @@
 It contains all 47 stable challenge IDs, their planned file paths and the
 metadata icon keys already present in the challenge definitions.
 
-`transcended` temporarily reuses the Pointsmaxxing artwork until its dedicated
-asset is supplied; IDs may therefore outnumber distinct files.
+Every Challenge owns a unique direct path. `transcended` already reserves
+`challenge-icons/transcended.gif`; until that file is supplied, the generated
+path remains registered and the UI uses its normal initial-letter fallback.
 
 ## Adding artwork
 
 1. Export each asset as a transparent animated GIF, preferably 40x40 pixels.
-2. Use the exact `assetPath` from the registry, or change only the registry
-   when a different filename is intentionally required.
+2. Use the exact `assetPath` from the registry. New Challenges must reserve
+   `challenge-icons/<challenge-id>.gif` (or `.png`) when their definition is
+   added, even if the artwork will arrive later.
 3. Do not rename a `challengeId`. Saved boards and Gateway snapshots use it as
    the permanent identifier.
 4. Keep countdown symbol filenames case-sensitive: `countdown_G.gif`,
@@ -21,6 +23,7 @@ asset is supplied; IDs may therefore outnumber distinct files.
 value means that the current definition has no symbolic icon yet; the GIF path
 is still reserved and ready for artwork.
 
-When the final files are supplied, the build will validate dimensions and
-embed the assets into the userscript so skribbl.io never depends on relative
-paths hosted by the game itself.
+Missing Challenge files are legal and use the fallback; missing UI or countdown
+files fail the build. When final files are supplied, the build embeds them into
+the userscript so skribbl.io never depends on relative paths hosted by the game
+itself.

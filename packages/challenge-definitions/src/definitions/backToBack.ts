@@ -10,7 +10,6 @@ export interface BackToBackState {
   streakLobbyId: string | null;
   winningGameKeys: string[];
   winningEvidenceEventIds: string[];
-  observedGameStartEventIds: Record<string, string>;
   lastEndedGameKey: string | null;
   currentScores: Array<{ playerId: number; totalScore: number; roundScore: number }>;
 }
@@ -49,7 +48,6 @@ function emptyState(): BackToBackState {
     streakLobbyId: null,
     winningGameKeys: [],
     winningEvidenceEventIds: [],
-    observedGameStartEventIds: {},
     lastEndedGameKey: null,
     currentScores: []
   };
@@ -72,14 +70,14 @@ function gameKey(lobbyId: string, gameSessionId: string | null, eventId: string)
 
 export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBackParameters> = {
   id: 'back-to-back',
-  version: 5,
+  version: 6,
   metadata: {
     category: 'progress',
     localization: localization(
       'Back to back',
-      'Win two consecutive public skribbl games in the same lobby with a positive score. The first win may be joined late; the second game must be observed from its start.',
+      'Finish first in two consecutive public skribbl games in the same lobby with a positive score. Either game may already be running when observed.',
       'Back to back',
-      'Gewinne zwei öffentliche Skribbl-Spiele mit positiver Punktzahl direkt hintereinander in derselben Lobby. Dem ersten Spiel darfst du später beitreten; das zweite muss ab Spielstart beobachtet werden.'
+      'Beende zwei öffentliche Skribbl-Spiele mit positiver Punktzahl direkt hintereinander auf Platz 1 in derselben Lobby. Beide Spiele dürfen beim Beobachtungsbeginn bereits laufen.'
     ),
     icon: 'back-to-back-wins',
     rankedEligible: true,
@@ -94,7 +92,7 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
     if (typeof value !== 'object' || value === null) return false;
     return isPositiveInteger((value as Partial<BackToBackParameters>).games);
   },
-  relevantEvents: ['LOBBY_HYDRATED', 'GAME_STARTING', 'SCORE_CHANGED', 'ROUND_RESULTS_AVAILABLE', 'GAME_ENDED'],
+  relevantEvents: ['LOBBY_HYDRATED', 'SCORE_CHANGED', 'ROUND_RESULTS_AVAILABLE', 'GAME_ENDED'],
   allowedLobbyTypes: [0],
   reduce({ event, runtime, parameters }) {
     if (event.type === 'LOBBY_HYDRATED') {
@@ -109,27 +107,6 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
           }))
         },
         reason: 'back-to-back-scoreboard-hydrated'
-      };
-    }
-
-    if (event.type === 'GAME_STARTING') {
-      const lobbyId = event.context.lobbyId;
-      if (lobbyId === null || event.context.gameSessionId === null) return null;
-      const key = gameKey(lobbyId, event.context.gameSessionId, event.eventId);
-      if (runtime.internalState.observedGameStartEventIds[key]) return null;
-      const observed = {
-        ...runtime.internalState.observedGameStartEventIds,
-        [key]: event.eventId
-      };
-      const recent = Object.entries(observed).slice(-16);
-      return {
-        internalState: {
-          ...runtime.internalState,
-          observedGameStartEventIds: Object.fromEntries(recent),
-          currentScores: []
-        },
-        reason: 'back-to-back-game-start-observed',
-        evidenceEventIds: [event.eventId]
       };
     }
 
@@ -165,7 +142,8 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
     const lobbyId = event.context.lobbyId;
     if (lobbyId === null) return null;
     const endedGameKey = gameKey(lobbyId, event.context.gameSessionId, event.eventId);
-    if (runtime.internalState.lastEndedGameKey === endedGameKey) return null;
+    if (runtime.internalState.lastEndedGameKey === endedGameKey
+        || runtime.internalState.winningGameKeys.includes(endedGameKey)) return null;
 
     const summary = winnerSummary(
       event.context.meId,
@@ -189,14 +167,11 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
       };
     }
 
-    const observedStartEventId = runtime.internalState.observedGameStartEventIds[endedGameKey] ?? null;
-    const requiresObservedSecond = sameLobby && runtime.internalState.qualifyingEvents >= 1;
-    const continuesStreak = sameLobby && (!requiresObservedSecond || observedStartEventId !== null);
+    const continuesStreak = sameLobby;
     const nextCount = continuesStreak ? runtime.internalState.qualifyingEvents + 1 : 1;
     const evidence = continuesStreak
       ? [
           ...runtime.internalState.winningEvidenceEventIds,
-          ...(requiresObservedSecond && observedStartEventId ? [observedStartEventId] : []),
           event.eventId
         ]
       : [event.eventId];
@@ -208,19 +183,16 @@ export const backToBackDefinition: ChallengeDefinition<BackToBackState, BackToBa
           ? [...runtime.internalState.winningGameKeys, endedGameKey]
           : [endedGameKey],
         winningEvidenceEventIds: evidence,
-        observedGameStartEventIds: runtime.internalState.observedGameStartEventIds,
         lastEndedGameKey: endedGameKey,
         currentScores: []
       },
       progress: nextCount,
       complete: nextCount >= parameters.games,
       reason: nextCount >= parameters.games
-        ? 'back-to-back-consecutive-same-lobby-games-won-with-second-start-observed'
+        ? 'back-to-back-consecutive-same-lobby-games-won'
         : !sameLobby
           ? 'back-to-back-new-lobby-first-win'
-          : requiresObservedSecond
-            ? 'back-to-back-unobserved-second-win-restarts-streak'
-            : 'back-to-back-first-same-lobby-game-won',
+          : 'back-to-back-first-same-lobby-game-won',
       evidenceEventIds: evidence
     };
   }

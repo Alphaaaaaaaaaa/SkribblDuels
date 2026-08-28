@@ -14,6 +14,8 @@ export * from './storage/indexedDbStore';
 export * from './telemetry/telemetryMapper';
 export * from './telemetry/telemetryStore';
 export * from './telemetry/supportedEvents';
+export * from './chat/textInputTelemetryAdapter';
+export * from './stats/localPlayerStats';
 
 export * from './home/homeInteractionTelemetryAdapter';
 

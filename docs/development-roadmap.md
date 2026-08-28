@@ -39,6 +39,7 @@
 | v0.55 Challenge live certification | Complete | Telemetry-triggered server Claims, per-challenge certification metrics, visible transport cursors and false-positive regressions |
 | v0.56 Challenge/chat hardening | Complete | Telemetry-gated homepage matchmaking, strict Back to back/Deserved?, 28-language TL;DR v2 and Typo-compatible mirrored Match Chat |
 | v0.57 UI/profile integration | Complete | Reload-safe lobby authority, Typo `leftLobby`, configurable Match Chat command/preview, optional SFX registry and authoritative 28-color names/Claims |
+| v0.58 local player statistics | Foundation complete | Versioned input evidence, clean/Guess WPM correlation, per-language word history and coverage, IndexedDB persistence and local-only export API |
 
 ## Active development sequence
 
@@ -71,14 +72,25 @@
   proposed additions remain gated by the events recorded in
   `docs/challenge-live-certification-v0.55.0.md`.
 
-### 4. Ranked competition and history
+### 4. Local statistics presentation and certification
+
+- Build the Profile statistics UI on the v0.58 IndexedDB/API foundation,
+  including language filters, occurrence ranking, coverage and data-quality
+  indicators.
+- Add rolling median/percentiles and session trends without rewriting the
+  stable lifetime aggregates.
+- Live-certify `TEXT_INPUT_MEASURED` against vanilla and Typo input, then define
+  the server rule for WPM Challenges. Paste/autofill/untrusted samples stay
+  ineligible; browser-only records never become public world records.
+
+### 5. Ranked competition and history
 
 - Define rating, provisional, season, Draw, Forfeit and reconnect-timeout rules.
 - Apply each rating update exactly once and add leaderboard plus match history.
 - Prevent repeated-opponent farming and certify every active Challenge in live
   two-client runs.
 
-### 5. Product and release completion
+### 6. Product and release completion
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
@@ -102,3 +114,5 @@ The complete approved UI direction is recorded in
 The current prioritized implementation sequence, confirmed Bingo MVP and all
 remaining Challenge candidates are consolidated in
 `docs/home-authority-ui-sfx-profile-colors-v0.57.0.md`.
+The v0.58 local-stat schema, privacy boundary and expanded statistics backlog
+are recorded in `docs/local-wpm-word-stats-v0.58.0.md`.

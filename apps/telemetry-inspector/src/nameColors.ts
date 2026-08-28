@@ -43,6 +43,22 @@ export function normalizeDuelNameColorIndex(value: unknown): number {
     : DEFAULT_DUEL_NAME_COLOR_INDEX;
 }
 
+/**
+ * Keeps the persisted profile color authoritative while avoiding an
+ * indistinguishable Versus presentation when both players selected it.
+ * Only the opponent's local rendering is shifted; no Gateway state changes.
+ */
+export function resolveLocalOpponentColorIndex(
+  selfIndexValue: unknown,
+  opponentIndexValue: unknown
+): number {
+  const selfIndex = normalizeDuelNameColorIndex(selfIndexValue);
+  const opponentIndex = normalizeDuelNameColorIndex(opponentIndexValue);
+  return opponentIndex === selfIndex
+    ? (opponentIndex + 2) % DUEL_NAME_COLORS.length
+    : opponentIndex;
+}
+
 export function duelNameColorAtlasPosition(indexValue: unknown): string {
   const index = normalizeDuelNameColorIndex(indexValue);
   return `${-(index % 10) * 100}% ${-Math.floor(index / 10) * 100}%`;
@@ -54,6 +70,11 @@ export function duelClaimColorBackground(indexValue: unknown): string {
     return `color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 35%,${definition.colors[0]})`;
   }
   return `repeating-linear-gradient(135deg,${definition.colors[0]} 0 12px,${definition.colors[1]} 12px 24px)`;
+}
+
+export function duelClaimUsesDarkText(indexValue: unknown): boolean {
+  const index = normalizeDuelNameColorIndex(indexValue);
+  return index === 26 || index === 27;
 }
 
 export function splitNameGraphemes(value: string): string[] {

@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 deliverables/
+*.tsbuildinfo
 *.log
 
 .env

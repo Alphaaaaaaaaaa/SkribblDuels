@@ -74,6 +74,26 @@ export interface TelemetryPayloadMap {
   HINT_REVEALED: { hints?: HintEntry[] } & Record<string, unknown>;
 
   TEXT_SUBMITTED: { message: string | null; eligibleGuess: boolean };
+  /**
+   * Local, input-device evidence captured before Skribbl submits a chat line.
+   * Consumers derive WPM from characterCount and durationMs; the browser does
+   * not provide an authoritative precomputed WPM value.
+   */
+  TEXT_INPUT_MEASURED: {
+    attemptId: string;
+    message: string;
+    eligibleGuess: boolean;
+    inputSource: 'vanilla' | 'typo';
+    startedAt: number;
+    submittedAt: number;
+    durationMs: number;
+    characterCount: number;
+    correctionCount: number;
+    pasteDetected: boolean;
+    autofillDetected: boolean;
+    compositionUsed: boolean;
+    trustedInput: boolean;
+  };
   CHAT_MESSAGE_RECEIVED: {
     playerId: number | null;
     message: string | null;
@@ -250,6 +270,7 @@ export const TELEMETRY_EVENT_CATEGORIES = {
   HINT_REVEALED: 'round',
 
   TEXT_SUBMITTED: 'chat',
+  TEXT_INPUT_MEASURED: 'chat',
   CHAT_MESSAGE_RECEIVED: 'chat',
   SPAM_DETECTED: 'chat',
   TYPO_DROP_CLAIMED: 'system',

@@ -13,6 +13,7 @@ const supported = {
 const seenPaths = new Set();
 const assets = {};
 const paths = {};
+const missing = [];
 
 for (const [soundId, assetPath] of entries) {
   if (typeof soundId !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(soundId)) {
@@ -27,7 +28,10 @@ for (const [soundId, assetPath] of entries) {
   seenPaths.add(assetPath);
   paths[soundId] = assetPath;
   const absolutePath = resolve(root, assetPath);
-  if (!existsSync(absolutePath)) continue;
+  if (!existsSync(absolutePath)) {
+    missing.push(assetPath);
+    continue;
+  }
   const bytes = readFileSync(absolutePath);
   assets[soundId] = `data:${mediaType};base64,${bytes.toString('base64')}`;
 }
@@ -42,3 +46,12 @@ writeFileSync(
     ''
   ].join('\n')
 );
+
+console.log(JSON.stringify({
+  soundRegistry: {
+    embedded: Object.keys(assets),
+    missing,
+    embeddedCount: Object.keys(assets).length,
+    registeredCount: entries.length
+  }
+}, null, 2));

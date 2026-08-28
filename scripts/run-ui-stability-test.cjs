@@ -100,7 +100,16 @@ assert(source.includes("this.checkbox('Show Match Chat messages in skribbl chat'
 assert(source.includes("commandInput.placeholder = '/sdchat'"), 'Configurable Match Chat prefix input is missing');
 assert(source.includes("element('strong', '', 'SFX integration')"), 'SFX integration settings are missing');
 assert(source.includes("background-image:url('/img/audio_off.gif')"), 'Muted volume icon is missing');
-assert(source.includes('duelNameColorAtlasPosition(index)'), 'Profile color-atlas selector is missing');
+assert(source.includes('duelNameColorAtlasPosition(workingIndex)'), 'Profile color-atlas selector is missing');
+assert(source.includes("element('button', 'scd-button primary scd-profile-color-select', 'Select')"), 'Profile color selector lacks its explicit Select action');
+assert(source.includes("close.setAttribute('aria-label', 'Cancel color selection')"), 'Profile color close action is not an explicit cancel');
+assert(source.includes('this.settings.panelOpen && !stagePhase && !this.profileColorPicker'), 'Visibility recovery can reopen the Hub behind the profile color picker');
+assert(source.includes('.scd-field.self,.scd-field.opponent { filter:saturate(.68) brightness(.78); }'), 'Claim colors are not muted by default');
+assert(source.includes('.scd-field.self:hover,.scd-field.opponent:hover { filter:saturate(1) brightness(1); }'), 'Claim colors do not restore full brightness on hover');
+assert(source.includes('filter .1s ease-in-out'), 'Claim-color hover transition is not smooth');
+assert(source.includes('.scd-field.light-claim { color:#111; }'), 'White claim fields do not switch to dark text');
+assert(source.includes('resolveLocalOpponentColorIndex('), 'Equal Duel colors do not receive a local opponent fallback');
+assert(source.includes('author.textContent = `${message.author}: `'), 'Mirrored Match Chat still applies Duel name colors');
 assert(source.includes('this.showWinAnimation('), 'Win animation renderer is missing');
 assert(source.includes('@keyframes player_winner'), 'winner avatar animation is missing');
 assert(source.includes("background-image:url('/img/trophy.gif')"), 'winner trophy asset is missing');
@@ -166,6 +175,8 @@ assert(
   'Vanilla and Typo Match Chat commands are not intercepted through the configured prefix'
 );
 assert(source.includes('this.chatAdapter.insertMatchChat({'), 'Confirmed Match Chat messages are not mirrored into Skribbl chat');
+assert(source.includes("className.startsWith('svelte-')") && source.includes("preview.classList.toggle('scd-match-chat-preview-active'"), 'Injected Match Chat command preview does not inherit Typo scoped styling');
+assert(source.includes("document.createTextNode('a single word or text wrapped in quotes')"), 'Match Chat command parameter preview does not match Typo content guidance');
 assert(source.includes('p.skribbl-duels-completion.match-chat') && source.includes('color:var(--COLOR_PANEL_BUTTON) !important'), 'Mirrored Match Chat styling is missing');
 assert(source.includes('padding:.2em;margin:0;opacity:1;animation:chat_msg .1s ease-in-out 1'), 'Completion message spacing/animation does not match the requested Skribbl rule');
 assert(!source.includes('Development flow: Discord redirects back'), 'Development OAuth redirect copy is still visible in the login panel');

@@ -14,17 +14,20 @@ import {
   CanvasSnapshotTelemetryAdapter,
   CanvasWhiteTelemetryAdapter,
   HomeInteractionTelemetryAdapter,
+  IndexedDbLocalStatsPersistence,
   CORE_SUPPORTED_TELEMETRY_EVENTS,
   IndexedDbRawPacketStore,
   LobbyStateStore,
   ProtocolDecoder,
   RawPacketRecorder,
   StrokeTelemetryAdapter,
+  TextInputTelemetryAdapter,
   TypoDropTelemetryAdapter,
   TypoLobbyLeftTelemetryAdapter,
   TypoAutodrawTelemetryAdapter,
   TypoChallengeTelemetryAdapter,
   TelemetryStore,
+  LocalPlayerStatsService,
   TypoRelayBridge,
   decodeRawRecord,
   filterDecodedRecords,
@@ -76,13 +79,14 @@ import {
   getOfficialWords,
   getOfficialWordLengthMetrics,
   getOfficialWordLetterLength,
+  hasOfficialWord,
   subscribeOfficialWordListStatus,
   type OfficialWordListStatus
 } from '@skribbl-duels/challenge-definitions';
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.57.0';
+const BUILD_VERSION = '0.58.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -120,6 +124,17 @@ interface LobbyPublicApi {
 
 interface TelemetryPublicApi extends TelemetryProvider {
   exportSession(options?: TelemetryExportOptions): unknown;
+}
+
+interface LocalStatsPublicApi {
+  readonly version: string;
+  getSnapshot(): ReturnType<LocalPlayerStatsService['getSnapshot']>;
+  getWordStats(options?: Parameters<LocalPlayerStatsService['getWordStats']>[0]): ReturnType<LocalPlayerStatsService['getWordStats']>;
+  getObservedUsernames(): ReturnType<LocalPlayerStatsService['getObservedUsernames']>;
+  export(): ReturnType<LocalPlayerStatsService['export']>;
+  subscribe(listener: Parameters<LocalPlayerStatsService['subscribe']>[0]): () => void;
+  flush(): Promise<void>;
+  clear(): Promise<void>;
 }
 
 
@@ -222,6 +237,7 @@ declare global {
     skribblDuelsChallengeEngine?: ChallengeEnginePublicApi;
     skribblDuelsChallengeDefinitions?: ChallengeDefinitionsPublicApi;
     skribblDuelsWordLists?: WordListPublicApi;
+    skribblDuelsLocalStats?: LocalStatsPublicApi;
     skribblDuelsRuntime?: RuntimePublicApi;
   }
 }
@@ -288,10 +304,24 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   const canvasSnapshotTelemetryAdapter = new CanvasSnapshotTelemetryAdapter(telemetryStore);
   const canvasWhiteTelemetryAdapter = new CanvasWhiteTelemetryAdapter(telemetryStore);
   const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
+  const textInputTelemetryAdapter = new TextInputTelemetryAdapter(telemetryStore, lobbyStore);
   const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
   const typoLobbyLeftTelemetryAdapter = new TypoLobbyLeftTelemetryAdapter(telemetryStore);
   const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
   const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
+  const localStats = new LocalPlayerStatsService({
+    getRecent: () => telemetryStore.getRecent(),
+    subscribe(listener) {
+      const subscription = telemetryStore.events$.subscribe(event => listener(event));
+      return () => subscription.unsubscribe();
+    }
+  }, new IndexedDbLocalStatsPersistence(), {
+    getOfficialWordCount(languageId) {
+      const status = getOfficialWordListStatus(languageId);
+      return status.state === 'ready' ? status.wordCount : null;
+    },
+    hasOfficialWord
+  });
   const replayProvider = new TelemetryReplayProvider();
   void store.redactSensitiveRecords().catch(error => {
     console.warn('[Skribbl Duels Telemetry] Stored-record redaction failed', error);
@@ -305,11 +335,14 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   runtime.addCleanup(() => canvasWhiteTelemetryAdapter.destroy());
   runtime.addCleanup(() => avatarTelemetryAdapter.stop());
   runtime.addCleanup(() => homeInteractionTelemetryAdapter.stop());
+  runtime.addCleanup(() => textInputTelemetryAdapter.stop());
   runtime.addCleanup(() => typoDropTelemetryAdapter.stop());
   runtime.addCleanup(() => typoLobbyLeftTelemetryAdapter.stop());
   runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
   runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
   runtime.addCleanup(() => replayProvider.destroy());
+  await localStats.start();
+  runtime.addCleanup(() => localStats.destroy());
   type WordListRetryTarget = { languageId: number; languageName: string | null; force: boolean };
   let wordListRetryTimer: number | null = null;
   let wordListRetryAttempt = 0;
@@ -681,6 +714,18 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   };
   window.skribblDuelsChallengeDefinitions = challengeDefinitionsApi;
 
+  const localStatsApi: LocalStatsPublicApi = {
+    version: '0.1.0',
+    getSnapshot: () => localStats.getSnapshot(),
+    getWordStats: options => localStats.getWordStats(options),
+    getObservedUsernames: () => localStats.getObservedUsernames(),
+    export: () => localStats.export(),
+    subscribe: listener => localStats.subscribe(listener),
+    flush: () => localStats.flush(),
+    clear: () => localStats.clear()
+  };
+  window.skribblDuelsLocalStats = localStatsApi;
+
   const productFoundation = new DuelProductFoundation({
     runtimeId: runtime.runtimeId,
     definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,
@@ -705,6 +750,21 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     },
     getSelfName() {
       return selectSelf(lobbyStore.getSnapshot())?.name ?? 'Alpha';
+    },
+    recordChallengeCompletion(completion) {
+      localStats.recordChallengeCompletion(
+        completion.claimId,
+        completion.challengeId,
+        completion.occurredAt,
+        completion.activatedAt
+      );
+    },
+    recordDuelConclusion(conclusion) {
+      localStats.recordDuelConclusion(
+        conclusion.matchId,
+        conclusion.outcome,
+        conclusion.occurredAt
+      );
     }
   });
   const productApi = productFoundation.start();
@@ -717,6 +777,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
   typoLobbyLeftTelemetryAdapter.start();
   typoAutodrawTelemetryAdapter.start();
   typoChallengeTelemetryAdapter.start();
+  textInputTelemetryAdapter.start();
 
   const inspectorApi: InspectorPublicApi = {
     version: BUILD_VERSION,
@@ -759,6 +820,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     if (window.skribblDuelsChallengeEngine === challengeApi) delete window.skribblDuelsChallengeEngine;
     if (window.skribblDuelsChallengeDefinitions === challengeDefinitionsApi) delete window.skribblDuelsChallengeDefinitions;
     if (window.skribblDuelsWordLists === wordListApi) delete window.skribblDuelsWordLists;
+    if (window.skribblDuelsLocalStats === localStatsApi) delete window.skribblDuelsLocalStats;
   });
 
   console.info('[Skribbl Duels] Initialized', {

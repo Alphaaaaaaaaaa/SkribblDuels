@@ -1,9 +1,38 @@
-# Skribbl Duels v0.57.0
+# Skribbl Duels v0.58.0
 
 This monorepo contains the growing 47-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.58.0
+
+- Resolves equal Duel colors locally without changing either saved profile:
+  the opponent uses `index + 2` modulo 28. White and white-striped Claims use
+  dark text, while every claimed field is muted until its 100 ms hover restore.
+- Makes the color picker transactional. The close/overlay action cancels its
+  working color, the green Select button commits it to the unsaved Profile
+  draft, and focus/visibility recovery cannot reopen the Hub behind the picker.
+- Keeps mirrored Match Chat names in Skribbl's own chat color. Duel colors stay
+  in the private Match UI, completion messages, Claims and supported toasts.
+- Rebuilds the injected Match Chat command preview with Typo's current scoped
+  classes and native partial/active-parameter states while hiding the unrelated
+  default command list whenever the configured command is relevant.
+- Adds `TEXT_INPUT_MEASURED` evidence and a durable local-statistics pipeline.
+  Clean general WPM, correct-Guess WPM/time, per-language word occurrence,
+  typed/guessed counts, first/last timestamps, coverage, Skribbl results,
+  social actions and local Duel/Challenge totals survive reloads in IndexedDB.
+- Exposes the local-only data through `window.skribblDuelsLocalStats` with
+  snapshot, occurrence-sorted word query, privacy-labelled export, subscribe,
+  flush and clear methods.
+- Aligns SFX registry names with `join-queue.ogg` and `leave-queue.ogg`. The
+  generator now reports every missing registry asset; missing audio remains a
+  deliberate silent no-op.
+
+Deploy the v0.58.0 Gateway before the userscript because its telemetry guard
+must recognize `TEXT_INPUT_MEASURED`. Gateway Contract v11, Supabase and Railway
+configuration are unchanged. Audio is only audible when the registry files are
+present before the userscript build.
 
 ## v0.57.0
 

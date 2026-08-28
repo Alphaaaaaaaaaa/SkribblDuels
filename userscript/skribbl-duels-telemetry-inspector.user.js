@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.57.0
+// @version      0.58.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif
@@ -1395,6 +1395,7 @@ var TELEMETRY_EVENT_CATEGORIES = {
 	WORD_SELECTED: "round",
 	HINT_REVEALED: "round",
 	TEXT_SUBMITTED: "chat",
+	TEXT_INPUT_MEASURED: "chat",
 	CHAT_MESSAGE_RECEIVED: "chat",
 	SPAM_DETECTED: "chat",
 	TYPO_DROP_CLAIMED: "system",
@@ -2764,7 +2765,7 @@ function stringValue$3(value) {
 function arrayValue$1(value) {
 	return Array.isArray(value) ? value : null;
 }
-function payloadRecord(record) {
+function payloadRecord$1(record) {
 	return isRecord$1(record.decoded.payload) ? record.decoded.payload : {};
 }
 function makeChange(record, kind, payload) {
@@ -2986,7 +2987,7 @@ function setRecordMetadata(state, record) {
 }
 function reduceLobbyState(current, record) {
 	const kind = record.decoded.kind;
-	const payload = payloadRecord(record);
+	const payload = payloadRecord$1(record);
 	const changes = [];
 	let next = current;
 	let drawOnly = false;
@@ -3462,13 +3463,13 @@ var DB_NAME = "scdRawSocketRecorder";
 var DB_VERSION = 1;
 var PACKETS_STORE = "packets";
 var SESSIONS_STORE = "sessions";
-function requestToPromise(request) {
+function requestToPromise$1(request) {
 	return new Promise((resolve, reject) => {
 		request.addEventListener("success", () => resolve(request.result), { once: true });
 		request.addEventListener("error", () => reject(request.error), { once: true });
 	});
 }
-function transactionDone(transaction) {
+function transactionDone$1(transaction) {
 	return new Promise((resolve, reject) => {
 		transaction.addEventListener("complete", () => resolve(), { once: true });
 		transaction.addEventListener("abort", () => reject(transaction.error), { once: true });
@@ -3480,23 +3481,23 @@ var IndexedDbRawPacketStore = class {
 	async saveSession(session) {
 		const transaction = (await this.open()).transaction(SESSIONS_STORE, "readwrite");
 		transaction.objectStore(SESSIONS_STORE).put(session);
-		await transactionDone(transaction);
+		await transactionDone$1(transaction);
 	}
 	async addMany(records) {
 		if (records.length === 0) return;
 		const transaction = (await this.open()).transaction(PACKETS_STORE, "readwrite");
 		const store = transaction.objectStore(PACKETS_STORE);
 		for (const record of records) store.add(record);
-		await transactionDone(transaction);
+		await transactionDone$1(transaction);
 	}
 	async countSession(sessionId) {
-		return requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").count(IDBKeyRange.only(sessionId)));
+		return requestToPromise$1((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").count(IDBKeyRange.only(sessionId)));
 	}
 	async getSessionRecords(sessionId) {
-		return (await requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").getAll(IDBKeyRange.only(sessionId)))).map(redactSensitiveRawRecord);
+		return (await requestToPromise$1((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).index("sessionId").getAll(IDBKeyRange.only(sessionId)))).map(redactSensitiveRawRecord);
 	}
 	async getAllRecords() {
-		return (await requestToPromise((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).getAll())).map(redactSensitiveRawRecord);
+		return (await requestToPromise$1((await this.open()).transaction(PACKETS_STORE, "readonly").objectStore(PACKETS_STORE).getAll())).map(redactSensitiveRawRecord);
 	}
 	async redactSensitiveRecords() {
 		const transaction = (await this.open()).transaction(PACKETS_STORE, "readwrite");
@@ -3519,17 +3520,17 @@ var IndexedDbRawPacketStore = class {
 			});
 			request.addEventListener("error", () => reject(request.error), { once: true });
 		});
-		await Promise.all([cursorDone, transactionDone(transaction)]);
+		await Promise.all([cursorDone, transactionDone$1(transaction)]);
 		return redactedCount;
 	}
 	async getAllSessions() {
-		return requestToPromise((await this.open()).transaction(SESSIONS_STORE, "readonly").objectStore(SESSIONS_STORE).getAll());
+		return requestToPromise$1((await this.open()).transaction(SESSIONS_STORE, "readonly").objectStore(SESSIONS_STORE).getAll());
 	}
 	async clearAll() {
 		const transaction = (await this.open()).transaction([PACKETS_STORE, SESSIONS_STORE], "readwrite");
 		transaction.objectStore(PACKETS_STORE).clear();
 		transaction.objectStore(SESSIONS_STORE).clear();
-		await transactionDone(transaction);
+		await transactionDone$1(transaction);
 	}
 	open() {
 		this.databasePromise ??= new Promise((resolve, reject) => {
@@ -4297,6 +4298,7 @@ var CORE_SUPPORTED_TELEMETRY_EVENTS = [
 	"WORD_SELECTED",
 	"HINT_REVEALED",
 	"TEXT_SUBMITTED",
+	"TEXT_INPUT_MEASURED",
 	"CHAT_MESSAGE_RECEIVED",
 	"SPAM_DETECTED",
 	"TYPO_DROP_CLAIMED",
@@ -4336,6 +4338,979 @@ var CORE_SUPPORTED_TELEMETRY_EVENTS = [
 	"HOST_KICK_SUBMITTED",
 	"HOST_BAN_SUBMITTED"
 ];
+function countTypingCharacters(value) {
+	return Array.from(value.trim().normalize("NFKC")).length;
+}
+function createTextInputAttempt(value, occurredAt, monotonicMs, trustedInput) {
+	return {
+		startedAt: occurredAt,
+		startedAtMonotonicMs: monotonicMs,
+		lastValue: value,
+		correctionCount: 0,
+		pasteDetected: false,
+		autofillDetected: false,
+		compositionUsed: false,
+		trustedInput
+	};
+}
+function updateTextInputAttempt(state, value, inputType, trustedInput) {
+	const deletion = inputType.startsWith("delete") || value.length < state.lastValue.length;
+	return {
+		...state,
+		lastValue: value,
+		correctionCount: state.correctionCount + (deletion ? 1 : 0),
+		pasteDetected: state.pasteDetected || inputType === "insertFromPaste",
+		autofillDetected: state.autofillDetected || inputType === "insertReplacementText" || inputType === "insertFromDrop",
+		trustedInput: state.trustedInput && trustedInput
+	};
+}
+function completeTextInputAttempt(state, message, submittedAt, submittedAtMonotonicMs, trustedSubmit) {
+	return {
+		message: message.trim(),
+		startedAt: state.startedAt,
+		submittedAt,
+		durationMs: Math.max(0, Math.round(submittedAtMonotonicMs - state.startedAtMonotonicMs)),
+		characterCount: countTypingCharacters(message),
+		correctionCount: state.correctionCount,
+		pasteDetected: state.pasteDetected,
+		autofillDetected: state.autofillDetected,
+		compositionUsed: state.compositionUsed,
+		trustedInput: state.trustedInput && trustedSubmit
+	};
+}
+/**
+* Captures local typing timing without interfering with Skribbl or Typo. It
+* intentionally listens at the document boundary because both chat inputs are
+* replaced dynamically throughout the game lifecycle.
+*/
+var TextInputTelemetryAdapter = class {
+	telemetryStore;
+	lobbyStore;
+	attempts = /* @__PURE__ */ new WeakMap();
+	started = false;
+	composingInput = null;
+	lastEmission = null;
+	now;
+	monotonicNow;
+	createAttemptId;
+	constructor(telemetryStore, lobbyStore, options = {}) {
+		this.telemetryStore = telemetryStore;
+		this.lobbyStore = lobbyStore;
+		this.now = options.now ?? (() => Date.now());
+		this.monotonicNow = options.monotonicNow ?? (() => performance.now());
+		this.createAttemptId = options.createAttemptId ?? createId$1;
+	}
+	start() {
+		if (this.started) return;
+		this.started = true;
+		document.addEventListener("input", this.onInput, true);
+		document.addEventListener("paste", this.onPaste, true);
+		document.addEventListener("compositionstart", this.onCompositionStart, true);
+		document.addEventListener("compositionend", this.onCompositionEnd, true);
+		document.addEventListener("keydown", this.onKeydown, true);
+	}
+	stop() {
+		if (!this.started) return;
+		this.started = false;
+		document.removeEventListener("input", this.onInput, true);
+		document.removeEventListener("paste", this.onPaste, true);
+		document.removeEventListener("compositionstart", this.onCompositionStart, true);
+		document.removeEventListener("compositionend", this.onCompositionEnd, true);
+		document.removeEventListener("keydown", this.onKeydown, true);
+		this.composingInput = null;
+	}
+	onInput = (event) => {
+		const input = this.chatInput(event.target);
+		if (!input) return;
+		const value = input.value;
+		if (value.length === 0) {
+			this.attempts.delete(input);
+			return;
+		}
+		const inputType = event instanceof InputEvent ? event.inputType : "";
+		const existing = this.attempts.get(input);
+		const next = existing ? updateTextInputAttempt(existing, value, inputType, event.isTrusted) : createTextInputAttempt(value, this.now(), this.monotonicNow(), event.isTrusted);
+		if (inputType === "insertFromPaste") next.pasteDetected = true;
+		if (this.composingInput === input || event instanceof InputEvent && event.isComposing) next.compositionUsed = true;
+		this.attempts.set(input, next);
+	};
+	onPaste = (event) => {
+		const input = this.chatInput(event.target);
+		if (!input) return;
+		const state = this.attempts.get(input) ?? createTextInputAttempt(input.value, this.now(), this.monotonicNow(), event.isTrusted);
+		state.pasteDetected = true;
+		state.trustedInput = state.trustedInput && event.isTrusted;
+		this.attempts.set(input, state);
+	};
+	onCompositionStart = (event) => {
+		const input = this.chatInput(event.target);
+		if (!input) return;
+		this.composingInput = input;
+		const state = this.attempts.get(input) ?? createTextInputAttempt(input.value, this.now(), this.monotonicNow(), event.isTrusted);
+		state.compositionUsed = true;
+		state.trustedInput = state.trustedInput && event.isTrusted;
+		this.attempts.set(input, state);
+	};
+	onCompositionEnd = (event) => {
+		const input = this.chatInput(event.target);
+		if (!input) return;
+		const state = this.attempts.get(input);
+		if (state) {
+			state.compositionUsed = true;
+			state.trustedInput = state.trustedInput && event.isTrusted;
+		}
+		if (this.composingInput === input) this.composingInput = null;
+	};
+	onKeydown = (event) => {
+		if (event.key !== "Enter" || event.repeat || event.isComposing) return;
+		const input = this.chatInput(event.target);
+		if (!input) return;
+		const message = input.value.trim();
+		const occurredAt = this.now();
+		const monotonicMs = this.monotonicNow();
+		const state = this.attempts.get(input) ?? createTextInputAttempt(input.value, occurredAt, monotonicMs, event.isTrusted);
+		this.attempts.delete(input);
+		if (!message || message.startsWith("/")) return;
+		if (this.lastEmission?.message === message && occurredAt - this.lastEmission.occurredAt <= 100) return;
+		this.lastEmission = {
+			message,
+			occurredAt
+		};
+		const measurement = completeTextInputAttempt(state, message, occurredAt, monotonicMs, event.isTrusted);
+		const lobby = this.lobbyStore.getSnapshot();
+		const self = lobby.meId === null ? null : lobby.users[String(lobby.meId)] ?? null;
+		const eligibleGuess = lobby.game.stateId === 4 && lobby.meId !== null && lobby.meId !== lobby.game.drawerId && self?.guessed !== true;
+		this.telemetryStore.emitDomEvent("TEXT_INPUT_MEASURED", {
+			attemptId: this.createAttemptId(),
+			...measurement,
+			eligibleGuess,
+			inputSource: input.id === "typo-command-input" ? "typo" : "vanilla"
+		}, {
+			actor: self ? {
+				playerId: self.id,
+				name: self.name,
+				isSelf: true
+			} : null,
+			confidence: measurement.trustedInput ? "confirmed" : "provisional",
+			occurredAt,
+			monotonicMs
+		});
+	};
+	chatInput(target) {
+		if (!(target instanceof HTMLInputElement)) return null;
+		return target.matches("#newChat, #game-chat input:not([type=\"hidden\"]), #typo-command-input") ? target : null;
+	}
+};
+var LOCAL_PLAYER_STATS_VERSION = "0.1.0";
+var MAX_VALID_WPM = 609;
+var MIN_VALID_TYPING_MS = 250;
+var MAX_VALID_TYPING_MS = 3e5;
+var RECENT_MARKER_LIMIT = 2048;
+function requestToPromise(request) {
+	return new Promise((resolve, reject) => {
+		request.addEventListener("success", () => resolve(request.result), { once: true });
+		request.addEventListener("error", () => reject(request.error), { once: true });
+	});
+}
+function transactionDone(transaction) {
+	return new Promise((resolve, reject) => {
+		transaction.addEventListener("complete", () => resolve(), { once: true });
+		transaction.addEventListener("abort", () => reject(transaction.error), { once: true });
+		transaction.addEventListener("error", () => reject(transaction.error), { once: true });
+	});
+}
+var IndexedDbLocalStatsPersistence = class {
+	databasePromise = null;
+	async load() {
+		const transaction = (await this.open()).transaction([
+			"summary",
+			"words",
+			"usernames"
+		], "readonly");
+		const done = transactionDone(transaction);
+		const [summary, words, usernames] = await Promise.all([
+			requestToPromise(transaction.objectStore("summary").get("current")),
+			requestToPromise(transaction.objectStore("words").getAll()),
+			requestToPromise(transaction.objectStore("usernames").getAll())
+		]);
+		await done;
+		const summaryRecord = summary;
+		const cleanSummary = summaryRecord ? Object.fromEntries(Object.entries(summaryRecord).filter(([key]) => key !== "id")) : null;
+		return {
+			summary: cleanSummary?.schemaVersion === 1 ? structuredClone(cleanSummary) : null,
+			words: words.map((item) => structuredClone(item)),
+			usernames: usernames.map((item) => structuredClone(item))
+		};
+	}
+	async save(write) {
+		const transaction = (await this.open()).transaction([
+			"summary",
+			"words",
+			"usernames"
+		], "readwrite");
+		transaction.objectStore("summary").put({
+			id: "current",
+			...structuredClone(write.summary)
+		});
+		const words = transaction.objectStore("words");
+		for (const word of write.words) words.put(structuredClone(word));
+		const usernames = transaction.objectStore("usernames");
+		for (const username of write.usernames) usernames.put(structuredClone(username));
+		await transactionDone(transaction);
+	}
+	async clear() {
+		const transaction = (await this.open()).transaction([
+			"summary",
+			"words",
+			"usernames"
+		], "readwrite");
+		transaction.objectStore("summary").clear();
+		transaction.objectStore("words").clear();
+		transaction.objectStore("usernames").clear();
+		await transactionDone(transaction);
+	}
+	open() {
+		this.databasePromise ??= new Promise((resolve, reject) => {
+			const request = indexedDB.open("skribblDuelsLocalStats", 1);
+			request.addEventListener("upgradeneeded", () => {
+				const database = request.result;
+				if (!database.objectStoreNames.contains("summary")) database.createObjectStore("summary", { keyPath: "id" });
+				if (!database.objectStoreNames.contains("words")) database.createObjectStore("words", { keyPath: "wordKey" }).createIndex("languageId", "languageId", { unique: false });
+				if (!database.objectStoreNames.contains("usernames")) database.createObjectStore("usernames", { keyPath: "userKey" });
+			});
+			request.addEventListener("success", () => resolve(request.result), { once: true });
+			request.addEventListener("error", () => reject(request.error), { once: true });
+			request.addEventListener("blocked", () => {
+				reject(/* @__PURE__ */ new Error("Local-stats IndexedDB upgrade was blocked by another open tab."));
+			}, { once: true });
+		});
+		return this.databasePromise;
+	}
+};
+var MemoryLocalStatsPersistence = class {
+	snapshot = {
+		summary: null,
+		words: [],
+		usernames: []
+	};
+	async load() {
+		return structuredClone(this.snapshot);
+	}
+	async save(write) {
+		const words = new Map(this.snapshot.words.map((item) => [item.wordKey, item]));
+		for (const word of write.words) words.set(word.wordKey, structuredClone(word));
+		const usernames = new Map(this.snapshot.usernames.map((item) => [item.userKey, item]));
+		for (const username of write.usernames) usernames.set(username.userKey, structuredClone(username));
+		this.snapshot = {
+			summary: structuredClone(write.summary),
+			words: [...words.values()].map((item) => structuredClone(item)),
+			usernames: [...usernames.values()].map((item) => structuredClone(item))
+		};
+	}
+	async clear() {
+		this.snapshot = {
+			summary: null,
+			words: [],
+			usernames: []
+		};
+	}
+};
+function emptySummary(now) {
+	return {
+		schemaVersion: 1,
+		createdAt: now,
+		updatedAt: now,
+		observedPlayTimeMs: 0,
+		submittedMessages: 0,
+		cleanTypingSamples: 0,
+		totalTypingWpm: 0,
+		bestTypingWpm: null,
+		corrections: 0,
+		pasteSubmissions: 0,
+		autofillSubmissions: 0,
+		compositionSubmissions: 0,
+		untrustedSubmissions: 0,
+		guessAttempts: 0,
+		wrongGuesses: 0,
+		correctGuesses: 0,
+		firstGuesses: 0,
+		guessWpmSamples: 0,
+		totalGuessWpm: 0,
+		bestGuessWpm: null,
+		guessTimeSamples: 0,
+		totalGuessTimeMs: 0,
+		bestGuessTimeMs: null,
+		gamesCompleted: 0,
+		skribblWins: 0,
+		finalScoreSamples: 0,
+		totalFinalScore: 0,
+		bestPublicScore: null,
+		bestPrivateScore: null,
+		likesGiven: 0,
+		dislikesGiven: 0,
+		voteKicksGiven: 0,
+		hostKicksGiven: 0,
+		duelMatchesCompleted: 0,
+		duelWins: 0,
+		duelDraws: 0,
+		challengesCompleted: 0,
+		localFastestChallengeMs: {},
+		lobbyIds: [],
+		lobbySessionIds: [],
+		languageNames: {},
+		recentEventIds: [],
+		recentBoundaryKeys: [],
+		recentDuelMatchIds: [],
+		recentClaimIds: []
+	};
+}
+function normalizeLocalStatsWord(value) {
+	return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+}
+function localStatsWordMatchKey(value) {
+	return normalizeLocalStatsWord(value).normalize("NFKD").replace(/[\u0300-\u036f]/gu, "").replace(/\s+/gu, "").replace(/\u00DF/gu, "ss");
+}
+function calculateLocalTypingWpm(characterCount, durationMs) {
+	if (!Number.isFinite(characterCount) || characterCount <= 0 || !Number.isFinite(durationMs) || durationMs <= 0) return null;
+	return Math.round((characterCount / 5 / (durationMs / 6e4) + Number.EPSILON) * 100) / 100;
+}
+function average(total, samples) {
+	return samples > 0 ? Math.round((total / samples + Number.EPSILON) * 100) / 100 : null;
+}
+function percent(numerator, denominator) {
+	return denominator > 0 ? Math.round((numerator / denominator * 100 + Number.EPSILON) * 100) / 100 : null;
+}
+function boundedUnique(values, value, limit = RECENT_MARKER_LIMIT) {
+	const next = values.filter((item) => item !== value);
+	next.push(value);
+	if (next.length > limit) next.splice(0, next.length - limit);
+	return next;
+}
+function finiteNumber$3(value) {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+function payloadRecord(event) {
+	return event.payload;
+}
+var LocalPlayerStatsService = class {
+	source;
+	persistence;
+	summary;
+	words = /* @__PURE__ */ new Map();
+	usernames = /* @__PURE__ */ new Map();
+	dirtyWords = /* @__PURE__ */ new Set();
+	dirtyUsernames = /* @__PURE__ */ new Set();
+	listeners = /* @__PURE__ */ new Set();
+	pendingMeasurements = [];
+	pendingCorrectByRound = /* @__PURE__ */ new Map();
+	now;
+	saveDebounceMs;
+	getOfficialWordCount;
+	hasOfficialWord;
+	unsubscribeTelemetry = null;
+	saveTimer = null;
+	activityTimer = null;
+	writeChain = Promise.resolve();
+	started = false;
+	lobbyActive = false;
+	visible = true;
+	lastActivitySampleAt;
+	visibilityHandler = () => {
+		this.sampleActivity();
+		this.visible = typeof document === "undefined" || !document.hidden;
+		this.lastActivitySampleAt = this.now();
+	};
+	pageHideHandler = () => {
+		this.sampleActivity();
+		this.flush();
+	};
+	constructor(source, persistence = new IndexedDbLocalStatsPersistence(), options = {}) {
+		this.source = source;
+		this.persistence = persistence;
+		this.now = options.now ?? (() => Date.now());
+		this.saveDebounceMs = options.saveDebounceMs ?? 750;
+		this.getOfficialWordCount = options.getOfficialWordCount ?? (() => null);
+		this.hasOfficialWord = options.hasOfficialWord ?? (() => false);
+		const now = this.now();
+		this.summary = emptySummary(now);
+		this.lastActivitySampleAt = now;
+	}
+	async start() {
+		if (this.started) return;
+		this.started = true;
+		let stored;
+		try {
+			stored = await this.persistence.load();
+		} catch (error) {
+			console.warn("[Skribbl Duels Local Stats] IndexedDB unavailable; using memory-only statistics for this runtime.", error);
+			this.persistence = new MemoryLocalStatsPersistence();
+			stored = await this.persistence.load();
+		}
+		if (stored.summary?.schemaVersion === 1) this.summary = structuredClone(stored.summary);
+		for (const word of stored.words) this.words.set(word.wordKey, structuredClone(word));
+		for (const username of stored.usernames) this.usernames.set(username.userKey, structuredClone(username));
+		for (const event of this.source.getRecent().reverse()) this.process(event, false);
+		this.unsubscribeTelemetry = this.source.subscribe((event) => this.process(event, true));
+		this.visible = typeof document === "undefined" || !document.hidden;
+		this.lastActivitySampleAt = this.now();
+		this.activityTimer = setInterval(() => this.sampleActivity(), 15e3);
+		if (typeof document !== "undefined") {
+			document.addEventListener("visibilitychange", this.visibilityHandler, true);
+			window.addEventListener("pagehide", this.pageHideHandler, true);
+		}
+		this.notify();
+	}
+	destroy() {
+		if (!this.started) return;
+		this.sampleActivity();
+		this.started = false;
+		this.unsubscribeTelemetry?.();
+		this.unsubscribeTelemetry = null;
+		if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+		if (this.activityTimer !== null) clearInterval(this.activityTimer);
+		this.saveTimer = null;
+		this.activityTimer = null;
+		if (typeof document !== "undefined") {
+			document.removeEventListener("visibilitychange", this.visibilityHandler, true);
+			window.removeEventListener("pagehide", this.pageHideHandler, true);
+		}
+		this.flush();
+	}
+	getSnapshot() {
+		this.sampleActivity();
+		const languageIds = /* @__PURE__ */ new Set();
+		for (const key of Object.keys(this.summary.languageNames)) languageIds.add(Number(key));
+		for (const word of this.words.values()) languageIds.add(word.languageId);
+		const languages = [...languageIds].filter(Number.isFinite).sort((left, right) => left - right).map((languageId) => this.languageSnapshot(languageId));
+		return {
+			schemaVersion: 1,
+			version: LOCAL_PLAYER_STATS_VERSION,
+			createdAt: this.summary.createdAt,
+			updatedAt: this.summary.updatedAt,
+			activity: {
+				observedPlayTimeMs: Math.round(this.summary.observedPlayTimeMs),
+				distinctLobbyIds: this.summary.lobbyIds.length,
+				lobbySessions: this.summary.lobbySessionIds.length,
+				uniqueUsernamesSeen: this.usernames.size
+			},
+			typing: {
+				submittedMessages: this.summary.submittedMessages,
+				cleanSamples: this.summary.cleanTypingSamples,
+				averageWpm: average(this.summary.totalTypingWpm, this.summary.cleanTypingSamples),
+				bestWpm: this.summary.bestTypingWpm,
+				corrections: this.summary.corrections,
+				pasteSubmissions: this.summary.pasteSubmissions,
+				autofillSubmissions: this.summary.autofillSubmissions,
+				compositionSubmissions: this.summary.compositionSubmissions,
+				untrustedSubmissions: this.summary.untrustedSubmissions
+			},
+			guessing: {
+				attempts: this.summary.guessAttempts,
+				wrongGuesses: this.summary.wrongGuesses,
+				correctGuesses: this.summary.correctGuesses,
+				firstGuesses: this.summary.firstGuesses,
+				averageGuessWpm: average(this.summary.totalGuessWpm, this.summary.guessWpmSamples),
+				bestGuessWpm: this.summary.bestGuessWpm,
+				averageGuessTimeMs: average(this.summary.totalGuessTimeMs, this.summary.guessTimeSamples),
+				bestGuessTimeMs: this.summary.bestGuessTimeMs
+			},
+			skribbl: {
+				gamesCompleted: this.summary.gamesCompleted,
+				wins: this.summary.skribblWins,
+				winRatePercent: percent(this.summary.skribblWins, this.summary.gamesCompleted),
+				averageFinalScore: average(this.summary.totalFinalScore, this.summary.finalScoreSamples),
+				bestPublicScore: this.summary.bestPublicScore,
+				bestPrivateScore: this.summary.bestPrivateScore
+			},
+			social: {
+				likesGiven: this.summary.likesGiven,
+				dislikesGiven: this.summary.dislikesGiven,
+				voteKicksGiven: this.summary.voteKicksGiven,
+				hostKicksGiven: this.summary.hostKicksGiven
+			},
+			duels: {
+				matchesCompleted: this.summary.duelMatchesCompleted,
+				wins: this.summary.duelWins,
+				draws: this.summary.duelDraws,
+				winRatePercent: percent(this.summary.duelWins, this.summary.duelMatchesCompleted),
+				challengesCompleted: this.summary.challengesCompleted,
+				localFastestChallengeMs: structuredClone(this.summary.localFastestChallengeMs)
+			},
+			languages
+		};
+	}
+	getWordStats(query = {}) {
+		const items = [...this.words.values()].filter((item) => query.languageId === void 0 || item.languageId === query.languageId).map((item) => this.wordSnapshot(item));
+		const sort = query.sort ?? "occurrence";
+		const defaultDirection = sort === "alphabetical" || sort.includes("time") ? "ascending" : "descending";
+		const direction = query.direction ?? defaultDirection;
+		const value = (item) => {
+			switch (sort) {
+				case "occurrence": return item.timesSeen;
+				case "guessed": return item.timesGuessed;
+				case "best-wpm": return item.bestWpm ?? -1;
+				case "average-wpm": return item.averageWpm ?? -1;
+				case "best-guess-time": return item.bestGuessTimeMs ?? Number.POSITIVE_INFINITY;
+				case "average-guess-time": return item.averageGuessTimeMs ?? Number.POSITIVE_INFINITY;
+				case "last-seen": return item.lastSeenAt ?? 0;
+				case "alphabetical": return item.word.toLocaleLowerCase();
+			}
+		};
+		items.sort((left, right) => {
+			const a = value(left);
+			const b = value(right);
+			const compared = typeof a === "string" && typeof b === "string" ? a.localeCompare(b) : Number(a) - Number(b);
+			return (direction === "ascending" ? compared : -compared) || left.word.localeCompare(right.word);
+		});
+		const limit = query.limit === void 0 ? items.length : Math.max(0, Math.min(items.length, Math.floor(query.limit)));
+		return items.slice(0, limit);
+	}
+	getObservedUsernames() {
+		return [...this.usernames.values()].map((user) => ({
+			userKey: user.userKey,
+			name: user.name,
+			timesSeen: user.timesSeen,
+			firstSeenAt: user.firstSeenAt,
+			lastSeenAt: user.lastSeenAt
+		})).sort((left, right) => right.timesSeen - left.timesSeen || left.name.localeCompare(right.name));
+	}
+	export() {
+		return {
+			exportedAt: this.now(),
+			privacy: "Local-only export. It contains observed Skribbl usernames and word history; share it deliberately.",
+			snapshot: this.getSnapshot(),
+			words: this.getWordStats({ sort: "alphabetical" }),
+			usernames: this.getObservedUsernames()
+		};
+	}
+	subscribe(listener) {
+		this.listeners.add(listener);
+		listener(this.getSnapshot());
+		return () => this.listeners.delete(listener);
+	}
+	async clear() {
+		if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+		this.saveTimer = null;
+		await this.writeChain.catch(() => void 0);
+		await this.persistence.clear();
+		this.summary = emptySummary(this.now());
+		this.words.clear();
+		this.usernames.clear();
+		this.dirtyWords.clear();
+		this.dirtyUsernames.clear();
+		this.pendingMeasurements.length = 0;
+		this.pendingCorrectByRound.clear();
+		this.lobbyActive = false;
+		this.lastActivitySampleAt = this.now();
+		this.notify();
+	}
+	flush() {
+		if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+		this.saveTimer = null;
+		const words = [...this.dirtyWords].map((key) => this.words.get(key)).filter((item) => item !== void 0).map((item) => structuredClone(item));
+		const usernames = [...this.dirtyUsernames].map((key) => this.usernames.get(key)).filter((item) => item !== void 0).map((item) => structuredClone(item));
+		this.dirtyWords.clear();
+		this.dirtyUsernames.clear();
+		const write = {
+			summary: structuredClone(this.summary),
+			words,
+			usernames
+		};
+		const operation = this.writeChain.then(() => this.persistence.save(write));
+		this.writeChain = operation.catch((error) => {
+			console.warn("[Skribbl Duels Local Stats] Persistence failed", error);
+		});
+		return operation;
+	}
+	recordDuelConclusion(matchId, outcome, occurredAt = this.now()) {
+		if (!matchId || this.summary.recentDuelMatchIds.includes(matchId)) return;
+		this.summary.recentDuelMatchIds = boundedUnique(this.summary.recentDuelMatchIds, matchId);
+		this.summary.duelMatchesCompleted += 1;
+		if (outcome === "win") this.summary.duelWins += 1;
+		if (outcome === "draw") this.summary.duelDraws += 1;
+		this.changed(occurredAt);
+	}
+	recordChallengeCompletion(claimId, challengeId, occurredAt, activatedAt) {
+		if (!claimId || this.summary.recentClaimIds.includes(claimId)) return;
+		this.summary.recentClaimIds = boundedUnique(this.summary.recentClaimIds, claimId);
+		this.summary.challengesCompleted += 1;
+		if (activatedAt !== null && occurredAt >= activatedAt) {
+			const elapsed = Math.round(occurredAt - activatedAt);
+			const current = this.summary.localFastestChallengeMs[challengeId] ?? [];
+			this.summary.localFastestChallengeMs[challengeId] = [...current, elapsed].sort((left, right) => left - right).slice(0, 3);
+		}
+		this.changed(occurredAt);
+	}
+	process(event, notify) {
+		if (this.summary.recentEventIds.includes(event.eventId)) return;
+		this.summary.recentEventIds = boundedUnique(this.summary.recentEventIds, event.eventId);
+		const languageId = event.context.languageId ?? -1;
+		if (event.context.languageName !== null) this.summary.languageNames[String(languageId)] = event.context.languageName;
+		let mutated = false;
+		switch (event.type) {
+			case "LOBBY_HYDRATED":
+				mutated = this.observeHydration(event);
+				this.setLobbyActive(true);
+				break;
+			case "LOBBY_CHANGED": {
+				const lobbyId = event.payload.lobbyId;
+				this.setLobbyActive(lobbyId !== null);
+				mutated = true;
+				break;
+			}
+			case "TYPO_LOBBY_LEFT":
+				this.setLobbyActive(false);
+				mutated = true;
+				break;
+			case "PLAYER_JOINED":
+				mutated = this.observeJoinedPlayer(event);
+				break;
+			case "PLAYER_RENAMED":
+				if (event.actor && !event.actor.isSelf && event.actor.name) mutated = this.observeUsername(event.actor.name, event.context.lobbySessionId, event.occurredAt);
+				break;
+			case "TEXT_INPUT_MEASURED":
+				this.observeMeasurement(event);
+				mutated = true;
+				break;
+			case "GUESS_SUBMITTED":
+				this.observeGuessSubmission(event);
+				mutated = true;
+				break;
+			case "WRONG_GUESS":
+				if (event.actor?.isSelf || event.payload.playerId === event.context.meId) {
+					this.summary.wrongGuesses += 1;
+					mutated = true;
+				}
+				break;
+			case "CORRECT_GUESS":
+				mutated = this.observeCorrectGuess(event);
+				break;
+			case "WORD_REVEALED":
+				mutated = this.observeWordReveal(event);
+				break;
+			case "SCORE_CHANGED":
+				mutated = this.observeScore(event);
+				break;
+			case "GAME_ENDED":
+				mutated = this.observeGameEnded(event);
+				break;
+			case "VOTE_SUBMITTED": {
+				const vote = finiteNumber$3(payloadRecord(event).vote);
+				if (vote === 1) this.summary.likesGiven += 1;
+				if (vote === -1) this.summary.dislikesGiven += 1;
+				mutated = vote === 1 || vote === -1;
+				break;
+			}
+			case "PLAYER_VOTEKICK_SUBMITTED":
+				this.summary.voteKicksGiven += 1;
+				mutated = true;
+				break;
+			case "HOST_KICK_SUBMITTED":
+				this.summary.hostKicksGiven += 1;
+				mutated = true;
+				break;
+		}
+		if (!mutated) return;
+		this.changed(event.occurredAt, notify);
+	}
+	observeHydration(event) {
+		const lobbyId = event.payload.lobbyId;
+		const lobbySessionId = event.context.lobbySessionId;
+		if (lobbyId) this.summary.lobbyIds = boundedUnique(this.summary.lobbyIds, lobbyId, 2e4);
+		if (lobbySessionId) this.summary.lobbySessionIds = boundedUnique(this.summary.lobbySessionIds, lobbySessionId, 2e4);
+		for (const player of event.payload.players ?? []) {
+			if (player.id === event.context.meId) continue;
+			this.observeUsername(player.name, lobbySessionId, event.occurredAt);
+		}
+		return true;
+	}
+	observeJoinedPlayer(event) {
+		const user = event.payload.user;
+		if (!user || user.id === event.context.meId) return false;
+		return this.observeUsername(user.name, event.context.lobbySessionId, event.occurredAt);
+	}
+	observeUsername(name, lobbySessionId, occurredAt) {
+		const normalized = normalizeLocalStatsWord(name);
+		if (!normalized) return false;
+		const userKey = normalized;
+		const current = this.usernames.get(userKey);
+		const sameSession = current?.lastLobbySessionId === lobbySessionId && lobbySessionId !== null;
+		const next = current ? {
+			...current,
+			name,
+			timesSeen: current.timesSeen + (sameSession ? 0 : 1),
+			lastSeenAt: Math.max(current.lastSeenAt, occurredAt),
+			lastLobbySessionId: lobbySessionId
+		} : {
+			userKey,
+			name,
+			timesSeen: 1,
+			firstSeenAt: occurredAt,
+			lastSeenAt: occurredAt,
+			lastLobbySessionId: lobbySessionId
+		};
+		this.usernames.set(userKey, next);
+		this.dirtyUsernames.add(userKey);
+		return true;
+	}
+	observeMeasurement(event) {
+		const payload = event.payload;
+		const wpm = calculateLocalTypingWpm(payload.characterCount, payload.durationMs);
+		const clean = payload.trustedInput && !payload.pasteDetected && !payload.autofillDetected && payload.durationMs >= MIN_VALID_TYPING_MS && payload.durationMs <= MAX_VALID_TYPING_MS && wpm !== null && wpm <= MAX_VALID_WPM;
+		this.summary.submittedMessages += 1;
+		this.summary.corrections += payload.correctionCount;
+		if (payload.pasteDetected) this.summary.pasteSubmissions += 1;
+		if (payload.autofillDetected) this.summary.autofillSubmissions += 1;
+		if (payload.compositionUsed) this.summary.compositionSubmissions += 1;
+		if (!payload.trustedInput) this.summary.untrustedSubmissions += 1;
+		if (clean && wpm !== null) {
+			this.summary.cleanTypingSamples += 1;
+			this.summary.totalTypingWpm += wpm;
+			this.summary.bestTypingWpm = Math.max(this.summary.bestTypingWpm ?? 0, wpm);
+		}
+		this.pendingMeasurements.push({
+			eventId: event.eventId,
+			occurredAt: event.occurredAt,
+			roundSessionId: event.context.roundSessionId,
+			languageId: event.context.languageId ?? -1,
+			languageName: event.context.languageName,
+			normalizedMessage: localStatsWordMatchKey(payload.message),
+			message: payload.message,
+			wpm,
+			clean
+		});
+		while (this.pendingMeasurements.length > 100) this.pendingMeasurements.shift();
+	}
+	observeGuessSubmission(event) {
+		this.summary.guessAttempts += 1;
+		const message = event.payload.message?.trim() ?? "";
+		const normalized = localStatsWordMatchKey(message);
+		let measurement = null;
+		for (let index = this.pendingMeasurements.length - 1; index >= 0; index -= 1) {
+			const candidate = this.pendingMeasurements[index];
+			if (!candidate) continue;
+			if (event.occurredAt - candidate.occurredAt > 5e3) break;
+			if (candidate.normalizedMessage === normalized && candidate.roundSessionId === event.context.roundSessionId) {
+				measurement = candidate;
+				this.pendingMeasurements.splice(index, 1);
+				break;
+			}
+		}
+		const languageId = event.context.languageId ?? measurement?.languageId ?? -1;
+		const languageName = event.context.languageName ?? measurement?.languageName ?? null;
+		if (message && this.hasOfficialWord(languageId, message)) this.updateWord(languageId, languageName, message, event.occurredAt, (word) => {
+			word.timesTyped += 1;
+		});
+		const roundKey = event.context.roundSessionId ?? `event:${event.eventId}`;
+		this.pendingCorrectByRound.set(roundKey, {
+			languageId,
+			languageName,
+			message: message || measurement?.message || null,
+			wpm: measurement?.clean === true ? measurement.wpm : null,
+			guessTimeMs: null,
+			occurredAt: event.occurredAt,
+			wordCommitted: false
+		});
+	}
+	observeCorrectGuess(event) {
+		if (!event.actor?.isSelf && event.payload.playerId !== event.context.meId) return false;
+		const roundKey = event.context.roundSessionId ?? `correct:${event.eventId}`;
+		const boundary = `correct:${roundKey}:${event.payload.playerId}`;
+		if (this.summary.recentBoundaryKeys.includes(boundary)) return false;
+		this.summary.recentBoundaryKeys = boundedUnique(this.summary.recentBoundaryKeys, boundary);
+		const pending = this.pendingCorrectByRound.get(roundKey) ?? {
+			languageId: event.context.languageId ?? -1,
+			languageName: event.context.languageName,
+			message: null,
+			wpm: null,
+			guessTimeMs: null,
+			occurredAt: event.occurredAt,
+			wordCommitted: false
+		};
+		const guessTimeMs = event.payload.elapsedMs !== null && event.payload.elapsedMs >= 0 ? event.payload.elapsedMs : null;
+		pending.guessTimeMs = guessTimeMs;
+		pending.occurredAt = event.occurredAt;
+		this.summary.correctGuesses += 1;
+		if (event.payload.isFirstGuesser) this.summary.firstGuesses += 1;
+		if (pending.wpm !== null) {
+			this.summary.guessWpmSamples += 1;
+			this.summary.totalGuessWpm += pending.wpm;
+			this.summary.bestGuessWpm = Math.max(this.summary.bestGuessWpm ?? 0, pending.wpm);
+		}
+		if (guessTimeMs !== null) {
+			this.summary.guessTimeSamples += 1;
+			this.summary.totalGuessTimeMs += guessTimeMs;
+			this.summary.bestGuessTimeMs = Math.min(this.summary.bestGuessTimeMs ?? guessTimeMs, guessTimeMs);
+		}
+		const word = event.payload.word?.trim() ?? "";
+		if (word) {
+			this.recordGuessedWord(pending, word);
+			pending.wordCommitted = true;
+		}
+		this.pendingCorrectByRound.set(roundKey, pending);
+		return true;
+	}
+	observeWordReveal(event) {
+		const word = event.payload.word?.trim() ?? "";
+		if (!word) return false;
+		const roundKey = event.context.roundSessionId ?? `reveal:${event.eventId}`;
+		const boundary = `reveal:${roundKey}:${localStatsWordMatchKey(word)}`;
+		if (this.summary.recentBoundaryKeys.includes(boundary)) return false;
+		this.summary.recentBoundaryKeys = boundedUnique(this.summary.recentBoundaryKeys, boundary);
+		const languageId = event.context.languageId ?? -1;
+		this.updateWord(languageId, event.context.languageName, word, event.occurredAt, (item) => {
+			item.timesSeen += 1;
+			item.firstSeenAt ??= event.occurredAt;
+			item.lastSeenAt = event.occurredAt;
+		});
+		const pending = this.pendingCorrectByRound.get(roundKey);
+		if (pending && !pending.wordCommitted) this.recordGuessedWord(pending, word);
+		this.pendingCorrectByRound.delete(roundKey);
+		return true;
+	}
+	recordGuessedWord(pending, word) {
+		this.updateWord(pending.languageId, pending.languageName, word, pending.occurredAt, (item) => {
+			item.timesGuessed += 1;
+			item.firstGuessedAt ??= pending.occurredAt;
+			item.lastGuessedAt = pending.occurredAt;
+			if (pending.wpm !== null) {
+				item.guessWpmSamples += 1;
+				item.totalGuessWpm += pending.wpm;
+				item.bestWpm = Math.max(item.bestWpm ?? 0, pending.wpm);
+			}
+			if (pending.guessTimeMs !== null) {
+				item.guessTimeSamples += 1;
+				item.totalGuessTimeMs += pending.guessTimeMs;
+				item.bestGuessTimeMs = Math.min(item.bestGuessTimeMs ?? pending.guessTimeMs, pending.guessTimeMs);
+			}
+		});
+	}
+	observeScore(event) {
+		if (!event.actor?.isSelf && event.payload.playerId !== event.context.meId) return false;
+		const score = event.payload.totalScore;
+		if (score === null || score < 0) return false;
+		if (event.context.lobbyType === 0) this.summary.bestPublicScore = Math.max(this.summary.bestPublicScore ?? 0, score);
+		else if (event.context.lobbyType === 1) this.summary.bestPrivateScore = Math.max(this.summary.bestPrivateScore ?? 0, score);
+		return true;
+	}
+	observeGameEnded(event) {
+		const boundary = `game:${event.context.gameSessionId ?? event.eventId}`;
+		if (this.summary.recentBoundaryKeys.includes(boundary)) return false;
+		const scores = event.payload.finalScores ?? [];
+		const self = scores.find((item) => item.playerId === event.context.meId);
+		if (!self) return false;
+		this.summary.recentBoundaryKeys = boundedUnique(this.summary.recentBoundaryKeys, boundary);
+		this.summary.gamesCompleted += 1;
+		this.summary.finalScoreSamples += 1;
+		this.summary.totalFinalScore += self.totalScore;
+		if (event.context.lobbyType === 0) this.summary.bestPublicScore = Math.max(this.summary.bestPublicScore ?? 0, self.totalScore);
+		else if (event.context.lobbyType === 1) this.summary.bestPrivateScore = Math.max(this.summary.bestPrivateScore ?? 0, self.totalScore);
+		const highest = Math.max(...scores.map((item) => item.totalScore));
+		const winners = scores.filter((item) => item.totalScore === highest);
+		if (highest > 0 && winners.length === 1 && winners[0]?.playerId === event.context.meId) this.summary.skribblWins += 1;
+		return true;
+	}
+	updateWord(languageId, languageName, word, occurredAt, mutate) {
+		const normalized = normalizeLocalStatsWord(word);
+		if (!normalized) return;
+		const wordKey = `${languageId}:${localStatsWordMatchKey(normalized)}`;
+		const current = this.words.get(wordKey) ?? {
+			wordKey,
+			languageId,
+			languageName,
+			word: word.trim(),
+			timesSeen: 0,
+			timesTyped: 0,
+			timesGuessed: 0,
+			firstSeenAt: null,
+			lastSeenAt: null,
+			firstGuessedAt: null,
+			lastGuessedAt: null,
+			guessWpmSamples: 0,
+			totalGuessWpm: 0,
+			bestWpm: null,
+			guessTimeSamples: 0,
+			totalGuessTimeMs: 0,
+			bestGuessTimeMs: null
+		};
+		if (languageName !== null) current.languageName = languageName;
+		current.word = word.trim();
+		mutate(current);
+		this.words.set(wordKey, current);
+		this.dirtyWords.add(wordKey);
+		this.summary.languageNames[String(languageId)] = languageName;
+		this.summary.updatedAt = Math.max(this.summary.updatedAt, occurredAt);
+	}
+	wordSnapshot(item) {
+		return {
+			wordKey: item.wordKey,
+			languageId: item.languageId,
+			languageName: item.languageName,
+			word: item.word,
+			timesSeen: item.timesSeen,
+			timesTyped: item.timesTyped,
+			timesGuessed: item.timesGuessed,
+			firstSeenAt: item.firstSeenAt,
+			lastSeenAt: item.lastSeenAt,
+			firstGuessedAt: item.firstGuessedAt,
+			lastGuessedAt: item.lastGuessedAt,
+			bestWpm: item.bestWpm,
+			averageWpm: average(item.totalGuessWpm, item.guessWpmSamples),
+			bestGuessTimeMs: item.bestGuessTimeMs,
+			averageGuessTimeMs: average(item.totalGuessTimeMs, item.guessTimeSamples)
+		};
+	}
+	languageSnapshot(languageId) {
+		const words = [...this.words.values()].filter((item) => item.languageId === languageId);
+		const officialWordCount = this.getOfficialWordCount(languageId);
+		const uniqueWordsSeen = words.filter((item) => item.timesSeen > 0).length;
+		const uniqueWordsGuessed = words.filter((item) => item.timesGuessed > 0).length;
+		const uniqueWordsTyped = words.filter((item) => item.timesTyped > 0).length;
+		return {
+			languageId,
+			languageName: this.summary.languageNames[String(languageId)] ?? words[0]?.languageName ?? null,
+			officialWordCount,
+			seenOccurrences: words.reduce((sum, item) => sum + item.timesSeen, 0),
+			uniqueWordsSeen,
+			guessedOccurrences: words.reduce((sum, item) => sum + item.timesGuessed, 0),
+			uniqueWordsGuessed,
+			typedOccurrences: words.reduce((sum, item) => sum + item.timesTyped, 0),
+			uniqueWordsTyped,
+			seenCoveragePercent: officialWordCount === null ? null : percent(uniqueWordsSeen, officialWordCount),
+			guessedCoveragePercent: officialWordCount === null ? null : percent(uniqueWordsGuessed, officialWordCount)
+		};
+	}
+	setLobbyActive(active) {
+		this.sampleActivity();
+		this.lobbyActive = active;
+		this.lastActivitySampleAt = this.now();
+	}
+	sampleActivity() {
+		const now = this.now();
+		const elapsed = Math.max(0, now - this.lastActivitySampleAt);
+		this.lastActivitySampleAt = now;
+		if (!this.lobbyActive || !this.visible || elapsed === 0) return;
+		this.summary.observedPlayTimeMs += Math.min(elapsed, 6e4);
+		this.changed(now, false);
+	}
+	changed(occurredAt, notify = true) {
+		this.summary.updatedAt = Math.max(this.summary.updatedAt, occurredAt);
+		this.scheduleFlush();
+		if (notify) this.notify();
+	}
+	scheduleFlush() {
+		if (this.saveTimer !== null || !this.started) return;
+		this.saveTimer = setTimeout(() => {
+			this.saveTimer = null;
+			this.flush();
+		}, this.saveDebounceMs);
+	}
+	notify() {
+		if (this.listeners.size === 0) return;
+		const snapshot = this.getSnapshot();
+		for (const listener of this.listeners) listener(structuredClone(snapshot));
+	}
+};
 function visualFingerprint(snapshot) {
 	return [
 		snapshot.avatarIndex,
@@ -13817,7 +14792,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.57.0";
+var GATEWAY_CLIENT_VERSION = "0.58.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -38817,6 +39792,16 @@ function normalizeDuelNameColorIndex(value) {
 	const index = Number(value);
 	return Number.isInteger(index) && index >= 0 && index < DUEL_NAME_COLORS.length ? index : 26;
 }
+/**
+* Keeps the persisted profile color authoritative while avoiding an
+* indistinguishable Versus presentation when both players selected it.
+* Only the opponent's local rendering is shifted; no Gateway state changes.
+*/
+function resolveLocalOpponentColorIndex(selfIndexValue, opponentIndexValue) {
+	const selfIndex = normalizeDuelNameColorIndex(selfIndexValue);
+	const opponentIndex = normalizeDuelNameColorIndex(opponentIndexValue);
+	return opponentIndex === selfIndex ? (opponentIndex + 2) % DUEL_NAME_COLORS.length : opponentIndex;
+}
 function duelNameColorAtlasPosition(indexValue) {
 	const index = normalizeDuelNameColorIndex(indexValue);
 	return `${-(index % 10) * 100}% ${-Math.floor(index / 10) * 100}%`;
@@ -38825,6 +39810,10 @@ function duelClaimColorBackground(indexValue) {
 	const definition = DUEL_NAME_COLORS[normalizeDuelNameColorIndex(indexValue)];
 	if (definition.colors.length === 1) return `color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 35%,${definition.colors[0]})`;
 	return `repeating-linear-gradient(135deg,${definition.colors[0]} 0 12px,${definition.colors[1]} 12px 24px)`;
+}
+function duelClaimUsesDarkText(indexValue) {
+	const index = normalizeDuelNameColorIndex(indexValue);
+	return index === 26 || index === 27;
 }
 function splitNameGraphemes(value) {
 	const Segmenter = Intl.Segmenter;
@@ -39271,7 +40260,7 @@ var CompletionChatAdapter = class {
 .scd-button.danger { background:#d68e27; }
 .scd-button.danger:hover:not(:disabled) { background:#c4842a; }
 .scd-button.danger:active:not(:disabled) { background:#b87824; }
-.scd-field { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;aspect-ratio:1/1;border:0;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));color:white;border-radius:4px;padding:4px;overflow:hidden;box-shadow:none;transition:transform .15s; }
+.scd-field { position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;aspect-ratio:1/1;border:0;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));color:white;border-radius:4px;padding:4px;overflow:hidden;box-shadow:none;transition:transform .15s,filter .1s ease-in-out; }
 .scd-field.empty { background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));opacity:.42; }
 .scd-field:not(.empty) { pointer-events:auto; }
 .scd-field:not(.empty):hover { transform:scale(.9); }
@@ -39280,6 +40269,10 @@ var CompletionChatAdapter = class {
 .scd-field.pending { outline:2px solid #ffd95f;outline-offset:-2px; }
 .scd-field.self { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#56ce27); }
 .scd-field.opponent { background: color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 72%,#ce4f0a); }
+.scd-field.self,.scd-field.opponent { filter:saturate(.68) brightness(.78); }
+.scd-field.self:hover,.scd-field.opponent:hover { filter:saturate(1) brightness(1); }
+.scd-field.light-claim { color:#111; }
+.scd-field.light-claim .scd-field-name { color:#111;text-shadow:0 1px 0 rgba(255,255,255,.28); }
 .scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1;border-radius:0;background:transparent;font-size:clamp(12px,2.2vw,22px);font-weight:900;text-shadow:none;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));image-rendering:pixelated; }
 .scd-field-icon .scd-icon-image { image-rendering:pixelated; }
 .scd-field-name { display:block;width:100%;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:10px;line-height:1.15;font-weight:700; }
@@ -39324,6 +40317,10 @@ var CompletionChatAdapter = class {
 .scd-profile-field input { min-width:0;max-width:100%; }
 .scd-profile-error { color:var(--COLOR_CHAT_TEXT_LEAVE);font-size:12px;font-weight:800;white-space:pre-wrap; }
 .scd-profile-color-button { min-height:36px;font-weight:800;letter-spacing:.02em; }
+.scd-profile-color-select { width:min(180px,100%);font-size:1.15em;font-weight:800; }
+.scd-profile-color-button,.scd-profile-color-select { background:#53e237; }
+.scd-profile-color-button:hover:not(:disabled),.scd-profile-color-select:hover:not(:disabled) { background:#38c41c; }
+.scd-profile-color-button:active:not(:disabled),.scd-profile-color-select:active:not(:disabled) { background:#30aa19; }
 .scd-colored-name-grapheme { text-shadow:1px 1px 0 rgba(0,0,0,.35); }
 .scd-profile-color-modal { width:min(420px,calc(100vw - 24px)); }
 .scd-profile-color-header { display:flex;justify-content:flex-end;padding:8px; }
@@ -39344,7 +40341,7 @@ var CompletionChatAdapter = class {
 .scd-volume-group .scd-volume-icon.muted { background-image:url('/img/audio_off.gif'); }
 .scd-volume-group .scd-volume-value { margin-left:.5ch; }
 .scd-volume-group input[type='range'] { width:100%; }
-.scd-match-chat-command-preview { border-left:3px solid var(--COLOR_PANEL_BUTTON,#2a51d1);padding-left:.5rem; }
+.typo-command-preview.scd-match-chat-preview-active > :not([data-scd-match-chat-command-preview]) { display:none !important; }
 .scd-skribbl-avatar { position:relative;width:100%;height:100%;image-rendering:pixelated; }
 .scd-skribbl-avatar .color,.scd-skribbl-avatar .eyes,.scd-skribbl-avatar .mouth { position:absolute;width:100%;height:100%;background-size:1000% 1000%; }
 .scd-skribbl-avatar .color { background-image:url('https://skribbl.io/img/avatar/color_atlas.gif'); }
@@ -39510,8 +40507,7 @@ var CompletionChatAdapter = class {
 			paragraph.dataset.skribblDuelsMatchChatId = messageId;
 			const copy = element("span", "scd-match-chat-message");
 			const author = element("b");
-			appendColoredDuelName(author, message.author, message.nameColorIndex);
-			author.appendChild(document.createTextNode(": "));
+			author.textContent = `${message.author}: `;
 			copy.append(author, document.createTextNode(message.message));
 			paragraph.append(message.avatar, copy);
 			target.appendChild(paragraph);
@@ -39838,7 +40834,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.57.0",
+			version: "0.58.0",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 11,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -39965,7 +40961,7 @@ var DuelProductFoundation = class {
 		this.profileColorPicker = null;
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.57.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.58.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -40355,7 +41351,7 @@ var DuelProductFoundation = class {
 	}
 	renderVisibility() {
 		const stagePhase = this.currentStagePhase();
-		if (this.panel) this.panel.style.display = this.settings.panelOpen && !stagePhase ? "block" : "none";
+		if (this.panel) this.panel.style.display = this.settings.panelOpen && !stagePhase && !this.profileColorPicker ? "block" : "none";
 		if (this.stage) this.stage.style.display = stagePhase ? "block" : "none";
 		if (this.board) {
 			const hasMatchBoard = this.matchState.phase !== "idle" && this.matchState.fields.length > 0;
@@ -40517,7 +41513,9 @@ var DuelProductFoundation = class {
 			if (field.status === "pending") node.classList.add("pending");
 			if (field.status === "claimed" && field.owner) {
 				node.classList.add(field.owner);
-				node.style.background = duelClaimColorBackground(this.duelNameColorIndex(field.owner));
+				const claimColorIndex = this.duelNameColorIndex(field.owner);
+				node.style.background = duelClaimColorBackground(claimColorIndex);
+				node.classList.toggle("light-claim", duelClaimUsesDarkText(claimColorIndex));
 			}
 			node.appendChild(this.createChallengeIcon(field.challengeId));
 			if (this.settings.board.showNames) node.appendChild(element("span", "scd-field-name", challengeName(this.manifest, field.challengeId)));
@@ -40552,7 +41550,7 @@ var DuelProductFoundation = class {
 		const versus = element("div", "scd-versus");
 		versus.appendChild(element("strong", "", match.state.format === "casual" ? "Casual 3\u00D73" : "Ranked 5\u00D75"));
 		const players = element("div", "scd-versus-players");
-		players.append(this.createVersusPlayer(self?.displayName ?? this.options.getSelfName(), Boolean(self?.ready), self ?? null), element("div", "scd-versus-vs", "VS"), this.createVersusPlayer(opponent?.displayName ?? "Opponent", Boolean(opponent?.ready), opponent ?? null));
+		players.append(this.createVersusPlayer(self?.displayName ?? this.options.getSelfName(), Boolean(self?.ready), self ?? null, "self"), element("div", "scd-versus-vs", "VS"), this.createVersusPlayer(opponent?.displayName ?? "Opponent", Boolean(opponent?.ready), opponent ?? null, "opponent"));
 		const deadline = element("div", "scd-muted");
 		this.registerDeadline(deadline, match.state.readyDeadlineAt, "Ready check \u00B7 ", "s");
 		const actions = element("div", "scd-ready-actions");
@@ -40575,13 +41573,13 @@ var DuelProductFoundation = class {
 		if (this.matchmakingError) versus.appendChild(element("div", "scd-auth-error", this.matchmakingError));
 		this.stageBody.appendChild(versus);
 	}
-	createVersusPlayer(displayName, ready, participant) {
+	createVersusPlayer(displayName, ready, participant, side) {
 		const player = element("div", "scd-versus-player");
 		const avatar = this.createParticipantAvatar(displayName, participant, "scd-versus-avatar");
 		const status = element("div", "scd-ready-state");
 		status.append(this.createIconAsset(ready ? "challenge-icons/checkmark.gif" : "challenge-icons/crossmark.gif", ready ? "\u2713" : "\u00D7", ready ? "Ready" : "Not ready"), element("span", "", ready ? "Ready" : "Not ready"));
 		const name = element("div", "scd-versus-name");
-		appendColoredDuelName(name, displayName, participant?.nameColorIndex);
+		appendColoredDuelName(name, displayName, this.duelNameColorIndex(side));
 		player.append(avatar, name, status);
 		return player;
 	}
@@ -41275,7 +42273,7 @@ var DuelProductFoundation = class {
 			const avatar = this.createParticipantAvatar(rematchRequester.displayName, rematchRequester, "scd-chat-rematch-avatar");
 			if (this.gatewayState.match?.state.conclusion?.winnerAccountId === rematchRequester.accountId) avatar.appendChild(element("span", "owner"));
 			const name = element("strong");
-			appendColoredDuelName(name, rematchRequester.displayName, rematchRequester.nameColorIndex);
+			appendColoredDuelName(name, rematchRequester.displayName, this.duelNameColorIndex("opponent"));
 			row.append(avatar, name, element("span", "", "requests a Rematch."));
 			const accept = element("button", "scd-button scd-chat-rematch-accept", "Rematch");
 			accept.type = "button";
@@ -41358,27 +42356,49 @@ var DuelProductFoundation = class {
 	ensureTypoCommandPreview() {
 		const input = document.querySelector("#typo-command-input");
 		const existing = document.querySelector("[data-scd-match-chat-command-preview]");
+		const previousPreview = existing?.parentElement;
 		if (!input || !isMatchChatCommandPreviewRelevant(input.value, this.settings.matchChatCommandPrefix)) {
 			existing?.remove();
+			previousPreview?.classList.remove("scd-match-chat-preview-active");
 			return;
 		}
 		const preview = document.querySelector(".typo-command-preview");
 		if (!preview) return;
+		const typed = input.value.trimStart();
+		preview.classList.toggle("scd-match-chat-preview-active", typed !== "/");
 		const parsed = parseMatchChatCommand(input.value, this.settings.matchChatCommandPrefix);
+		const parameterActive = parsed.matched && /^\s/.test(input.value.slice(this.settings.matchChatCommandPrefix.length));
+		const scopeClasses = [...preview.classList].filter((className) => className.startsWith("svelte-"));
+		const applyTypoScope = (node) => {
+			node.classList.add(...scopeClasses);
+			return node;
+		};
 		const row = existing ?? element("div", "typo-command-result scd-match-chat-command-preview");
+		applyTypoScope(row);
 		row.dataset.scdMatchChatCommandPreview = "true";
 		row.dataset.scdRuntimeId = this.options.runtimeId;
 		row.replaceChildren();
-		const synopsis = element("div", "typo-command-result-synopsis");
-		synopsis.append(element("div", "typo-command-result-id current", this.settings.matchChatCommandPrefix), element("div", `typo-command-result-arg${parsed.message ? " current" : ""}`, "text"));
-		const description = element("div", "typo-command-result-description", "Send a private Skribbl Duels Match Chat message.");
-		const state = element("div", "typo-command-result-state");
-		const icon = document.createElement("img");
-		icon.src = "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
-		icon.alt = parsed.message ? "enabled" : "message required";
-		icon.style.content = `var(--${parsed.message ? "file-img-enabled-gif" : "file-img-disabled-gif"})`;
-		state.append(icon, element("span", "", parsed.message ? "Press Enter to submit" : "Enter a message"));
-		row.append(synopsis, description, state);
+		const synopsis = applyTypoScope(element("div", "typo-command-result-synopsis"));
+		const commandId = applyTypoScope(element("div", `typo-command-result-id${parsed.matched && !parameterActive ? " current" : ""}`, this.settings.matchChatCommandPrefix));
+		const argument = applyTypoScope(element("div", `typo-command-result-arg${parameterActive ? " current" : ""}`, "text"));
+		synopsis.append(commandId, argument);
+		const description = applyTypoScope(element("div", "typo-command-result-description"));
+		if (parameterActive) {
+			description.append(element("b", "", "text:"), document.createTextNode(" The Match Chat message to send"), document.createElement("br"));
+			const parameterType = applyTypoScope(element("span", "typo-command-result-param-type"));
+			parameterType.append(element("b", "", "Content: "), document.createTextNode("a single word or text wrapped in quotes"));
+			description.appendChild(parameterType);
+		} else description.textContent = "Send a private Skribbl Duels Match Chat message.";
+		row.append(synopsis, description);
+		if (parsed.matched) {
+			const state = applyTypoScope(element("div", "typo-command-result-state"));
+			const icon = document.createElement("img");
+			applyTypoScope(icon);
+			icon.alt = "icon";
+			icon.style.content = `var(--${parsed.message ? "file-img-enabled-gif" : "file-img-disabled-gif"})`;
+			state.append(icon, element("span", "", parsed.message ? "Press Enter to submit" : "Enter a message"));
+			row.appendChild(state);
+		}
 		if (!row.isConnected) preview.prepend(row);
 	}
 	handleDuelChatKeydown(event) {
@@ -41465,8 +42485,9 @@ var DuelProductFoundation = class {
 		target.replaceChildren();
 		appendColoredDuelName(target, name || "Preview", colorIndex);
 	}
-	openProfileColorPicker(getDisplayName, onSelectionChanged) {
+	openProfileColorPicker(getDisplayName, onSelected) {
 		this.profileColorPicker?.remove();
+		let workingIndex = normalizeDuelNameColorIndex(this.profileColorDraftIndex);
 		const overlay = element("div", "scd-modal-overlay");
 		overlay.id = "skribbl-duels-profile-color-picker";
 		overlay.dataset.scdRuntimeId = this.options.runtimeId;
@@ -41477,7 +42498,7 @@ var DuelProductFoundation = class {
 		const header = element("div", "scd-profile-color-header");
 		const close = element("button", "scd-icon-button scd-modal-close", "\u00D7");
 		close.type = "button";
-		close.setAttribute("aria-label", "Close color selection");
+		close.setAttribute("aria-label", "Cancel color selection");
 		header.appendChild(close);
 		const body = element("div", "scd-profile-color-body");
 		const customizer = element("div", "avatar-customizer typo-customize-player-display scd-color-customizer");
@@ -41502,18 +42523,14 @@ var DuelProductFoundation = class {
 		rightArrows.appendChild(right);
 		customizer.append(leftArrows, container, rightArrows);
 		const preview = element("div", "scd-color-name-preview");
-		const indexLabel = element("div", "scd-muted");
+		const select = element("button", "scd-button primary scd-profile-color-select", "Select");
+		select.type = "button";
 		const render = () => {
-			const index = normalizeDuelNameColorIndex(this.profileColorDraftIndex);
-			this.profileColorDraftIndex = index;
-			color.style.backgroundPosition = duelNameColorAtlasPosition(index);
-			indexLabel.textContent = `Color ${index + 1} / 28`;
-			this.renderColoredNamePreview(preview, getDisplayName(), index);
-			onSelectionChanged(index);
+			color.style.backgroundPosition = duelNameColorAtlasPosition(workingIndex);
+			this.renderColoredNamePreview(preview, getDisplayName(), workingIndex);
 		};
 		const selectRelative = (delta) => {
-			const current = normalizeDuelNameColorIndex(this.profileColorDraftIndex);
-			this.profileColorDraftIndex = (current + delta + 28) % 28;
+			workingIndex = (workingIndex + delta + 28) % 28;
 			render();
 		};
 		left.addEventListener("click", () => selectRelative(-1));
@@ -41530,10 +42547,15 @@ var DuelProductFoundation = class {
 			this.renderVisibility();
 		};
 		close.addEventListener("click", closePicker);
+		select.addEventListener("click", () => {
+			this.profileColorDraftIndex = workingIndex;
+			onSelected(workingIndex);
+			closePicker();
+		});
 		overlay.addEventListener("click", (event) => {
 			if (event.target === overlay) closePicker();
 		});
-		body.append(customizer, preview, indexLabel);
+		body.append(customizer, preview, select);
 		modal.append(header, body);
 		wrapper.appendChild(modal);
 		overlay.appendChild(wrapper);
@@ -42185,7 +43207,7 @@ var DuelProductFoundation = class {
 				author: message.authorDisplayName,
 				message: message.message,
 				occurredAt: message.occurredAt,
-				nameColorIndex: participant?.nameColorIndex
+				nameColorIndex: this.duelNameColorIndex(ownMessage ? "self" : "opponent")
 			};
 			if (optimisticIndex >= 0) this.duelChatMessages.splice(optimisticIndex, 1, confirmed);
 			else this.duelChatMessages.push(confirmed);
@@ -42193,8 +43215,7 @@ var DuelProductFoundation = class {
 				messageId: message.messageId,
 				author: message.authorDisplayName,
 				message: message.message,
-				avatar: this.createParticipantAvatar(message.authorDisplayName, participant, "scd-vanilla-match-chat-avatar"),
-				nameColorIndex: participant?.nameColorIndex
+				avatar: this.createParticipantAvatar(message.authorDisplayName, participant, "scd-vanilla-match-chat-avatar")
 			});
 			if (ownMessage) {
 				this.pendingDuelChatMessages.delete(message.clientMessageId);
@@ -42221,7 +43242,7 @@ var DuelProductFoundation = class {
 		const participant = this.gatewayState.match?.state.participants.find((item) => item.accountId === authorAccountId) ?? null;
 		const profile = element("div", "scd-toast-profile");
 		const authorName = element("strong");
-		appendColoredDuelName(authorName, author, participant?.nameColorIndex);
+		appendColoredDuelName(authorName, author, this.duelNameColorIndex(authorAccountId === this.gatewayState.identity?.accountId ? "self" : "opponent"));
 		authorName.title = author;
 		profile.append(this.createParticipantAvatar(author, participant, "scd-toast-avatar"), authorName);
 		this.showSimpleToast(profile, message, 3500, () => {
@@ -42479,10 +43500,12 @@ var DuelProductFoundation = class {
 	}
 	duelNameColorIndex(side) {
 		const selfAccountId = this.gatewayState.identity?.accountId;
-		const participant = this.gatewayState.match?.state.participants.find((item) => side === "self" ? item.accountId === selfAccountId : item.accountId !== selfAccountId);
-		if (participant) return normalizeDuelNameColorIndex(participant.nameColorIndex);
-		if (side === "self") return normalizeDuelNameColorIndex(this.gatewayState.identity?.nameColorIndex);
-		return 26;
+		const participants = this.gatewayState.match?.state.participants ?? [];
+		const selfParticipant = participants.find((item) => item.accountId === selfAccountId);
+		const opponentParticipant = participants.find((item) => item.accountId !== selfAccountId);
+		const selfIndex = normalizeDuelNameColorIndex(selfParticipant?.nameColorIndex ?? this.gatewayState.identity?.nameColorIndex);
+		if (side === "self") return selfIndex;
+		return resolveLocalOpponentColorIndex(selfIndex, opponentParticipant?.nameColorIndex ?? 26);
 	}
 	opponentRematchRequester() {
 		const snapshot = this.gatewayState.match;
@@ -42813,6 +43836,11 @@ var DuelProductFoundation = class {
 			if (this.matchState.matchId !== matchId || this.lastConclusionMessageMatchId === matchId) return;
 			const elapsedMs = Math.max(0, occurredAt - (snapshot.startedAt ?? occurredAt));
 			this.lastConclusionMessageMatchId = matchId;
+			this.options.recordDuelConclusion?.({
+				matchId,
+				outcome: snapshot.outcome === "draw" ? "draw" : snapshot.winner === "self" ? "win" : "loss",
+				occurredAt
+			});
 			this.insertConclusionMessage(snapshot, elapsedMs, occurredAt);
 			this.suppressExternalConclusionForMatchIds.delete(matchId);
 			if (snapshot.outcome === "win" && snapshot.winner === "self") this.soundEffects.play("matchWin");
@@ -42908,10 +43936,16 @@ var DuelProductFoundation = class {
 	}
 	insertCompletionOnce(message, mirrorToSkribbl = true) {
 		if (this.duelChatMessages.some((item) => item.id === `completion-${message.claimId}`)) return;
+		if (message.side === "self") this.options.recordChallengeCompletion?.({
+			claimId: message.claimId,
+			challengeId: message.challengeId,
+			occurredAt: message.occurredAt,
+			activatedAt: this.matchState.startedAt
+		});
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.57.0";
+var BUILD_VERSION = "0.58.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
@@ -42963,10 +43997,24 @@ async function bootstrap(runtime) {
 	const canvasSnapshotTelemetryAdapter = new CanvasSnapshotTelemetryAdapter(telemetryStore);
 	const canvasWhiteTelemetryAdapter = new CanvasWhiteTelemetryAdapter(telemetryStore);
 	const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
+	const textInputTelemetryAdapter = new TextInputTelemetryAdapter(telemetryStore, lobbyStore);
 	const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
 	const typoLobbyLeftTelemetryAdapter = new TypoLobbyLeftTelemetryAdapter(telemetryStore);
 	const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
 	const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
+	const localStats = new LocalPlayerStatsService({
+		getRecent: () => telemetryStore.getRecent(),
+		subscribe(listener) {
+			const subscription = telemetryStore.events$.subscribe((event) => listener(event));
+			return () => subscription.unsubscribe();
+		}
+	}, new IndexedDbLocalStatsPersistence(), {
+		getOfficialWordCount(languageId) {
+			const status = getOfficialWordListStatus(languageId);
+			return status.state === "ready" ? status.wordCount : null;
+		},
+		hasOfficialWord
+	});
 	const replayProvider = new TelemetryReplayProvider();
 	store.redactSensitiveRecords().catch((error) => {
 		console.warn("[Skribbl Duels Telemetry] Stored-record redaction failed", error);
@@ -42980,11 +44028,14 @@ async function bootstrap(runtime) {
 	runtime.addCleanup(() => canvasWhiteTelemetryAdapter.destroy());
 	runtime.addCleanup(() => avatarTelemetryAdapter.stop());
 	runtime.addCleanup(() => homeInteractionTelemetryAdapter.stop());
+	runtime.addCleanup(() => textInputTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoDropTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoLobbyLeftTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoAutodrawTelemetryAdapter.stop());
 	runtime.addCleanup(() => typoChallengeTelemetryAdapter.stop());
 	runtime.addCleanup(() => replayProvider.destroy());
+	await localStats.start();
+	runtime.addCleanup(() => localStats.destroy());
 	let wordListRetryTimer = null;
 	let wordListRetryAttempt = 0;
 	let wordListRetryKey = null;
@@ -43290,6 +44341,17 @@ async function bootstrap(runtime) {
 		deactivateStarterSet: () => deactivateStarterSandbox(challengeEngine)
 	};
 	window.skribblDuelsChallengeDefinitions = challengeDefinitionsApi;
+	const localStatsApi = {
+		version: "0.1.0",
+		getSnapshot: () => localStats.getSnapshot(),
+		getWordStats: (options) => localStats.getWordStats(options),
+		getObservedUsernames: () => localStats.getObservedUsernames(),
+		export: () => localStats.export(),
+		subscribe: (listener) => localStats.subscribe(listener),
+		flush: () => localStats.flush(),
+		clear: () => localStats.clear()
+	};
+	window.skribblDuelsLocalStats = localStatsApi;
 	const productFoundation = new DuelProductFoundation({
 		runtimeId: runtime.runtimeId,
 		definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,
@@ -43314,6 +44376,12 @@ async function bootstrap(runtime) {
 		},
 		getSelfName() {
 			return selectSelf(lobbyStore.getSnapshot())?.name ?? "Alpha";
+		},
+		recordChallengeCompletion(completion) {
+			localStats.recordChallengeCompletion(completion.claimId, completion.challengeId, completion.occurredAt, completion.activatedAt);
+		},
+		recordDuelConclusion(conclusion) {
+			localStats.recordDuelConclusion(conclusion.matchId, conclusion.outcome, conclusion.occurredAt);
 		}
 	});
 	const productApi = productFoundation.start();
@@ -43325,6 +44393,7 @@ async function bootstrap(runtime) {
 	typoLobbyLeftTelemetryAdapter.start();
 	typoAutodrawTelemetryAdapter.start();
 	typoChallengeTelemetryAdapter.start();
+	textInputTelemetryAdapter.start();
 	const inspectorApi = {
 		version: BUILD_VERSION,
 		sessionId: recorder.getSessionId(),
@@ -43367,6 +44436,7 @@ async function bootstrap(runtime) {
 		if (window.skribblDuelsChallengeEngine === challengeApi) delete window.skribblDuelsChallengeEngine;
 		if (window.skribblDuelsChallengeDefinitions === challengeDefinitionsApi) delete window.skribblDuelsChallengeDefinitions;
 		if (window.skribblDuelsWordLists === wordListApi) delete window.skribblDuelsWordLists;
+		if (window.skribblDuelsLocalStats === localStatsApi) delete window.skribblDuelsLocalStats;
 	});
 	console.info("[Skribbl Duels] Initialized", {
 		version: BUILD_VERSION,

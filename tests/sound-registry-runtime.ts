@@ -9,6 +9,8 @@ const registry = JSON.parse(await readFile(resolve(
   'sound-effects/registry.template.json'
 ), 'utf8')) as { sounds: Record<string, string> };
 assert.deepEqual(new Set(Object.values(registry.sounds).map(path => extname(path))), new Set(['.ogg']));
+assert.equal(registry.sounds.queueJoin, 'sound-effects/join-queue.ogg');
+assert.equal(registry.sounds.queueLeave, 'sound-effects/leave-queue.ogg');
 assert.equal(registry.sounds.countdownTick, 'sound-effects/countdown.ogg');
 
 let plays = 0;

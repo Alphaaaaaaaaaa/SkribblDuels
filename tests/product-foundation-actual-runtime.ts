@@ -23,7 +23,7 @@ const manifest = createChallengeManifest({
   }))
 }, 'en', 1_000);
 
-assert.equal(manifest.entries.length, 47);
+assert.equal(manifest.entries.length, 49);
 const capabilities = {
   available: new Set<ChallengeCapability>([
     'skribbl-telemetry',
@@ -34,6 +34,24 @@ const capabilities = {
     'typo-image-lab'
   ])
 };
+
+const newCasualChallenges = generateDraftBoard(manifest, {
+  format: 'casual',
+  seed: 5900,
+  includeIds: ['ate-and-left-no-crumbs', 'guessingoat'],
+  capabilities
+});
+assert.ok(newCasualChallenges.board, 'Both v0.59 full-game Challenges must be draftable in Casual.');
+assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'ate-and-left-no-crumbs'));
+assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'guessingoat'));
+
+const newRankedChallenges = generateDraftBoard(manifest, {
+  format: 'ranked',
+  seed: 5901,
+  includeIds: ['ate-and-left-no-crumbs', 'guessingoat'],
+  capabilities
+});
+assert.equal(newRankedChallenges.board, null, 'New Challenges stay out of Ranked until live certification.');
 
 for (let seed = 1; seed <= 250; seed += 1) {
   const result = generateDraftBoard(manifest, {
@@ -137,7 +155,7 @@ void (async () => {
   assert.equal(resolvedRace?.owner, 'opponent');
   assert.equal(resolvedRace?.pendingCandidateId, null);
 
-  console.log('Product Foundation passed with the growing 47-Challenge manifest and 250 Ranked draft seeds.');
+  console.log('Product Foundation passed with the growing 49-Challenge manifest and 250 Ranked draft seeds.');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

@@ -71,6 +71,8 @@
     { "challengeId": "noob-vs-pro-vs-hacker", "assetPath": "challenge-icons/noob-vs-pro-vs-hacker.gif", "currentMetadataIcon": "noob-pro-hacker-positions" },
     { "challengeId": "reflexes-like-a-cat", "assetPath": "challenge-icons/reflexes-like-a-cat.gif", "currentMetadataIcon": "hot-drop" },
     { "challengeId": "drop-down", "assetPath": "challenge-icons/drop-down.gif", "currentMetadataIcon": "final-drop" },
-    { "challengeId": "transcended", "assetPath": "challenge-icons/transcended.gif", "currentMetadataIcon": "transcended-lead" }
+    { "challengeId": "transcended", "assetPath": "challenge-icons/transcended.gif", "currentMetadataIcon": "transcended-lead" },
+    { "challengeId": "ate-and-left-no-crumbs", "assetPath": "challenge-icons/ate-and-left-no-crumbs.gif", "currentMetadataIcon": "ate-and-left-no-crumbs-score" },
+    { "challengeId": "guessingoat", "assetPath": "challenge-icons/guessingoat.gif", "currentMetadataIcon": "guessingoat-first-guesser" }
   ]
 }

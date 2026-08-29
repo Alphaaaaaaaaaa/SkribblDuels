@@ -23,6 +23,7 @@ const session: SupabaseSessionLike = {
   expires_at: 2_000_000_000,
   user: {
     id: 'supabase-user-1',
+    created_at: '2026-01-02T03:04:05.000Z',
     email: 'alpha@example.test',
     user_metadata: {
       provider_id: 'discord-123',
@@ -84,6 +85,7 @@ const state = client.getState();
 assert.equal(state.status, 'signed-in');
 assert.equal(state.profile?.displayName, 'Alpha');
 assert.equal(state.profile?.discordId, 'discord-123');
+assert.equal(state.profile?.createdAt, Date.parse('2026-01-02T03:04:05.000Z'));
 assert.equal(client.getAccessToken(), 'test-access-token');
 
 await client.signOut();

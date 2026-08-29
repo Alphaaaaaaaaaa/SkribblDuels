@@ -3,12 +3,14 @@ import type {
   TelemetryEventOf
 } from '@skribbl-duels/telemetry-contracts';
 
-export const LOCAL_PLAYER_STATS_SCHEMA_VERSION = 1 as const;
-export const LOCAL_PLAYER_STATS_VERSION = '0.1.0' as const;
+export const LOCAL_PLAYER_STATS_SCHEMA_VERSION = 2 as const;
+export const LOCAL_PLAYER_STATS_VERSION = '0.2.0' as const;
 const MAX_VALID_WPM = 609;
 const MIN_VALID_TYPING_MS = 250;
 const MAX_VALID_TYPING_MS = 300_000;
 const RECENT_MARKER_LIMIT = 2_048;
+const DISTRIBUTION_SAMPLE_LIMIT = 512;
+const TREND_WINDOW_SIZE = 20;
 
 export type LocalWordStatsSort =
   | 'occurrence'
@@ -69,12 +71,21 @@ export interface LocalPlayerStatsSnapshot {
     distinctLobbyIds: number;
     lobbySessions: number;
     uniqueUsernamesSeen: number;
+    playSessions: number;
+    currentSessionTimeMs: number;
+    longestSessionTimeMs: number;
+    playDays: number;
+    currentPlayDayStreak: number;
+    bestPlayDayStreak: number;
   };
   typing: {
     submittedMessages: number;
     cleanSamples: number;
     averageWpm: number | null;
+    medianWpm: number | null;
+    p90Wpm: number | null;
     bestWpm: number | null;
+    improvementTrendPercent: number | null;
     corrections: number;
     pasteSubmissions: number;
     autofillSubmissions: number;
@@ -86,10 +97,27 @@ export interface LocalPlayerStatsSnapshot {
     wrongGuesses: number;
     correctGuesses: number;
     firstGuesses: number;
+    accuracyPercent: number | null;
+    firstGuesserRatePercent: number | null;
     averageGuessWpm: number | null;
+    medianGuessWpm: number | null;
+    p90GuessWpm: number | null;
     bestGuessWpm: number | null;
     averageGuessTimeMs: number | null;
+    medianGuessTimeMs: number | null;
+    p90GuessTimeMs: number | null;
     bestGuessTimeMs: number | null;
+    wpmImprovementTrendPercent: number | null;
+    timeImprovementTrendPercent: number | null;
+  };
+  drawing: {
+    roundsCompleted: number;
+    averageEffectivenessPercent: number | null;
+    bestEffectivenessPercent: number | null;
+    averageRoundScore: number | null;
+    bestRoundScore: number | null;
+    likesReceived: number;
+    dislikesReceived: number;
   };
   skribbl: {
     gamesCompleted: number;
@@ -98,6 +126,8 @@ export interface LocalPlayerStatsSnapshot {
     averageFinalScore: number | null;
     bestPublicScore: number | null;
     bestPrivateScore: number | null;
+    currentWinStreak: number;
+    bestWinStreak: number;
   };
   social: {
     likesGiven: number;
@@ -111,6 +141,8 @@ export interface LocalPlayerStatsSnapshot {
     draws: number;
     winRatePercent: number | null;
     challengesCompleted: number;
+    currentWinStreak: number;
+    bestWinStreak: number;
     localFastestChallengeMs: Readonly<Record<string, readonly number[]>>;
   };
   languages: readonly LocalLanguageStatsSnapshot[];
@@ -178,10 +210,15 @@ export interface StoredLocalStatsSummary {
   createdAt: number;
   updatedAt: number;
   observedPlayTimeMs: number;
+  playSessions: number;
+  currentSessionTimeMs: number;
+  longestSessionTimeMs: number;
+  playDateKeys: string[];
   submittedMessages: number;
   cleanTypingSamples: number;
   totalTypingWpm: number;
   bestTypingWpm: number | null;
+  typingWpmDistribution: number[];
   corrections: number;
   pasteSubmissions: number;
   autofillSubmissions: number;
@@ -194,11 +231,24 @@ export interface StoredLocalStatsSummary {
   guessWpmSamples: number;
   totalGuessWpm: number;
   bestGuessWpm: number | null;
+  guessWpmDistribution: number[];
   guessTimeSamples: number;
   totalGuessTimeMs: number;
   bestGuessTimeMs: number | null;
+  guessTimeDistributionMs: number[];
+  drawingRoundsCompleted: number;
+  drawingEffectivenessSamples: number;
+  totalDrawingEffectivenessPercent: number;
+  bestDrawingEffectivenessPercent: number | null;
+  drawingRoundScoreSamples: number;
+  totalDrawingRoundScore: number;
+  bestDrawingRoundScore: number | null;
+  drawingLikesReceived: number;
+  drawingDislikesReceived: number;
   gamesCompleted: number;
   skribblWins: number;
+  currentSkribblWinStreak: number;
+  bestSkribblWinStreak: number;
   finalScoreSamples: number;
   totalFinalScore: number;
   bestPublicScore: number | null;
@@ -210,6 +260,8 @@ export interface StoredLocalStatsSummary {
   duelMatchesCompleted: number;
   duelWins: number;
   duelDraws: number;
+  currentDuelWinStreak: number;
+  bestDuelWinStreak: number;
   challengesCompleted: number;
   localFastestChallengeMs: Record<string, number[]>;
   lobbyIds: string[];
@@ -261,6 +313,12 @@ interface PendingCorrectGuess {
   wordCommitted: boolean;
 }
 
+interface ActiveDrawingRound {
+  roundSessionId: string | null;
+  eligibleOpponentIds: Set<number>;
+  guesserIds: Set<number>;
+}
+
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     request.addEventListener('success', () => resolve(request.result), { once: true });
@@ -294,7 +352,9 @@ export class IndexedDbLocalStatsPersistence implements LocalStatsPersistence {
       ? Object.fromEntries(Object.entries(summaryRecord).filter(([key]) => key !== 'id')) as unknown as StoredLocalStatsSummary
       : null;
     return {
-      summary: cleanSummary?.schemaVersion === LOCAL_PLAYER_STATS_SCHEMA_VERSION
+      summary: cleanSummary
+        && (Number(cleanSummary.schemaVersion) === 1
+          || cleanSummary.schemaVersion === LOCAL_PLAYER_STATS_SCHEMA_VERSION)
         ? structuredClone(cleanSummary)
         : null,
       words: (words as StoredWordStats[]).map(item => structuredClone(item)),
@@ -378,10 +438,15 @@ function emptySummary(now: number): StoredLocalStatsSummary {
     createdAt: now,
     updatedAt: now,
     observedPlayTimeMs: 0,
+    playSessions: 0,
+    currentSessionTimeMs: 0,
+    longestSessionTimeMs: 0,
+    playDateKeys: [],
     submittedMessages: 0,
     cleanTypingSamples: 0,
     totalTypingWpm: 0,
     bestTypingWpm: null,
+    typingWpmDistribution: [],
     corrections: 0,
     pasteSubmissions: 0,
     autofillSubmissions: 0,
@@ -394,11 +459,24 @@ function emptySummary(now: number): StoredLocalStatsSummary {
     guessWpmSamples: 0,
     totalGuessWpm: 0,
     bestGuessWpm: null,
+    guessWpmDistribution: [],
     guessTimeSamples: 0,
     totalGuessTimeMs: 0,
     bestGuessTimeMs: null,
+    guessTimeDistributionMs: [],
+    drawingRoundsCompleted: 0,
+    drawingEffectivenessSamples: 0,
+    totalDrawingEffectivenessPercent: 0,
+    bestDrawingEffectivenessPercent: null,
+    drawingRoundScoreSamples: 0,
+    totalDrawingRoundScore: 0,
+    bestDrawingRoundScore: null,
+    drawingLikesReceived: 0,
+    drawingDislikesReceived: 0,
     gamesCompleted: 0,
     skribblWins: 0,
+    currentSkribblWinStreak: 0,
+    bestSkribblWinStreak: 0,
     finalScoreSamples: 0,
     totalFinalScore: 0,
     bestPublicScore: null,
@@ -410,6 +488,8 @@ function emptySummary(now: number): StoredLocalStatsSummary {
     duelMatchesCompleted: 0,
     duelWins: 0,
     duelDraws: 0,
+    currentDuelWinStreak: 0,
+    bestDuelWinStreak: 0,
     challengesCompleted: 0,
     localFastestChallengeMs: {},
     lobbyIds: [],
@@ -450,6 +530,104 @@ function percent(numerator: number, denominator: number): number | null {
     : null;
 }
 
+function rounded(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function percentile(values: readonly number[], ratio: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = values.filter(Number.isFinite).slice().sort((left, right) => left - right);
+  if (sorted.length === 0) return null;
+  const position = Math.min(1, Math.max(0, ratio)) * (sorted.length - 1);
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+  const lower = sorted[lowerIndex]!;
+  const upper = sorted[upperIndex]!;
+  return rounded(lower + (upper - lower) * (position - lowerIndex));
+}
+
+function boundedSample(values: readonly number[], value: number): number[] {
+  const next = [...values, value];
+  if (next.length > DISTRIBUTION_SAMPLE_LIMIT) {
+    next.splice(0, next.length - DISTRIBUTION_SAMPLE_LIMIT);
+  }
+  return next;
+}
+
+function improvementTrend(
+  values: readonly number[],
+  lowerIsBetter = false
+): number | null {
+  if (values.length < TREND_WINDOW_SIZE * 2) return null;
+  const recent = values.slice(-TREND_WINDOW_SIZE);
+  const previous = values.slice(-(TREND_WINDOW_SIZE * 2), -TREND_WINDOW_SIZE);
+  const recentAverage = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+  const previousAverage = previous.reduce((sum, value) => sum + value, 0) / previous.length;
+  if (previousAverage <= 0) return null;
+  const delta = lowerIsBetter
+    ? (previousAverage - recentAverage) / previousAverage
+    : (recentAverage - previousAverage) / previousAverage;
+  return rounded(delta * 100);
+}
+
+function localDayKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function playDayStreaks(keys: readonly string[]): { current: number; best: number } {
+  const timestamps = [...new Set(keys)]
+    .map(key => Date.parse(`${key}T00:00:00`))
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+  let currentRun = 0;
+  let best = 0;
+  let previous: number | null = null;
+  for (const timestamp of timestamps) {
+    currentRun = previous !== null && Math.round((timestamp - previous) / 86_400_000) === 1
+      ? currentRun + 1
+      : 1;
+    best = Math.max(best, currentRun);
+    previous = timestamp;
+  }
+  return { current: currentRun, best };
+}
+
+function migrateSummary(value: StoredLocalStatsSummary, now: number): StoredLocalStatsSummary {
+  const defaults = emptySummary(now);
+  const raw = value as unknown as Partial<StoredLocalStatsSummary>;
+  const migrated: StoredLocalStatsSummary = {
+    ...defaults,
+    ...raw,
+    schemaVersion: LOCAL_PLAYER_STATS_SCHEMA_VERSION,
+    typingWpmDistribution: Array.isArray(raw.typingWpmDistribution)
+      ? raw.typingWpmDistribution.filter(Number.isFinite).slice(-DISTRIBUTION_SAMPLE_LIMIT)
+      : [],
+    guessWpmDistribution: Array.isArray(raw.guessWpmDistribution)
+      ? raw.guessWpmDistribution.filter(Number.isFinite).slice(-DISTRIBUTION_SAMPLE_LIMIT)
+      : [],
+    guessTimeDistributionMs: Array.isArray(raw.guessTimeDistributionMs)
+      ? raw.guessTimeDistributionMs.filter(Number.isFinite).slice(-DISTRIBUTION_SAMPLE_LIMIT)
+      : [],
+    playDateKeys: Array.isArray(raw.playDateKeys) ? raw.playDateKeys.filter(key => typeof key === 'string') : [],
+    lobbyIds: Array.isArray(raw.lobbyIds) ? raw.lobbyIds : [],
+    lobbySessionIds: Array.isArray(raw.lobbySessionIds) ? raw.lobbySessionIds : [],
+    recentEventIds: Array.isArray(raw.recentEventIds) ? raw.recentEventIds : [],
+    recentBoundaryKeys: Array.isArray(raw.recentBoundaryKeys) ? raw.recentBoundaryKeys : [],
+    recentDuelMatchIds: Array.isArray(raw.recentDuelMatchIds) ? raw.recentDuelMatchIds : [],
+    recentClaimIds: Array.isArray(raw.recentClaimIds) ? raw.recentClaimIds : [],
+    languageNames: raw.languageNames && typeof raw.languageNames === 'object' ? raw.languageNames : {},
+    localFastestChallengeMs: raw.localFastestChallengeMs
+      && typeof raw.localFastestChallengeMs === 'object'
+      ? raw.localFastestChallengeMs
+      : {}
+  };
+  return migrated;
+}
+
 function boundedUnique(values: readonly string[], value: string, limit = RECENT_MARKER_LIMIT): string[] {
   const next = values.filter(item => item !== value);
   next.push(value);
@@ -474,6 +652,7 @@ export class LocalPlayerStatsService {
   private readonly listeners = new Set<(snapshot: LocalPlayerStatsSnapshot) => void>();
   private readonly pendingMeasurements: PendingMeasurement[] = [];
   private readonly pendingCorrectByRound = new Map<string, PendingCorrectGuess>();
+  private activeDrawingRound: ActiveDrawingRound | null = null;
   private readonly now: () => number;
   private readonly saveDebounceMs: number;
   private readonly getOfficialWordCount: (languageId: number) => number | null;
@@ -524,8 +703,13 @@ export class LocalPlayerStatsService {
       this.persistence = new MemoryLocalStatsPersistence();
       stored = await this.persistence.load();
     }
-    if (stored.summary?.schemaVersion === LOCAL_PLAYER_STATS_SCHEMA_VERSION) {
-      this.summary = structuredClone(stored.summary);
+    if (stored.summary) {
+      this.summary = migrateSummary(stored.summary, this.now());
+      this.summary.longestSessionTimeMs = Math.max(
+        this.summary.longestSessionTimeMs,
+        this.summary.currentSessionTimeMs
+      );
+      this.summary.currentSessionTimeMs = 0;
     }
     for (const word of stored.words) this.words.set(word.wordKey, structuredClone(word));
     for (const username of stored.usernames) this.usernames.set(username.userKey, structuredClone(username));
@@ -567,6 +751,7 @@ export class LocalPlayerStatsService {
       .filter(Number.isFinite)
       .sort((left, right) => left - right)
       .map(languageId => this.languageSnapshot(languageId));
+    const playStreaks = playDayStreaks(this.summary.playDateKeys);
     return {
       schemaVersion: LOCAL_PLAYER_STATS_SCHEMA_VERSION,
       version: LOCAL_PLAYER_STATS_VERSION,
@@ -576,13 +761,25 @@ export class LocalPlayerStatsService {
         observedPlayTimeMs: Math.round(this.summary.observedPlayTimeMs),
         distinctLobbyIds: this.summary.lobbyIds.length,
         lobbySessions: this.summary.lobbySessionIds.length,
-        uniqueUsernamesSeen: this.usernames.size
+        uniqueUsernamesSeen: this.usernames.size,
+        playSessions: this.summary.playSessions,
+        currentSessionTimeMs: Math.round(this.summary.currentSessionTimeMs),
+        longestSessionTimeMs: Math.round(Math.max(
+          this.summary.longestSessionTimeMs,
+          this.summary.currentSessionTimeMs
+        )),
+        playDays: this.summary.playDateKeys.length,
+        currentPlayDayStreak: playStreaks.current,
+        bestPlayDayStreak: playStreaks.best
       },
       typing: {
         submittedMessages: this.summary.submittedMessages,
         cleanSamples: this.summary.cleanTypingSamples,
         averageWpm: average(this.summary.totalTypingWpm, this.summary.cleanTypingSamples),
+        medianWpm: percentile(this.summary.typingWpmDistribution, .5),
+        p90Wpm: percentile(this.summary.typingWpmDistribution, .9),
         bestWpm: this.summary.bestTypingWpm,
+        improvementTrendPercent: improvementTrend(this.summary.typingWpmDistribution),
         corrections: this.summary.corrections,
         pasteSubmissions: this.summary.pasteSubmissions,
         autofillSubmissions: this.summary.autofillSubmissions,
@@ -594,10 +791,33 @@ export class LocalPlayerStatsService {
         wrongGuesses: this.summary.wrongGuesses,
         correctGuesses: this.summary.correctGuesses,
         firstGuesses: this.summary.firstGuesses,
+        accuracyPercent: percent(this.summary.correctGuesses, this.summary.guessAttempts),
+        firstGuesserRatePercent: percent(this.summary.firstGuesses, this.summary.correctGuesses),
         averageGuessWpm: average(this.summary.totalGuessWpm, this.summary.guessWpmSamples),
+        medianGuessWpm: percentile(this.summary.guessWpmDistribution, .5),
+        p90GuessWpm: percentile(this.summary.guessWpmDistribution, .9),
         bestGuessWpm: this.summary.bestGuessWpm,
         averageGuessTimeMs: average(this.summary.totalGuessTimeMs, this.summary.guessTimeSamples),
-        bestGuessTimeMs: this.summary.bestGuessTimeMs
+        medianGuessTimeMs: percentile(this.summary.guessTimeDistributionMs, .5),
+        p90GuessTimeMs: percentile(this.summary.guessTimeDistributionMs, .9),
+        bestGuessTimeMs: this.summary.bestGuessTimeMs,
+        wpmImprovementTrendPercent: improvementTrend(this.summary.guessWpmDistribution),
+        timeImprovementTrendPercent: improvementTrend(this.summary.guessTimeDistributionMs, true)
+      },
+      drawing: {
+        roundsCompleted: this.summary.drawingRoundsCompleted,
+        averageEffectivenessPercent: average(
+          this.summary.totalDrawingEffectivenessPercent,
+          this.summary.drawingEffectivenessSamples
+        ),
+        bestEffectivenessPercent: this.summary.bestDrawingEffectivenessPercent,
+        averageRoundScore: average(
+          this.summary.totalDrawingRoundScore,
+          this.summary.drawingRoundScoreSamples
+        ),
+        bestRoundScore: this.summary.bestDrawingRoundScore,
+        likesReceived: this.summary.drawingLikesReceived,
+        dislikesReceived: this.summary.drawingDislikesReceived
       },
       skribbl: {
         gamesCompleted: this.summary.gamesCompleted,
@@ -605,7 +825,9 @@ export class LocalPlayerStatsService {
         winRatePercent: percent(this.summary.skribblWins, this.summary.gamesCompleted),
         averageFinalScore: average(this.summary.totalFinalScore, this.summary.finalScoreSamples),
         bestPublicScore: this.summary.bestPublicScore,
-        bestPrivateScore: this.summary.bestPrivateScore
+        bestPrivateScore: this.summary.bestPrivateScore,
+        currentWinStreak: this.summary.currentSkribblWinStreak,
+        bestWinStreak: this.summary.bestSkribblWinStreak
       },
       social: {
         likesGiven: this.summary.likesGiven,
@@ -619,6 +841,8 @@ export class LocalPlayerStatsService {
         draws: this.summary.duelDraws,
         winRatePercent: percent(this.summary.duelWins, this.summary.duelMatchesCompleted),
         challengesCompleted: this.summary.challengesCompleted,
+        currentWinStreak: this.summary.currentDuelWinStreak,
+        bestWinStreak: this.summary.bestDuelWinStreak,
         localFastestChallengeMs: structuredClone(this.summary.localFastestChallengeMs)
       },
       languages
@@ -701,6 +925,7 @@ export class LocalPlayerStatsService {
     this.dirtyUsernames.clear();
     this.pendingMeasurements.length = 0;
     this.pendingCorrectByRound.clear();
+    this.activeDrawingRound = null;
     this.lobbyActive = false;
     this.lastActivitySampleAt = this.now();
     this.notify();
@@ -739,7 +964,16 @@ export class LocalPlayerStatsService {
     if (!matchId || this.summary.recentDuelMatchIds.includes(matchId)) return;
     this.summary.recentDuelMatchIds = boundedUnique(this.summary.recentDuelMatchIds, matchId);
     this.summary.duelMatchesCompleted += 1;
-    if (outcome === 'win') this.summary.duelWins += 1;
+    if (outcome === 'win') {
+      this.summary.duelWins += 1;
+      this.summary.currentDuelWinStreak += 1;
+      this.summary.bestDuelWinStreak = Math.max(
+        this.summary.bestDuelWinStreak,
+        this.summary.currentDuelWinStreak
+      );
+    } else {
+      this.summary.currentDuelWinStreak = 0;
+    }
     if (outcome === 'draw') this.summary.duelDraws += 1;
     this.changed(occurredAt);
   }
@@ -779,11 +1013,13 @@ export class LocalPlayerStatsService {
       case 'LOBBY_CHANGED': {
         const lobbyId = event.payload.lobbyId;
         this.setLobbyActive(lobbyId !== null);
+        if (lobbyId === null) this.activeDrawingRound = null;
         mutated = true;
         break;
       }
       case 'TYPO_LOBBY_LEFT':
         this.setLobbyActive(false);
+        this.activeDrawingRound = null;
         mutated = true;
         break;
       case 'PLAYER_JOINED':
@@ -802,20 +1038,29 @@ export class LocalPlayerStatsService {
         this.observeGuessSubmission(event);
         mutated = true;
         break;
+      case 'ROUND_STARTED':
+        mutated = this.observeDrawingRoundStarted(event);
+        break;
       case 'WRONG_GUESS':
         if (event.actor?.isSelf || event.payload.playerId === event.context.meId) {
           this.summary.wrongGuesses += 1;
           mutated = true;
         }
         break;
-      case 'CORRECT_GUESS':
-        mutated = this.observeCorrectGuess(event);
+      case 'CORRECT_GUESS': {
+        const drawingMutated = this.observeDrawingGuesser(event);
+        const guessingMutated = this.observeCorrectGuess(event);
+        mutated = drawingMutated || guessingMutated;
         break;
+      }
       case 'WORD_REVEALED':
         mutated = this.observeWordReveal(event);
         break;
       case 'SCORE_CHANGED':
         mutated = this.observeScore(event);
+        break;
+      case 'ROUND_RESULTS_AVAILABLE':
+        mutated = this.observeDrawingRoundResult(event);
         break;
       case 'GAME_ENDED':
         mutated = this.observeGameEnded(event);
@@ -833,6 +1078,14 @@ export class LocalPlayerStatsService {
         break;
       case 'HOST_KICK_SUBMITTED':
         this.summary.hostKicksGiven += 1;
+        mutated = true;
+        break;
+      case 'LIKE_RECEIVED':
+        this.summary.drawingLikesReceived += 1;
+        mutated = true;
+        break;
+      case 'DISLIKE_RECEIVED':
+        this.summary.drawingDislikesReceived += 1;
         mutated = true;
         break;
     }
@@ -907,6 +1160,7 @@ export class LocalPlayerStatsService {
       this.summary.cleanTypingSamples += 1;
       this.summary.totalTypingWpm += wpm;
       this.summary.bestTypingWpm = Math.max(this.summary.bestTypingWpm ?? 0, wpm);
+      this.summary.typingWpmDistribution = boundedSample(this.summary.typingWpmDistribution, wpm);
     }
     this.pendingMeasurements.push({
       eventId: event.eventId,
@@ -983,11 +1237,19 @@ export class LocalPlayerStatsService {
       this.summary.guessWpmSamples += 1;
       this.summary.totalGuessWpm += pending.wpm;
       this.summary.bestGuessWpm = Math.max(this.summary.bestGuessWpm ?? 0, pending.wpm);
+      this.summary.guessWpmDistribution = boundedSample(
+        this.summary.guessWpmDistribution,
+        pending.wpm
+      );
     }
     if (guessTimeMs !== null) {
       this.summary.guessTimeSamples += 1;
       this.summary.totalGuessTimeMs += guessTimeMs;
       this.summary.bestGuessTimeMs = Math.min(this.summary.bestGuessTimeMs ?? guessTimeMs, guessTimeMs);
+      this.summary.guessTimeDistributionMs = boundedSample(
+        this.summary.guessTimeDistributionMs,
+        guessTimeMs
+      );
     }
     const word = event.payload.word?.trim() ?? '';
     if (word) {
@@ -1044,6 +1306,63 @@ export class LocalPlayerStatsService {
     );
   }
 
+  private observeDrawingRoundStarted(event: TelemetryEventOf<'ROUND_STARTED'>): boolean {
+    if (event.payload.drawerId !== event.context.meId || event.context.meId === null) {
+      this.activeDrawingRound = null;
+      return false;
+    }
+    const eligibleOpponentIds = new Set(
+      (event.payload.players ?? [])
+        .map(player => player.id)
+        .filter(playerId => playerId !== event.context.meId)
+    );
+    this.activeDrawingRound = {
+      roundSessionId: event.context.roundSessionId,
+      eligibleOpponentIds,
+      guesserIds: new Set()
+    };
+    return true;
+  }
+
+  private observeDrawingGuesser(event: TelemetryEventOf<'CORRECT_GUESS'>): boolean {
+    const drawing = this.activeDrawingRound;
+    if (!drawing || drawing.roundSessionId !== event.context.roundSessionId) return false;
+    if (!drawing.eligibleOpponentIds.has(event.payload.playerId)
+        || drawing.guesserIds.has(event.payload.playerId)) return false;
+    drawing.guesserIds.add(event.payload.playerId);
+    return true;
+  }
+
+  private observeDrawingRoundResult(
+    event: TelemetryEventOf<'ROUND_RESULTS_AVAILABLE'>
+  ): boolean {
+    const drawing = this.activeDrawingRound;
+    if (!drawing || drawing.roundSessionId !== event.context.roundSessionId) return false;
+    this.activeDrawingRound = null;
+    this.summary.drawingRoundsCompleted += 1;
+    if (drawing.eligibleOpponentIds.size > 0) {
+      const effectiveness = rounded(
+        (drawing.guesserIds.size / drawing.eligibleOpponentIds.size) * 100
+      );
+      this.summary.drawingEffectivenessSamples += 1;
+      this.summary.totalDrawingEffectivenessPercent += effectiveness;
+      this.summary.bestDrawingEffectivenessPercent = Math.max(
+        this.summary.bestDrawingEffectivenessPercent ?? 0,
+        effectiveness
+      );
+    }
+    const ownScore = event.payload.scores.find(score => score.playerId === event.context.meId);
+    if (ownScore && Number.isFinite(ownScore.roundScore)) {
+      this.summary.drawingRoundScoreSamples += 1;
+      this.summary.totalDrawingRoundScore += ownScore.roundScore;
+      this.summary.bestDrawingRoundScore = Math.max(
+        this.summary.bestDrawingRoundScore ?? 0,
+        ownScore.roundScore
+      );
+    }
+    return true;
+  }
+
   private observeScore(event: TelemetryEventOf<'SCORE_CHANGED'>): boolean {
     if (!event.actor?.isSelf && event.payload.playerId !== event.context.meId) return false;
     const score = event.payload.totalScore;
@@ -1074,8 +1393,16 @@ export class LocalPlayerStatsService {
     }
     const highest = Math.max(...scores.map(item => item.totalScore));
     const winners = scores.filter(item => item.totalScore === highest);
-    if (highest > 0 && winners.length === 1 && winners[0]?.playerId === event.context.meId) {
+    const won = highest > 0 && winners.length === 1 && winners[0]?.playerId === event.context.meId;
+    if (won) {
       this.summary.skribblWins += 1;
+      this.summary.currentSkribblWinStreak += 1;
+      this.summary.bestSkribblWinStreak = Math.max(
+        this.summary.bestSkribblWinStreak,
+        this.summary.currentSkribblWinStreak
+      );
+    } else {
+      this.summary.currentSkribblWinStreak = 0;
     }
     return true;
   }
@@ -1161,6 +1488,20 @@ export class LocalPlayerStatsService {
 
   private setLobbyActive(active: boolean): void {
     this.sampleActivity();
+    if (active && !this.lobbyActive) {
+      this.summary.playSessions += 1;
+      this.summary.currentSessionTimeMs = 0;
+      this.summary.playDateKeys = boundedUnique(
+        this.summary.playDateKeys,
+        localDayKey(this.now()),
+        4_000
+      );
+    } else if (!active && this.lobbyActive) {
+      this.summary.longestSessionTimeMs = Math.max(
+        this.summary.longestSessionTimeMs,
+        this.summary.currentSessionTimeMs
+      );
+    }
     this.lobbyActive = active;
     this.lastActivitySampleAt = this.now();
   }
@@ -1171,7 +1512,13 @@ export class LocalPlayerStatsService {
     this.lastActivitySampleAt = now;
     if (!this.lobbyActive || !this.visible || elapsed === 0) return;
     // Long suspended-tab gaps are not "observed" play time.
-    this.summary.observedPlayTimeMs += Math.min(elapsed, 60_000);
+    const observed = Math.min(elapsed, 60_000);
+    this.summary.observedPlayTimeMs += observed;
+    this.summary.currentSessionTimeMs += observed;
+    this.summary.longestSessionTimeMs = Math.max(
+      this.summary.longestSessionTimeMs,
+      this.summary.currentSessionTimeMs
+    );
     this.changed(now, false);
   }
 

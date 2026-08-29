@@ -31,4 +31,29 @@ assert.equal(player.play('queueJoin' as SoundEffectId), false, 'Missing files mu
 player.setVolume(0);
 assert.equal(player.play('matchChatPing'), false, 'Muted playback must not create audio.');
 
-console.log('Sound registry and fail-safe playback test passed.');
+let paused = false;
+const unlockable = new SoundEffectPlayer({ queueJoin: 'data:audio/ogg;base64,AA==' }, () => ({
+  volume: 1,
+  currentTime: 0,
+  play: () => Promise.resolve(),
+  pause: () => { paused = true; }
+}));
+assert.equal(await unlockable.unlock(), true, 'Trusted-gesture prewarming should resolve.');
+assert.equal(paused, true);
+assert.equal(unlockable.getDiagnostics().unlocked, true);
+assert.equal(unlockable.getDiagnostics().embeddedSounds, 1);
+
+const autoplayBlocked = new SoundEffectPlayer({ queueJoin: 'data:audio/ogg;base64,AA==' }, () => ({
+  volume: 1,
+  currentTime: 0,
+  play: () => Promise.reject(new DOMException('play() failed because the user did not interact', 'NotAllowedError'))
+}));
+assert.equal(autoplayBlocked.play('queueJoin'), true, 'A scheduled play attempt should be distinguishable from its async rejection.');
+await new Promise(resolvePromise => setTimeout(resolvePromise, 0));
+assert.equal(autoplayBlocked.getDiagnostics().playbackRejections, 1);
+assert.match(autoplayBlocked.getDiagnostics().lastError ?? '', /NotAllowedError/);
+
+const viteConfig = await readFile(resolve(process.cwd(), 'apps/telemetry-inspector/vite.config.ts'), 'utf8');
+assert.match(viteConfig, /grant:\s*'none'/, 'Embedded data-audio does not require a Tampermonkey resource grant.');
+
+console.log('Sound registry, autoplay diagnostics and fail-safe playback test passed.');

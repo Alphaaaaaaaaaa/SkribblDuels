@@ -176,6 +176,53 @@ source.emit(telemetry('SCORE_CHANGED', 7_000, {
   delta: 400,
   coolNumber: false
 }, selfActor));
+context.roundSessionId = 'round-drawing';
+context.drawerId = 1;
+source.emit(telemetry('ROUND_STARTED', 7_100, {
+  previousStateId: 3,
+  stateId: 4,
+  stateName: 'DRAWING',
+  time: 80,
+  roundIndex: 1,
+  roundNumber: 2,
+  maxRounds: 3,
+  drawerId: 1,
+  word: 'Pear',
+  wordLengths: [4],
+  initialTime: 80,
+  players: [
+    { id: 1, name: 'Alpha', avatar: [0, 0, 0, 0], score: 900, guessed: false, flags: 0 },
+    { id: 2, name: 'Beta', avatar: [0, 0, 0, 0], score: 800, guessed: false, flags: 0 }
+  ]
+}));
+source.emit(telemetry('CORRECT_GUESS', 7_300, {
+  playerId: 2,
+  position: 1,
+  elapsedMs: 8_000,
+  estimatedTimeAtGuess: 72,
+  serverTimeAnchorAtGuess: 72,
+  includesWord: false,
+  word: null,
+  wrongGuessesBeforeCorrect: 0,
+  isFirstGuesser: true
+}, { playerId: 2, name: 'Beta', isSelf: false }));
+source.emit(telemetry('LIKE_RECEIVED', 7_350, {}));
+source.emit(telemetry('ROUND_RESULTS_AVAILABLE', 7_500, {
+  previousStateId: 4,
+  stateId: 5,
+  stateName: 'ROUND_RESULTS',
+  time: 0,
+  roundIndex: 1,
+  roundNumber: 2,
+  maxRounds: 3,
+  reason: 0,
+  reasonName: 'TIME_UP',
+  word: 'Pear',
+  scores: [
+    { playerId: 1, totalScore: 1_400, roundScore: 500 },
+    { playerId: 2, totalScore: 1_150, roundScore: 350 }
+  ]
+}));
 source.emit(telemetry('GAME_ENDED', 8_000, {
   previousStateId: 5,
   stateId: 6,
@@ -205,10 +252,16 @@ assert.equal(snapshot.activity.observedPlayTimeMs, 60_000);
 assert.equal(snapshot.activity.distinctLobbyIds, 1);
 assert.equal(snapshot.activity.lobbySessions, 1);
 assert.equal(snapshot.activity.uniqueUsernamesSeen, 1);
+assert.equal(snapshot.activity.playSessions, 1);
+assert.equal(snapshot.activity.playDays, 1);
+assert.equal(snapshot.activity.currentPlayDayStreak, 1);
+assert.equal(snapshot.activity.bestPlayDayStreak, 1);
 assert.equal(snapshot.typing.submittedMessages, 2);
 assert.equal(snapshot.typing.cleanSamples, 1);
 assert.equal(snapshot.typing.averageWpm, 50);
 assert.equal(snapshot.typing.bestWpm, 50);
+assert.equal(snapshot.typing.medianWpm, 50);
+assert.equal(snapshot.typing.p90Wpm, 50);
 assert.equal(snapshot.typing.pasteSubmissions, 1);
 assert.equal(snapshot.typing.corrections, 2);
 assert.equal(snapshot.guessing.attempts, 1);
@@ -216,13 +269,25 @@ assert.equal(snapshot.guessing.correctGuesses, 1);
 assert.equal(snapshot.guessing.firstGuesses, 1);
 assert.equal(snapshot.guessing.averageGuessWpm, 50);
 assert.equal(snapshot.guessing.averageGuessTimeMs, 5_000);
+assert.equal(snapshot.guessing.medianGuessTimeMs, 5_000);
+assert.equal(snapshot.guessing.p90GuessTimeMs, 5_000);
+assert.equal(snapshot.guessing.accuracyPercent, 100);
+assert.equal(snapshot.guessing.firstGuesserRatePercent, 100);
+assert.equal(snapshot.drawing.roundsCompleted, 1);
+assert.equal(snapshot.drawing.averageEffectivenessPercent, 100);
+assert.equal(snapshot.drawing.averageRoundScore, 500);
+assert.equal(snapshot.drawing.likesReceived, 1);
 assert.equal(snapshot.skribbl.gamesCompleted, 1);
 assert.equal(snapshot.skribbl.wins, 1);
+assert.equal(snapshot.skribbl.currentWinStreak, 1);
+assert.equal(snapshot.skribbl.bestWinStreak, 1);
 assert.equal(snapshot.skribbl.bestPublicScore, 900);
 assert.equal(snapshot.social.likesGiven, 1);
 assert.equal(snapshot.social.voteKicksGiven, 1);
 assert.equal(snapshot.duels.matchesCompleted, 1);
 assert.equal(snapshot.duels.wins, 1);
+assert.equal(snapshot.duels.currentWinStreak, 1);
+assert.equal(snapshot.duels.bestWinStreak, 1);
 assert.equal(snapshot.duels.challengesCompleted, 4);
 assert.deepEqual(snapshot.duels.localFastestChallengeMs.sniper, [1_000, 2_000, 3_000]);
 assert.equal(snapshot.languages[0]?.seenOccurrences, 1);
@@ -242,6 +307,7 @@ assert.equal(apple?.averageGuessTimeMs, 5_000);
 assert.equal(stats.getObservedUsernames()[0]?.name, 'Beta');
 
 await stats.flush();
+const durableBeforeDestroy = await persistence.load();
 stats.destroy();
 
 const restored = new LocalPlayerStatsService(new FakeTelemetrySource(), persistence, {
@@ -252,6 +318,87 @@ await restored.start();
 assert.equal(restored.getSnapshot().typing.averageWpm, 50, 'Durable local stats did not restore.');
 assert.equal(restored.getWordStats()[0]?.timesGuessed, 1, 'Durable word stats did not restore.');
 restored.destroy();
+
+const legacySummary = structuredClone(durableBeforeDestroy.summary) as unknown as Record<string, unknown>;
+legacySummary.schemaVersion = 1;
+for (const key of [
+  'typingWpmDistribution',
+  'guessWpmDistribution',
+  'guessTimeDistributionMs',
+  'drawingRoundsCompleted',
+  'currentSkribblWinStreak',
+  'currentDuelWinStreak',
+  'playDateKeys'
+]) delete legacySummary[key];
+const legacyPersistence: LocalStatsPersistence = {
+  async load() {
+    return {
+      summary: legacySummary as never,
+      words: durableBeforeDestroy.words,
+      usernames: durableBeforeDestroy.usernames
+    };
+  },
+  async save() {},
+  async clear() {}
+};
+const migrated = new LocalPlayerStatsService(new FakeTelemetrySource(), legacyPersistence, {
+  now: () => now
+});
+await migrated.start();
+assert.equal(migrated.getSnapshot().schemaVersion, 2);
+assert.equal(migrated.getSnapshot().typing.averageWpm, 50, 'Schema-v1 totals were not migrated.');
+assert.equal(migrated.getSnapshot().typing.medianWpm, null, 'Missing legacy samples need an honest null percentile.');
+migrated.destroy();
+
+const trendSource = new FakeTelemetrySource();
+const trendStats = new LocalPlayerStatsService(trendSource, new MemoryLocalStatsPersistence(), {
+  now: () => now
+});
+await trendStats.start();
+for (let index = 0; index < 40; index += 1) {
+  context.roundSessionId = `trend-round-${index}`;
+  context.drawerId = 2;
+  const durationMs = index < 20 ? 1_000 : 500;
+  const guessTimeMs = index < 20 ? 10_000 : 5_000;
+  const occurredAt = 100_000 + index * 100;
+  trendSource.emit(telemetry('TEXT_INPUT_MEASURED', occurredAt, {
+    attemptId: `trend-attempt-${index}`,
+    message: `word${index}`,
+    eligibleGuess: true,
+    inputSource: 'vanilla',
+    startedAt: occurredAt - durationMs,
+    submittedAt: occurredAt,
+    durationMs,
+    characterCount: 5,
+    correctionCount: 0,
+    pasteDetected: false,
+    autofillDetected: false,
+    compositionUsed: false,
+    trustedInput: true
+  }, selfActor));
+  trendSource.emit(telemetry('GUESS_SUBMITTED', occurredAt + 1, {
+    message: `word${index}`,
+    submittedAtServerTime: 70
+  }, selfActor));
+  trendSource.emit(telemetry('CORRECT_GUESS', occurredAt + 2, {
+    playerId: 1,
+    position: 1,
+    elapsedMs: guessTimeMs,
+    estimatedTimeAtGuess: 70,
+    serverTimeAnchorAtGuess: 70,
+    includesWord: false,
+    word: null,
+    wrongGuessesBeforeCorrect: 0,
+    isFirstGuesser: true
+  }, selfActor));
+}
+const trendSnapshot = trendStats.getSnapshot();
+assert.equal(trendSnapshot.typing.medianWpm, 90);
+assert.equal(trendSnapshot.typing.p90Wpm, 120);
+assert.equal(trendSnapshot.typing.improvementTrendPercent, 100);
+assert.equal(trendSnapshot.guessing.wpmImprovementTrendPercent, 100);
+assert.equal(trendSnapshot.guessing.timeImprovementTrendPercent, 50);
+trendStats.destroy();
 
 let warned = false;
 const originalWarn = console.warn;

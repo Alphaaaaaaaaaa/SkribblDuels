@@ -125,15 +125,15 @@ pass.
 
 | Order | Challenge | Remaining authoritative work |
 | ---: | --- | --- |
-| 1 | Ate and left no crumbs | Positive points in every fully observed drawing turn of one game; settle zero/missing score and drawer-left policy, then add full-game fixture. |
-| 2 | GuessingOAT | First Guesser in every eligible guessing turn; keep own/interrupted drawing turns skipped and certify full game boundaries. |
+| 1 | Ate and left no crumbs | Implemented with full-game, zero/missing score, drawer-left and mid-join fixtures in v0.59.0; Casual live certification remains. |
+| 2 | GuessingOAT | Implemented with full-game, other/no First Guesser, own/interrupted turn and mid-join fixtures in v0.59.0; Casual live certification remains. |
 | 3 | Drop Streak | Five consecutive caught Typo drops; requires correlated `TYPO_DROP_SPAWNED` and `TYPO_DROP_MISSED`, because claims alone cannot prove a streak. |
 | 4 | Internet Explorer | First Guesser below 10 WPM; requires certified WPM/anti-paste evidence. |
 | 5 | WPMaster | Ten correct guesses at 150+ WPM; decide First-Guesser requirement and preserve distinct round IDs. |
 | 6 | TypeRacer | One correct guess at 250+ WPM with anti-paste evidence. |
 
-Transcended is already Challenge 47 in Casual and still needs its supplied icon
-plus the normal Ranked live-certification window. TL;DR v2 and all existing
+Transcended is Challenge 47, user-certified for Ranked and its GitHub icon is
+embedded in v0.59.0. TL;DR v2 and all existing
 Challenges still need real two-client exposure metrics (recommended: at least
 100 eligible exposures and 20 genuine completions per definition).
 

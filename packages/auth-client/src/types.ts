@@ -9,6 +9,7 @@ export interface DiscordAuthProfile {
   displayName: string;
   email: string | null;
   avatarUrl: string | null;
+  createdAt: number | null;
 }
 
 export interface AuthSnapshot {
@@ -25,6 +26,7 @@ export interface AuthSubscription {
 
 export interface SupabaseAuthUserLike {
   id: string;
+  created_at?: string | null;
   email?: string | null;
   user_metadata?: Record<string, unknown>;
   app_metadata?: Record<string, unknown>;

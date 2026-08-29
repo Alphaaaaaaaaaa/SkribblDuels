@@ -74,6 +74,11 @@ three Challenge times are personal records, not public leaderboard results.
 | P3 | Ranked/profile | Rating, provisional/season placement, match history and challenge completion rate | Requires durable server model |
 | P3 | Public records | Global top-three fastest WPM and Challenge completions | Server-certified only; local data cannot claim a world record |
 
+v0.59.0 completes the P2 distribution, accuracy, Drawing and session/streak
+reducers listed above and exposes all registered values in the Duel Profile.
+The table is retained as the v0.58 foundation record; current status lives in
+`docs/duel-profile-stats-sfx-challenges-v0.59.0.md`.
+
 Recommended extra statistics are the median and P90 alongside averages, sample
 quality/eligibility rates, correct/First-Guesser rates, PR improvement over
 time, hardest versus most frequent words, and drawing effectiveness. These add
@@ -87,11 +92,13 @@ card.
    has no audio bytes, so `0/8` assets are embedded despite the working player.
 2. Deploy v0.58 Gateway first and run two-client regression for Claims plus
    vanilla/Typo WPM evidence; then publish the v0.58 userscript.
-3. Add the local Stats/Profile presentation with language filter, occurrence
-   table/graph, coverage and data-quality labels.
-4. Live-certify Transcended and provide its dedicated Challenge icon.
-5. Implement and certify the next deterministic Challenges: Ate and left no
-   crumbs, GuessingOAT, then Drop Streak after spawn/miss telemetry.
+3. The local Stats/Profile presentation, occurrence table and coverage view
+   ship in v0.59.0; a richer graph and additional data-quality filters remain.
+4. Transcended is user-certified, Ranked-enabled and its GitHub artwork is
+   embedded in v0.59.0.
+5. Ate and left no crumbs plus GuessingOAT ship replay-certified in Casual in
+   v0.59.0; live two-client certification is next. Drop Streak remains blocked
+   until spawn/miss telemetry exists.
 6. Certify WPM policy and then add Internet Explorer, WPMaster and TypeRacer.
 7. Finish Ranked rules/history, public profiles, opt-in record submission and
    server-certified leaderboards.

@@ -60,3 +60,5 @@ export * from './definitions/blindGuess';
 export * from './definitions/drunkVision';
 export * from './definitions/deafGuess';
 export * from './definitions/transcended';
+export * from './definitions/ateAndLeftNoCrumbs';
+export * from './definitions/guessingOat';

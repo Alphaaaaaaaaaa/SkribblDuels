@@ -751,6 +751,15 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
     getSelfName() {
       return selectSelf(lobbyStore.getSnapshot())?.name ?? 'Alpha';
     },
+    getLocalStatsSnapshot() {
+      return localStats.getSnapshot();
+    },
+    getLocalWordStats(query) {
+      return localStats.getWordStats(query);
+    },
+    subscribeLocalStats(listener) {
+      return localStats.subscribe(listener);
+    },
     recordChallengeCompletion(completion) {
       localStats.recordChallengeCompletion(
         completion.claimId,

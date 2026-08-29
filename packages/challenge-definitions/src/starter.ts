@@ -50,8 +50,10 @@ import { blindGuessDefinition } from './definitions/blindGuess';
 import { drunkVisionDefinition } from './definitions/drunkVision';
 import { deafGuessDefinition } from './definitions/deafGuess';
 import { transcendedDefinition } from './definitions/transcended';
+import { ateAndLeftNoCrumbsDefinition } from './definitions/ateAndLeftNoCrumbs';
+import { guessingOatDefinition } from './definitions/guessingOat';
 
-export const CHALLENGE_DEFINITIONS_VERSION = '2.13.0' as const;
+export const CHALLENGE_DEFINITIONS_VERSION = '2.14.0' as const;
 
 export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   quickscopeDefinition,
@@ -100,7 +102,9 @@ export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   noobVsProVsHackerDefinition,
   reflexesLikeACatDefinition,
   dropDownDefinition,
-  transcendedDefinition
+  transcendedDefinition,
+  ateAndLeftNoCrumbsDefinition,
+  guessingOatDefinition
 ];
 
 export const STARTER_CHALLENGE_IDS = [
@@ -150,7 +154,9 @@ export const STARTER_CHALLENGE_IDS = [
   'noob-vs-pro-vs-hacker',
   'reflexes-like-a-cat',
   'drop-down',
-  'transcended'
+  'transcended',
+  'ate-and-left-no-crumbs',
+  'guessingoat'
 ] as const;
 
 export type StarterChallengeId = typeof STARTER_CHALLENGE_IDS[number];
@@ -202,7 +208,9 @@ export const starterSandboxInstanceIds = {
   'noob-vs-pro-vs-hacker': 'sandbox-field-noob-vs-pro-vs-hacker',
   'reflexes-like-a-cat': 'sandbox-field-reflexes-like-a-cat',
   'drop-down': 'sandbox-field-drop-down',
-  transcended: 'sandbox-field-transcended'
+  transcended: 'sandbox-field-transcended',
+  'ate-and-left-no-crumbs': 'sandbox-field-ate-and-left-no-crumbs',
+  guessingoat: 'sandbox-field-guessingoat'
 } as const satisfies Record<StarterChallengeId, string>;
 
 interface DefinitionEngine extends Pick<

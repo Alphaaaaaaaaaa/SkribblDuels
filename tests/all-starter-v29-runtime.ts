@@ -17,15 +17,15 @@ async function main(): Promise<void> {
   setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel', 'Hai', 'Zoo'], 'German');
   const fixture = JSON.parse(readFileSync('fixtures/starter-challenges-with-typo-guess-challenges-v29.fixture.json', 'utf8'));
   const engine = new ChallengeEngine({ autoPersist: false });
-  assert(registerStarterChallengeDefinitions(engine).length === 47, 'All 47 definitions should register.');
-  assert(activateStarterSandbox(engine).length === 47, 'All 47 sandbox instances should activate.');
+  assert(registerStarterChallengeDefinitions(engine).length === 49, 'All 49 definitions should register.');
+  assert(activateStarterSandbox(engine).length === 49, 'All 49 sandbox instances should activate.');
   const replay = new TelemetryReplayProvider();
   replay.load(fixture);
   const detach = engine.attachProvider(replay, 'v29-fixture');
   await replay.play({ mode: 'instant' });
   detach();
   for (const definition of starterChallengeDefinitions) {
-    if (definition.id === 'transcended') continue;
+    if (['transcended', 'ate-and-left-no-crumbs', 'guessingoat'].includes(definition.id)) continue;
     const instanceId = starterSandboxInstanceIds[definition.id as keyof typeof starterSandboxInstanceIds];
     const runtime = engine.getInstance(instanceId);
     assert(runtime?.status === 'completion-pending', `${definition.id} did not complete; status=${runtime?.status}.`);

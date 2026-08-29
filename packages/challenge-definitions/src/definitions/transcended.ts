@@ -104,7 +104,7 @@ function resultForScoreboard(
   };
 }
 
-/** First pool-expanding candidate; Casual-only until its live Ranked gate is met. */
+/** First pool-expanding challenge; live certification completed before Ranked enablement. */
 export const transcendedDefinition: ChallengeDefinition<TranscendedState, TranscendedParameters> = {
   id: 'transcended',
   version: 1,
@@ -116,7 +116,7 @@ export const transcendedDefinition: ChallengeDefinition<TranscendedState, Transc
       'Transcended',
       'Baue in einem öffentlichen Spiel mindestens 2.000 Punkte Vorsprung auf jeden aktiven Gegner auf.'
     ),
-    rankedEligible: false,
+    rankedEligible: true,
     difficulty: 4
   },
   defaultParameters: { points: 2_000 },

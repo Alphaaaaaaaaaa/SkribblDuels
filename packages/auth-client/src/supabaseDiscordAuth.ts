@@ -45,6 +45,12 @@ function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
+function timestampValue(value: unknown): number | null {
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function profileFromUser(user: SupabaseAuthUserLike): DiscordAuthProfile {
   const metadata = user.user_metadata ?? {};
   const discordId = stringValue(metadata.provider_id)
@@ -67,7 +73,8 @@ function profileFromUser(user: SupabaseAuthUserLike): DiscordAuthProfile {
     username,
     displayName,
     email: stringValue(user.email),
-    avatarUrl
+    avatarUrl,
+    createdAt: timestampValue(user.created_at)
   };
 }
 

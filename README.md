@@ -1,9 +1,44 @@
-# Skribbl Duels v0.58.0
+# Skribbl Duels v0.59.0
 
-This monorepo contains the growing 47-Challenge telemetry/challenge system, Product UI,
+This monorepo contains the growing 49-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.59.0
+
+- Adds the local `Skribbl Duel Profile` opened from the account summary. The
+  identity column renders the selected Discord/Skribbl Versus avatar, colored
+  Duel name, optional Challenge-icon status, private Discord identity and
+  member-since date.
+- Shows twelve compact main-profile statistics. The first two are user-pinned
+  buttons; `View all Stats` opens all 45 registered statistics, per-language
+  word coverage and an occurrence-sorted word table. Stat and pin artwork use
+  a dedicated optional icon registry with honest text fallbacks.
+- Migrates local statistics to schema v2 without deleting v0.58 data. Rolling
+  Median/P90, Guess accuracy, First-Guesser rate, typing/Guess improvement,
+  Drawing effectiveness, session/play-day streaks and Skribbl/Duel win streaks
+  are now available locally.
+- Makes the compact account summary an accessible profile button and renders
+  its avatar from the currently selected Versus identity.
+- Keeps the Profile color launcher on normal button colors; only transactional
+  `Select` is green. Palette indexes 26/27 share one local collision class,
+  and pure white restores to exact `#ffffff` on hover.
+- Keeps both mirrored Match Chat and mirrored Challenge-completion lines in
+  Skribbl's native chat colors. Duel name colors remain inside Duel-owned UI.
+- Adds audio user-activation prewarming, rejected-play diagnostics and a Test
+  sound action. The four supplied queue/countdown/match-found files are fetched
+  from GitHub and embedded; the other four registry slots remain silent.
+- Expands the Casual pool with replay-certified Challenge 48, `Ate and left no
+  crumbs`, and Challenge 49, `GuessingOAT`. Both require a fully observed game,
+  fail closed on missing boundaries and skip explicit drawer-left turns.
+  Ranked eligibility remains closed until live two-client certification.
+- Marks the user-certified Transcended definition Ranked-eligible and embeds
+  its supplied `challenge-icons/transcended.gif` artwork from GitHub.
+
+Deploy the v0.59.0 Gateway first, verify `/readyz`, then update the userscript.
+Gateway Contract v11 and the existing Supabase/Railway configuration remain
+unchanged; no migration or new environment variable is required.
 
 ## v0.58.0
 
@@ -14,7 +49,7 @@ challenge claims.
   working color, the green Select button commits it to the unsaved Profile
   draft, and focus/visibility recovery cannot reopen the Hub behind the picker.
 - Keeps mirrored Match Chat names in Skribbl's own chat color. Duel colors stay
-  in the private Match UI, completion messages, Claims and supported toasts.
+  in the private Match UI, Claims and supported Duel-owned presentation.
 - Rebuilds the injected Match Chat command preview with Typo's current scoped
   classes and native partial/active-parameter states while hiding the unrelated
   default command list whenever the configured command is relevant.
@@ -68,7 +103,7 @@ v11 is required on both sides; no new Railway variable is required.
   from the form, mirrors confirmed messages into Skribbl chat and supports
   `/sdchat`, `/msg` and `/chat`, including Typo's command input.
 - Removes the development redirect copy and the Discord `email` OAuth scope.
-- Gives all 47 Challenges unique future-proof icon paths; Transcended reserves
+- Gives all then-47 Challenges unique future-proof icon paths; Transcended reserves
   `challenge-icons/transcended.gif` and uses the normal fallback until supplied.
 
 Deploy the v0.56.0 Gateway first, verify `/readyz`, then install or update the
@@ -88,8 +123,8 @@ migration or new Railway variable is required.
 - Keeps the Duel Chat form visible when a Draw proposal expands a long Match
   panel, including a sticky input surface and nearest-scroll recovery.
 - Changes the Challenge policy from a frozen pool to a growing pool and adds
-  Transcended as Challenge 47 for Casual certification. It remains unavailable
-  to Ranked drafts for now.
+  Transcended as Challenge 47 for Casual certification. v0.59.0 records the
+  user's completed certification and enables it for Ranked drafts.
 - Adds stable Tampermonkey `updateURL` and `downloadURL` metadata. Publishing a
   higher `@version` at the same raw GitHub path enables normal update checks.
 

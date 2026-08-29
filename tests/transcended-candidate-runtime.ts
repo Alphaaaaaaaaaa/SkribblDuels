@@ -46,9 +46,9 @@ function event(type: TelemetryEventType, eventId: string, payload: Record<string
   } as TelemetryEvent;
 }
 
-assert.equal(starterChallengeDefinitions.length, 47, 'The live pool must expand when a new Challenge is introduced.');
+assert.equal(starterChallengeDefinitions.length, 49, 'The live pool must expand whenever new Challenges are introduced.');
 assert.equal(starterChallengeDefinitions.some(definition => definition.id === 'transcended'), true, 'Transcended must expand the Casual live draft pool.');
-assert.equal(transcendedDefinition.metadata.rankedEligible, false);
+assert.equal(transcendedDefinition.metadata.rankedEligible, true, 'User-confirmed live certification enables Ranked drafting.');
 
 const engine = new ChallengeEngine({ autoPersist: false, createId: () => 'transcended-candidate' });
 engine.register(transcendedDefinition);
@@ -102,4 +102,4 @@ solo.process(event('LOBBY_HYDRATED', 'solo-hydrated', {
 }));
 assert.equal(solo.getInstance('solo')?.status, 'active', 'A lead requires at least one active opponent.');
 
-console.log('Transcended Casual-pool runtime test passed.');
+console.log('Transcended certified Casual/Ranked pool runtime test passed.');

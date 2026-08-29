@@ -54,7 +54,9 @@ export function resolveLocalOpponentColorIndex(
 ): number {
   const selfIndex = normalizeDuelNameColorIndex(selfIndexValue);
   const opponentIndex = normalizeDuelNameColorIndex(opponentIndexValue);
-  return opponentIndex === selfIndex
+  const bothWhite = (selfIndex === 26 || selfIndex === 27)
+    && (opponentIndex === 26 || opponentIndex === 27);
+  return opponentIndex === selfIndex || bothWhite
     ? (opponentIndex + 2) % DUEL_NAME_COLORS.length
     : opponentIndex;
 }
@@ -67,7 +69,9 @@ export function duelNameColorAtlasPosition(indexValue: unknown): string {
 export function duelClaimColorBackground(indexValue: unknown): string {
   const definition = DUEL_NAME_COLORS[normalizeDuelNameColorIndex(indexValue)]!;
   if (definition.colors.length === 1) {
-    return `color-mix(in srgb,var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)) 35%,${definition.colors[0]})`;
+    // Muting is applied by the field filter. Keeping the actual source color
+    // here lets hover restore the exact atlas color, including pure #fff.
+    return definition.colors[0];
   }
   return `repeating-linear-gradient(135deg,${definition.colors[0]} 0 12px,${definition.colors[1]} 12px 24px)`;
 }

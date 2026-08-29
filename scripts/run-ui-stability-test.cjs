@@ -102,8 +102,15 @@ assert(source.includes("element('strong', '', 'SFX integration')"), 'SFX integra
 assert(source.includes("background-image:url('/img/audio_off.gif')"), 'Muted volume icon is missing');
 assert(source.includes('duelNameColorAtlasPosition(workingIndex)'), 'Profile color-atlas selector is missing');
 assert(source.includes("element('button', 'scd-button primary scd-profile-color-select', 'Select')"), 'Profile color selector lacks its explicit Select action');
+assert(source.includes("bold.textContent = `${message.playerName} has completed '${message.challengeName}'!`;"), 'Mirrored challenge completions still render Duel name colors.');
+assert(source.includes("this.panelAccount = element('button', 'scd-modal-account')"), 'The account summary is not an accessible profile button.');
+assert(source.includes("'Skribbl Duel Profile'"), 'The local Duel Profile modal is missing.');
 assert(source.includes("close.setAttribute('aria-label', 'Cancel color selection')"), 'Profile color close action is not an explicit cancel');
-assert(source.includes('this.settings.panelOpen && !stagePhase && !this.profileColorPicker'), 'Visibility recovery can reopen the Hub behind the profile color picker');
+assert(
+  source.includes('this.settings.panelOpen')
+    && source.includes('&& !this.profileColorPicker && !this.duelProfileModal'),
+  'Visibility recovery can reopen the Hub behind a profile overlay'
+);
 assert(source.includes('.scd-field.self,.scd-field.opponent { filter:saturate(.68) brightness(.78); }'), 'Claim colors are not muted by default');
 assert(source.includes('.scd-field.self:hover,.scd-field.opponent:hover { filter:saturate(1) brightness(1); }'), 'Claim colors do not restore full brightness on hover');
 assert(source.includes('filter .1s ease-in-out'), 'Claim-color hover transition is not smooth');

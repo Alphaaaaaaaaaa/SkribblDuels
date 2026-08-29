@@ -21,9 +21,9 @@ assert.deepEqual(Object.keys(registry.ui).sort(), ['about', 'logo', 'notReady', 
 assert.equal(registry.ui.ready, 'challenge-icons/checkmark.gif');
 assert.equal(registry.ui.notReady, 'challenge-icons/crossmark.gif');
 assert.deepEqual(Object.keys(registry.countdown), ['1', '2', '3', '4', '5', 'G', 'O', '!']);
-assert.equal(registry.challenges.length, 47);
-assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 47);
-assert.equal(new Set(registry.challenges.map(entry => entry.assetPath)).size, 47);
+assert.equal(registry.challenges.length, 49);
+assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 49);
+assert.equal(new Set(registry.challenges.map(entry => entry.assetPath)).size, 49);
 assert.deepEqual(
   [...registry.challenges.map(entry => entry.challengeId)].sort(),
   [...STARTER_CHALLENGE_IDS].sort()
@@ -40,5 +40,13 @@ assert.equal(
   registry.challenges.find(entry => entry.challengeId === 'transcended')?.assetPath,
   'challenge-icons/transcended.gif'
 );
+assert.equal(
+  registry.challenges.find(entry => entry.challengeId === 'ate-and-left-no-crumbs')?.assetPath,
+  'challenge-icons/ate-and-left-no-crumbs.gif'
+);
+assert.equal(
+  registry.challenges.find(entry => entry.challengeId === 'guessingoat')?.assetPath,
+  'challenge-icons/guessingoat.gif'
+);
 
-console.log('All 47 challenges have unique direct icon paths; absent artwork uses the UI fallback.');
+console.log('All 49 challenges have unique direct icon paths; absent artwork uses the UI fallback.');

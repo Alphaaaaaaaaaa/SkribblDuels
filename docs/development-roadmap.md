@@ -5,7 +5,7 @@
 | Phase | Status | Result |
 | --- | --- | --- |
 | Telemetry and protocol state | Complete | Versioned telemetry contract, replay fixtures and protocol/lobby state |
-| Challenge system | Complete | Growing pool, currently 47 modular Challenges with automated runtime coverage |
+| Challenge system | Complete | Growing pool, currently 49 modular Challenges with automated runtime coverage |
 | Product foundation | Complete | Casual 3×3, Ranked 5×5, conflict-aware draft generation and match freeze |
 | Account identity | Complete | Discord OAuth through Supabase, RLS profiles and automatic profile synchronization |
 | Gateway foundation | Complete | Railway HTTPS service, token verification, profile lookup, `HELLO`/`WELCOME` and heartbeat |
@@ -17,7 +17,7 @@
 | Match reconnect continuity | Complete | Contract v3 resume cursor, 30-second server grace, authoritative snapshot restoration and stale-state rejection |
 | Draft interaction hardening | Complete | Stable clock updates, centered two-choice surface, Left/Right Arrow input and definition tooltips |
 | Lobby-series continuity | Complete | Back to back uses stable lobby identity; Noob vs. Pro vs. Hacker and Bullet retain global progress across lobby/language changes |
-| GIF asset template | Complete | Validated mappings for all 47 Challenge IDs plus logo, settings, about and countdown frames |
+| GIF asset template | Complete | Validated mappings for all 49 Challenge IDs plus logo, settings, about and countdown frames |
 | Vanilla Hub and match-start stage | Complete | Homepage entry, intro, modal Hub, dynamic Duels/Match navigation and standalone Versus/Draft/Countdown views |
 | Persistent Versus identity | Complete | Duel name, language, Discord/Skribbl avatar selection and server-controlled Special entitlement |
 | Embedded visual assets | Complete | Real Challenge icons in intro, Draft and board plus animated GIF countdown |
@@ -40,6 +40,8 @@
 | v0.56 Challenge/chat hardening | Complete | Telemetry-gated homepage matchmaking, strict Back to back/Deserved?, 28-language TL;DR v2 and Typo-compatible mirrored Match Chat |
 | v0.57 UI/profile integration | Complete | Reload-safe lobby authority, Typo `leftLobby`, configurable Match Chat command/preview, optional SFX registry and authoritative 28-color names/Claims |
 | v0.58 local player statistics | Foundation complete | Versioned input evidence, clean/Guess WPM correlation, per-language word history and coverage, IndexedDB persistence and local-only export API |
+| v0.59 Duel Profile and expanded statistics | Complete | Local Profile, two pinned slots, 45-stat registry, all-stat/coverage view, schema-v2 distributions/trends/streaks and selected Versus avatar summary |
+| v0.59 deterministic Challenge expansion | Replay-certified | Ate and left no crumbs plus GuessingOAT expand Casual to 49; Ranked remains gated on live two-client certification |
 
 ## Active development sequence
 
@@ -72,16 +74,17 @@
   proposed additions remain gated by the events recorded in
   `docs/challenge-live-certification-v0.55.0.md`.
 
-### 4. Local statistics presentation and certification
+### 4. Local statistics presentation and certification — UI delivered in v0.59.0
 
-- Build the Profile statistics UI on the v0.58 IndexedDB/API foundation,
-  including language filters, occurrence ranking, coverage and data-quality
-  indicators.
-- Add rolling median/percentiles and session trends without rewriting the
-  stable lifetime aggregates.
+- The Profile UI, two configurable pinned slots, occurrence ranking, coverage,
+  rolling Median/P90, improvement trends, Drawing effectiveness and streaks
+  are implemented without rewriting lifetime aggregates.
 - Live-certify `TEXT_INPUT_MEASURED` against vanilla and Typo input, then define
   the server rule for WPM Challenges. Paste/autofill/untrusted samples stay
   ineligible; browser-only records never become public world records.
+- Supply stat/pin and the two new Challenge artworks for their reserved paths;
+  Transcended artwork is embedded. Missing art stays an explicit local
+  fallback and never blocks the release.
 
 ### 5. Ranked competition and history
 
@@ -116,3 +119,6 @@ remaining Challenge candidates are consolidated in
 `docs/home-authority-ui-sfx-profile-colors-v0.57.0.md`.
 The v0.58 local-stat schema, privacy boundary and expanded statistics backlog
 are recorded in `docs/local-wpm-word-stats-v0.58.0.md`.
+The v0.59 Profile, SFX/autoplay diagnosis, extension assessment and new
+Challenge certification rules are recorded in
+`docs/duel-profile-stats-sfx-challenges-v0.59.0.md`.

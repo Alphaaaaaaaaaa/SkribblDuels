@@ -39,7 +39,7 @@
     { "statId": "drawing-effectiveness", "assetPath": "stat-icons/drawing-effectiveness.gif" },
     { "statId": "drawing-round-score", "assetPath": "stat-icons/drawing-round-score.gif" },
     { "statId": "drawing-rounds", "assetPath": "stat-icons/drawing-rounds.gif" },
-    { "statId": "drawing-reactions", "assetPath": "stat-icons/drawing-reactions.gif" },
+    { "statId": "drawing-reactions", "assetPath": "stat-icons/drawing-reactions.png" },
     { "statId": "skribbl-wins", "assetPath": "stat-icons/skribbl-wins.gif" },
     { "statId": "skribbl-win-rate", "assetPath": "stat-icons/skribbl-win-rate.gif" },
     { "statId": "skribbl-win-streak", "assetPath": "stat-icons/skribbl-win-streak.gif" },

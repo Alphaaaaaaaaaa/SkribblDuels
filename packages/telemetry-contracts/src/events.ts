@@ -104,6 +104,8 @@ export interface TelemetryPayloadMap {
   TYPO_DROP_CLAIMED: {
     own: true;
     dropId: number | string | null;
+    /** Correlates the confirmed claim with one locally observed spawn. */
+    dropObservationId?: string | null;
     catchTimeMs: number;
     firstClaim: boolean | null;
     clearedDrop: boolean;
@@ -111,6 +113,17 @@ export interface TelemetryPayloadMap {
     leagueWeight: number | null;
     username: string | null;
     method: 'typo-relay' | 'chat-fallback';
+  };
+  TYPO_DROP_SPAWNED: {
+    dropObservationId: string;
+    dropId: number | string | null;
+    method: 'typo-relay' | 'dom-observer';
+  };
+  TYPO_DROP_MISSED: {
+    dropObservationId: string;
+    dropId: number | string | null;
+    reason: 'cleared-or-expired' | 'claim-unconfirmed' | 'replaced' | 'lobby-left';
+    method: 'typo-relay' | 'dom-observer';
   };
 
   TYPO_LOBBY_LEFT: {
@@ -274,6 +287,8 @@ export const TELEMETRY_EVENT_CATEGORIES = {
   CHAT_MESSAGE_RECEIVED: 'chat',
   SPAM_DETECTED: 'chat',
   TYPO_DROP_CLAIMED: 'system',
+  TYPO_DROP_SPAWNED: 'system',
+  TYPO_DROP_MISSED: 'system',
   TYPO_LOBBY_LEFT: 'lobby',
   TYPO_SKD_FILE_LOADED: 'system',
   TYPO_SKD_PASTED: 'drawing',

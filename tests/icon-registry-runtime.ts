@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { STARTER_CHALLENGE_IDS } from '@skribbl-duels/challenge-definitions';
+import { EMBEDDED_ICON_ASSETS } from '../apps/telemetry-inspector/src/generatedIconAssets';
 
 interface IconRegistry {
   registryVersion: number;
@@ -21,9 +22,9 @@ assert.deepEqual(Object.keys(registry.ui).sort(), ['about', 'logo', 'notReady', 
 assert.equal(registry.ui.ready, 'challenge-icons/checkmark.gif');
 assert.equal(registry.ui.notReady, 'challenge-icons/crossmark.gif');
 assert.deepEqual(Object.keys(registry.countdown), ['1', '2', '3', '4', '5', 'G', 'O', '!']);
-assert.equal(registry.challenges.length, 49);
-assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 49);
-assert.equal(new Set(registry.challenges.map(entry => entry.assetPath)).size, 49);
+assert.equal(registry.challenges.length, 53);
+assert.equal(new Set(registry.challenges.map(entry => entry.challengeId)).size, 53);
+assert.equal(new Set(registry.challenges.map(entry => entry.assetPath)).size, 53);
 assert.deepEqual(
   [...registry.challenges.map(entry => entry.challengeId)].sort(),
   [...STARTER_CHALLENGE_IDS].sort()
@@ -48,5 +49,44 @@ assert.equal(
   registry.challenges.find(entry => entry.challengeId === 'guessingoat')?.assetPath,
   'challenge-icons/guessingoat.gif'
 );
+assert.equal(
+  registry.challenges.find(entry => entry.challengeId === 'drop-streak')?.assetPath,
+  'challenge-icons/drop-streak.gif'
+);
+assert.equal(
+  registry.challenges.find(entry => entry.challengeId === 'internet-explorer')?.assetPath,
+  'challenge-icons/internet-explorer.gif'
+);
+assert.equal(
+  registry.challenges.find(entry => entry.challengeId === 'wpmaster')?.assetPath,
+  'challenge-icons/wpmaster.gif'
+);
+assert.equal(
+  registry.challenges.find(entry => entry.challengeId === 'type-racer')?.assetPath,
+  'challenge-icons/type-racer.gif'
+);
+for (const suppliedPath of [
+  'challenge-icons/transcended.gif',
+  'challenge-icons/ate-and-left-no-crumbs.gif',
+  'challenge-icons/guessingoat.gif'
+]) {
+  assert.match(
+    EMBEDDED_ICON_ASSETS[suppliedPath] ?? '',
+    /^data:image\/gif;base64,[A-Za-z0-9+/=]+$/,
+    `${suppliedPath} must be embedded into the release userscript.`
+  );
+}
+for (const fallbackPath of [
+  'challenge-icons/drop-streak.gif',
+  'challenge-icons/internet-explorer.gif',
+  'challenge-icons/wpmaster.gif',
+  'challenge-icons/type-racer.gif'
+]) {
+  assert.equal(
+    EMBEDDED_ICON_ASSETS[fallbackPath],
+    undefined,
+    `${fallbackPath} keeps its unique fallback path until artwork is supplied.`
+  );
+}
 
-console.log('All 49 challenges have unique direct icon paths; absent artwork uses the UI fallback.');
+console.log('All 53 challenges have unique direct icon paths; absent artwork uses the UI fallback.');

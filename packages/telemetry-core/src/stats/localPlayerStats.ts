@@ -20,6 +20,7 @@ export type LocalWordStatsSort =
   | 'best-guess-time'
   | 'average-guess-time'
   | 'last-seen'
+  | 'language'
   | 'alphabetical';
 
 export interface LocalWordStatsQuery {
@@ -854,25 +855,29 @@ export class LocalPlayerStatsService {
       .filter(item => query.languageId === undefined || item.languageId === query.languageId)
       .map(item => this.wordSnapshot(item));
     const sort = query.sort ?? 'occurrence';
-    const defaultDirection = sort === 'alphabetical' || sort.includes('time')
+    const defaultDirection = sort === 'alphabetical' || sort === 'language' || sort.includes('time')
       ? 'ascending'
       : 'descending';
     const direction = query.direction ?? defaultDirection;
-    const value = (item: LocalWordStatsSnapshot): number | string => {
+    const value = (item: LocalWordStatsSnapshot): number | string | null => {
       switch (sort) {
         case 'occurrence': return item.timesSeen;
         case 'guessed': return item.timesGuessed;
-        case 'best-wpm': return item.bestWpm ?? -1;
-        case 'average-wpm': return item.averageWpm ?? -1;
-        case 'best-guess-time': return item.bestGuessTimeMs ?? Number.POSITIVE_INFINITY;
-        case 'average-guess-time': return item.averageGuessTimeMs ?? Number.POSITIVE_INFINITY;
-        case 'last-seen': return item.lastSeenAt ?? 0;
+        case 'best-wpm': return item.bestWpm;
+        case 'average-wpm': return item.averageWpm;
+        case 'best-guess-time': return item.bestGuessTimeMs;
+        case 'average-guess-time': return item.averageGuessTimeMs;
+        case 'last-seen': return item.lastSeenAt;
+        case 'language': return `${item.languageName ?? ''}\u0000${String(item.languageId).padStart(3, '0')}`.toLocaleLowerCase();
         case 'alphabetical': return item.word.toLocaleLowerCase();
       }
     };
     items.sort((left, right) => {
       const a = value(left);
       const b = value(right);
+      if (a === null && b === null) return left.word.localeCompare(right.word);
+      if (a === null) return 1;
+      if (b === null) return -1;
       const compared = typeof a === 'string' && typeof b === 'string'
         ? a.localeCompare(b)
         : Number(a) - Number(b);

@@ -149,7 +149,7 @@ function firstGuess(engine: ChallengeEngine, id: string, playerId: number): void
   }));
 }
 
-assert.equal(starterChallengeDefinitions.length, 49, 'The growing live pool must contain Challenges 48 and 49.');
+assert.equal(starterChallengeDefinitions.length, 53, 'The growing live pool must retain Challenges 48–50 when Challenges 51–53 are added.');
 assert.equal(ateAndLeftNoCrumbsDefinition.metadata.rankedEligible, false);
 assert.equal(guessingOatDefinition.metadata.rankedEligible, false);
 
@@ -220,5 +220,32 @@ firstGuess(oatMidGame, 'oat-mid-game-round', 21);
 resultRound(oatMidGame, 'oat-mid-game-round', 31, 100);
 oatMidGame.process(event('GAME_ENDED', 'oat-mid-game-end', { payload: { finalScores: [] } }));
 assert.equal(oatMidGame.getInstance('oat-mid-game')?.status, 'active', 'GuessingOAT cannot start from a mid-game join.');
+
+const ateAutomaticRestart = engineFor(ateAndLeftNoCrumbsDefinition, 'ate-auto-restart');
+ateAutomaticRestart.process(event('ROUND_ANNOUNCED', 'ate-auto-restart-banner', {
+  payload: { previousStateId: 6, stateId: 2, stateName: 'ROUND_ANNOUNCEMENT' }
+}));
+startRound(ateAutomaticRestart, 'ate-auto-turn', 31);
+resultRound(ateAutomaticRestart, 'ate-auto-turn', 31, 100);
+ateAutomaticRestart.process(event('GAME_ENDED', 'ate-auto-end', { payload: { finalScores: [] } }));
+assert.equal(
+  ateAutomaticRestart.getInstance('ate-auto-restart')?.status,
+  'completion-pending',
+  'A direct results-to-round-one banner must establish a fully observed automatic-restart game for Ate.'
+);
+
+const oatAutomaticRestart = engineFor(guessingOatDefinition, 'oat-auto-restart');
+oatAutomaticRestart.process(event('ROUND_ANNOUNCED', 'oat-auto-restart-banner', {
+  payload: { previousStateId: 6, stateId: 2, stateName: 'ROUND_ANNOUNCEMENT' }
+}));
+startRound(oatAutomaticRestart, 'oat-auto-turn', 31);
+firstGuess(oatAutomaticRestart, 'oat-auto-turn', 21);
+resultRound(oatAutomaticRestart, 'oat-auto-turn', 31, 100);
+oatAutomaticRestart.process(event('GAME_ENDED', 'oat-auto-end', { payload: { finalScores: [] } }));
+assert.equal(
+  oatAutomaticRestart.getInstance('oat-auto-restart')?.status,
+  'completion-pending',
+  'A direct results-to-round-one banner must establish a fully observed automatic-restart game for GuessingOAT.'
+);
 
 console.log('Ate and left no crumbs / GuessingOAT deterministic full-game runtime tests passed.');

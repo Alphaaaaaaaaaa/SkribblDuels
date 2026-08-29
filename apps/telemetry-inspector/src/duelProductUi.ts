@@ -92,6 +92,7 @@ import {
   type HomepageAuthorityLobbySnapshot,
   type HomepageMatchmakingAuthority
 } from './homepageMatchmakingEligibility';
+import { SkribblChatStatDisplay } from './chatStatDisplay';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -162,21 +163,31 @@ interface PersistedProductMatch {
 interface DuelProfileUiPreferences {
   version: 1;
   statusChallengeId: string | null;
+  statusText: string;
   pinnedStatIds: [ProfileStatId, ProfileStatId];
 }
 
 const DUEL_PROFILE_UI_STORAGE_KEY = 'skribblDuelsProfileUiV1';
+const DUEL_PROFILE_STATUS_MAX_LENGTH = 80;
+
+function normalizeDuelProfileStatusText(value: unknown): string {
+  return typeof value === 'string'
+    ? value.replace(/\s+/g, ' ').trim().slice(0, DUEL_PROFILE_STATUS_MAX_LENGTH)
+    : '';
+}
 
 function loadDuelProfileUiPreferences(): DuelProfileUiPreferences {
   const fallback: DuelProfileUiPreferences = {
     version: 1,
     statusChallengeId: null,
+    statusText: '',
     pinnedStatIds: [...DEFAULT_PINNED_PROFILE_STAT_IDS]
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(DUEL_PROFILE_UI_STORAGE_KEY) ?? 'null') as {
       version?: unknown;
       statusChallengeId?: unknown;
+      statusText?: unknown;
       pinnedStatIds?: unknown;
     } | null;
     if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.pinnedStatIds)) return fallback;
@@ -187,6 +198,7 @@ function loadDuelProfileUiPreferences(): DuelProfileUiPreferences {
       statusChallengeId: typeof parsed.statusChallengeId === 'string'
         ? parsed.statusChallengeId
         : null,
+      statusText: normalizeDuelProfileStatusText(parsed.statusText),
       pinnedStatIds: [pins[0]!, pins[1]!]
     };
   } catch {
@@ -425,6 +437,18 @@ function formatDurationWords(elapsedMs: number): string {
   return parts.length <= 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 }
 
+function formatMemberSince(timestamp: number): string {
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return 'unavailable';
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  return `${day}.${month}.${date.getUTCFullYear()}`;
+}
+
+function pinnedStatisticOrdinal(slot: 0 | 1): string {
+  return slot === 0 ? '1st' : '2nd';
+}
+
 function profileLanguage(value: unknown): UiLanguage {
   return value === 'de' ? 'de' : 'en';
 }
@@ -598,6 +622,9 @@ class CompletionChatAdapter {
 #game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-vanilla-match-chat-avatar { position:relative;display:grid;place-items:center;flex:0 0 1.6em;width:1.6em !important;height:1.6em !important;border-radius:50%;font-size:.7em;overflow:visible; }
 #game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-vanilla-match-chat-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:100%;height:100%; }
 #game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-match-chat-message { min-width:0;overflow-wrap:anywhere; }
+#game-chat .chat-content p .scd-chat-stat { white-space:nowrap;font-weight:700; }
+#game-chat .chat-content p .scd-chat-guess-time { color:var(--COLOR_CHAT_TEXT_GUESSED) !important; }
+#game-chat .chat-content p .scd-chat-wpm.scd-muted { color:rgba(255,255,255,.6) !important; }
 .scd-tooltip { position:fixed;display:flex;z-index:2147483647;align-items:center;pointer-events:none;transform-origin:0 0;animation:scd-tooltip-appear .1s forwards ease-out; }
 .scd-tooltip-title { background:var(--COLOR_TOOL_TIP_BG,#20232c);color:var(--COLOR_PANEL_TEXT,#fff);border-radius:var(--BORDER_RADIUS,6px);padding:7px;text-shadow:1px 1px 0 #00000038;text-align:center;font-size:13px;font-weight:700;white-space:pre;max-width:320px; }
 .scd-tooltip-arrow { height:0;width:0; }
@@ -778,13 +805,22 @@ class CompletionChatAdapter {
 .scd-profile-view-header .scd-modal-close { justify-self:end; }
 .scd-profile-view-body { overflow:auto;padding:12px; }
 .scd-duel-profile-layout { display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,2fr);gap:14px;align-items:start; }
-.scd-profile-identity { display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:rgba(255,255,255,.055);text-align:center; }
+.scd-profile-identity { display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
 .scd-profile-avatar { position:relative;width:124px !important;height:124px !important;display:grid;place-items:center;font-size:48px;font-weight:900; }
 .scd-profile-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:86%;height:86%; }
 .scd-profile-display-name { width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.45em;font-weight:900; }
-.scd-profile-status-button { width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);font-weight:800; }
-.scd-profile-status-button .scd-icon { width:32px;height:32px;flex:none; }
-.scd-profile-status-copy { min-height:2.8em;margin:0;font-size:11px; }
+.scd-profile-status-button-wrapper { width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,4fr);gap:10px; }
+.scd-profile-status-button,.scd-profile-status-button-icon { min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;background:var(--COLOR_PANEL_BUTTON,#2a51d1);font-weight:800; }
+.scd-profile-status-button { padding-inline:10px;overflow:hidden; }
+.scd-profile-status-button span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-profile-status-button-icon { padding:6px; }
+.scd-profile-status-button-icon .scd-icon { width:34px;height:34px;flex:none; }
+.scd-profile-status-editor { display:flex;flex-direction:column;gap:10px; }
+.scd-profile-status-editor input { width:100%;box-sizing:border-box; }
+.scd-profile-status-editor-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+.scd-profile-status-save { background:#53e237; }
+.scd-profile-status-save:hover:not(:disabled) { background:#38c41c; }
+.scd-profile-status-save:active:not(:disabled) { background:#30aa19; }
 .scd-profile-private-copy { width:100%;font-size:11px;overflow-wrap:anywhere; }
 .scd-profile-stats-column { min-width:0;display:flex;flex-direction:column;gap:10px; }
 .scd-profile-stats-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
@@ -808,10 +844,16 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-profile-choice.selected { outline:2px solid var(--SCD_ACCENT);outline-offset:-2px; }
 .scd-profile-all-stats { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px; }
 .scd-profile-coverage-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px; }
-.scd-profile-coverage-card { padding:9px;border-radius:8px;background:rgba(255,255,255,.06); }
+.scd-profile-coverage-card { padding:9px;border:0;border-radius:8px;background:rgba(255,255,255,.06);color:white;font:inherit;text-align:left;cursor:pointer;transition:background-color .1s ease-in-out,outline-color .1s ease-in-out; }
+.scd-profile-coverage-card:hover { background:rgba(255,255,255,.12); }
+.scd-profile-coverage-card.selected { outline:2px solid var(--SCD_ACCENT);outline-offset:-2px;background:rgba(255,255,255,.1); }
 .scd-profile-word-table { width:100%;margin-top:12px;border-collapse:collapse;font-size:11px; }
 .scd-profile-word-table th,.scd-profile-word-table td { padding:6px;border-bottom:1px solid rgba(255,255,255,.11);text-align:right; }
 .scd-profile-word-table th:first-child,.scd-profile-word-table td:first-child { text-align:left; }
+.scd-profile-word-sort { width:100%;display:flex;align-items:center;justify-content:flex-end;gap:4px;border:0;padding:0;background:transparent;color:inherit;font:inherit;font-weight:800;cursor:pointer; }
+.scd-profile-word-table th:first-child .scd-profile-word-sort { justify-content:flex-start; }
+.scd-profile-word-sort:hover { color:#fff; }
+.scd-profile-word-sort-indicator { min-width:1ch;opacity:.75; }
 .scd-profile-section-title { display:block;margin:14px 0 7px; }
 .scd-volume-group .scd-volume-title { position:relative;display:flex;align-items:center;font-size:1.3em;font-weight:700;margin-bottom:.1em; }
 .scd-volume-group .scd-volume-icon { display:inline-block;width:1.4em;height:1.4em;margin-right:.5ch;background-image:url('/img/audio.gif');background-size:contain;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)); }
@@ -1136,6 +1178,9 @@ export class DuelProductFoundation {
   private profileColorDraftIndex: number | null = null;
   private profileUiPreferences: DuelProfileUiPreferences;
   private localStatsSnapshot: LocalPlayerStatsSnapshot;
+  private profileWordLanguageId: number | null = null;
+  private profileWordSort: NonNullable<LocalWordStatsQuery['sort']> = 'occurrence';
+  private profileWordSortDirection: NonNullable<LocalWordStatsQuery['direction']> = 'descending';
   private showProfileEntitlementFeedback = false;
   private mountGuard: number | null = null;
   private draftSlotTimer: number | null = null;
@@ -1148,6 +1193,7 @@ export class DuelProductFoundation {
   private settings: ProductUiSettings;
   private matchState: MatchState;
   private chatAdapter: CompletionChatAdapter;
+  private readonly chatStatDisplay: SkribblChatStatDisplay;
   private duelChatMessages: DuelChatMessage[] = [];
   private activeTab: ProductUiSettings['panelTab'];
   private readonly tooltips: ProductTooltipManager;
@@ -1246,6 +1292,13 @@ export class DuelProductFoundation {
       () => this.settings.matchChatMessages,
       options.runtimeId
     );
+    this.chatStatDisplay = new SkribblChatStatDisplay({
+      runtimeId: options.runtimeId,
+      getSettings: () => ({
+        wpmDisplay: this.settings.wpmChatDisplay,
+        guessTimeDisplay: this.settings.guessTimeChatDisplay
+      })
+    });
     this.authState = this.authClient.getState();
     this.gatewayClient = new SocketIoGatewayClient({
       endpoint: GATEWAY_URL,
@@ -1262,6 +1315,7 @@ export class DuelProductFoundation {
     this.installRuntimeIsolationStyle();
     this.removeForeignRuntimeDom();
     this.chatAdapter.start();
+    this.chatStatDisplay.start();
     this.tooltips.start();
     document.addEventListener('keydown', this.draftKeydown, true);
     document.addEventListener('visibilitychange', this.visibilityRecovery, true);
@@ -1340,6 +1394,7 @@ export class DuelProductFoundation {
       const tabChanged = this.activeTab !== settings.panelTab;
       this.settings = settings;
       this.soundEffects.setVolume(settings.sfxVolume);
+      this.chatStatDisplay.refresh();
       this.activeTab = settings.panelTab;
       this.renderVisibility();
       this.renderBoardPosition();
@@ -1361,7 +1416,10 @@ export class DuelProductFoundation {
       if (this.settings.panelOpen) this.renderPanel();
     }));
     this.unsubscribers.push(this.options.challengeEngine.subscribe(event => this.handleChallengeEngineEvent(event)));
-    this.unsubscribers.push(this.options.subscribeTelemetry(event => this.observeDuelTelemetry(event)));
+    this.unsubscribers.push(this.options.subscribeTelemetry(event => {
+      this.chatStatDisplay.observe(event);
+      this.observeDuelTelemetry(event);
+    }));
     this.unsubscribers.push(this.options.subscribeLocalStats(snapshot => {
       this.localStatsSnapshot = snapshot;
       this.refreshVisibleProfileStats();
@@ -1378,7 +1436,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.59.0',
+      version: '0.61.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1472,6 +1530,7 @@ export class DuelProductFoundation {
     this.mountGuard = null;
     this.draftSlotTimer = null;
     this.chatAdapter.stop();
+    this.chatStatDisplay.stop();
     this.tooltips.stop();
     document.removeEventListener('keydown', this.draftKeydown, true);
     document.removeEventListener('visibilitychange', this.visibilityRecovery, true);
@@ -1521,7 +1580,7 @@ export class DuelProductFoundation {
     this.duelProfileModal = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.59.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.61.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2683,14 +2742,14 @@ export class DuelProductFoundation {
   }
 
   private openProfileStatusPicker(): void {
-    this.createProfileDetail('Choose profile status', body => {
+    this.createProfileDetail('Choose status icon', body => {
       const grid = element('div', 'scd-profile-choice-grid');
       const none = element('button', 'scd-button scd-profile-choice') as HTMLButtonElement;
       none.type = 'button';
       none.classList.toggle('selected', this.profileUiPreferences.statusChallengeId === null);
       none.append(
         element('span', 'scd-icon scd-icon-fallback', '×'),
-        element('span', '', 'No status')
+        element('span', '', 'No icon')
       );
       none.addEventListener('click', () => {
         this.profileUiPreferences.statusChallengeId = null;
@@ -2717,8 +2776,45 @@ export class DuelProductFoundation {
     });
   }
 
+  private openProfileStatusEditor(): void {
+    this.createProfileDetail('Edit profile status', body => {
+      const editor = element('div', 'scd-profile-status-editor');
+      const label = element('label', 'scd-profile-field');
+      label.appendChild(element('span', 'scd-muted', `Status text · ${DUEL_PROFILE_STATUS_MAX_LENGTH} characters maximum`));
+      const input = element('input') as HTMLInputElement;
+      input.type = 'text';
+      input.maxLength = DUEL_PROFILE_STATUS_MAX_LENGTH;
+      input.placeholder = 'Working...';
+      input.value = this.profileUiPreferences.statusText;
+      label.appendChild(input);
+
+      const actions = element('div', 'scd-profile-status-editor-actions');
+      const cancel = element('button', 'scd-button', 'Cancel') as HTMLButtonElement;
+      cancel.type = 'button';
+      cancel.addEventListener('click', () => this.closeProfileDetail());
+      const save = element('button', 'scd-button primary scd-profile-status-save', 'Save') as HTMLButtonElement;
+      save.type = 'button';
+      const applyStatus = (): void => {
+        this.profileUiPreferences.statusText = normalizeDuelProfileStatusText(input.value);
+        this.saveProfileUiPreferences();
+        this.closeProfileDetail();
+        this.openDuelProfile();
+      };
+      save.addEventListener('click', applyStatus);
+      input.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        applyStatus();
+      });
+      actions.append(cancel, save);
+      editor.append(label, actions);
+      body.appendChild(editor);
+      queueMicrotask(() => input.focus());
+    });
+  }
+
   private openProfileStatPicker(slot: 0 | 1): void {
-    this.createProfileDetail(`Choose pinned statistic ${slot + 1}`, body => {
+    this.createProfileDetail(`Choose ${pinnedStatisticOrdinal(slot)} pinned statistic`, body => {
       const grid = element('div', 'scd-profile-choice-grid');
       for (const definition of PROFILE_STAT_DEFINITIONS) {
         const choice = element('button', 'scd-button scd-profile-choice') as HTMLButtonElement;
@@ -2756,24 +2852,94 @@ export class DuelProductFoundation {
 
       body.appendChild(element('strong', 'scd-profile-section-title', 'Word-list coverage'));
       const coverage = element('div', 'scd-profile-coverage-grid');
-      for (const language of this.localStatsSnapshot.languages) {
-        const card = element('div', 'scd-profile-coverage-card');
-        card.append(
-          element('strong', '', language.languageName ?? `Language ${language.languageId}`),
-          element('div', 'scd-muted', `${language.uniqueWordsSeen.toLocaleString()} seen · ${language.uniqueWordsGuessed.toLocaleString()} guessed`),
-          element('div', '', language.officialWordCount === null
-            ? 'Coverage unavailable'
-            : `${language.seenCoveragePercent ?? 0}% seen · ${language.guessedCoveragePercent ?? 0}% guessed`)
-        );
-        coverage.appendChild(card);
+      const languages = this.localStatsSnapshot.languages;
+      if (this.profileWordLanguageId !== null
+          && !languages.some(language => language.languageId === this.profileWordLanguageId)) {
+        this.profileWordLanguageId = null;
       }
-      if (this.localStatsSnapshot.languages.length === 0) {
+
+      const createCoverageCard = (
+        languageId: number | null,
+        label: string,
+        seen: number,
+        guessed: number,
+        official: number | null,
+        seenCoverage: number | null,
+        guessedCoverage: number | null
+      ): HTMLButtonElement => {
+        const card = element('button', 'scd-profile-coverage-card') as HTMLButtonElement;
+        card.type = 'button';
+        card.classList.toggle('selected', this.profileWordLanguageId === languageId);
+        card.setAttribute('aria-pressed', String(this.profileWordLanguageId === languageId));
+        card.append(
+          element('strong', '', label),
+          element('div', 'scd-muted', `${seen.toLocaleString()} seen · ${guessed.toLocaleString()} guessed`),
+          element('div', '', official === null
+            ? 'Coverage unavailable'
+            : `${seenCoverage ?? 0}% seen · ${guessedCoverage ?? 0}% guessed`)
+        );
+        card.addEventListener('click', () => {
+          this.profileWordLanguageId = languageId;
+          this.openAllProfileStats();
+        });
+        return card;
+      };
+
+      if (languages.length > 0) {
+        const totals = languages.reduce((result, language) => {
+          result.seen += language.uniqueWordsSeen;
+          result.guessed += language.uniqueWordsGuessed;
+          if (language.officialWordCount !== null) {
+            result.official += language.officialWordCount;
+            result.coveredSeen += language.uniqueWordsSeen;
+            result.coveredGuessed += language.uniqueWordsGuessed;
+          }
+          return result;
+        }, { seen: 0, guessed: 0, official: 0, coveredSeen: 0, coveredGuessed: 0 });
+        const coveragePercent = (count: number): number | null => totals.official > 0
+          ? Math.round(((count / totals.official) * 100 + Number.EPSILON) * 100) / 100
+          : null;
+        coverage.appendChild(createCoverageCard(
+          null,
+          'All languages',
+          totals.seen,
+          totals.guessed,
+          totals.official > 0 ? totals.official : null,
+          coveragePercent(totals.coveredSeen),
+          coveragePercent(totals.coveredGuessed)
+        ));
+      }
+
+      for (const language of languages) {
+        coverage.appendChild(createCoverageCard(
+          language.languageId,
+          language.languageName ?? `Language ${language.languageId}`,
+          language.uniqueWordsSeen,
+          language.uniqueWordsGuessed,
+          language.officialWordCount,
+          language.seenCoveragePercent,
+          language.guessedCoveragePercent
+        ));
+      }
+      if (languages.length === 0) {
         coverage.appendChild(element('div', 'scd-muted', 'No authoritative language data observed yet.'));
       }
       body.appendChild(coverage);
 
-      body.appendChild(element('strong', 'scd-profile-section-title', 'Most frequently seen words'));
-      const words = this.options.getLocalWordStats({ sort: 'occurrence', limit: 25 });
+      const selectedLanguage = this.profileWordLanguageId === null
+        ? null
+        : languages.find(language => language.languageId === this.profileWordLanguageId) ?? null;
+      body.appendChild(element(
+        'strong',
+        'scd-profile-section-title',
+        `Most frequently seen words · ${selectedLanguage?.languageName ?? (selectedLanguage ? `Language ${selectedLanguage.languageId}` : 'All languages')}`
+      ));
+      const words = this.options.getLocalWordStats({
+        ...(this.profileWordLanguageId === null ? {} : { languageId: this.profileWordLanguageId }),
+        sort: this.profileWordSort,
+        direction: this.profileWordSortDirection,
+        limit: 25
+      });
       if (words.length === 0) {
         body.appendChild(element('div', 'scd-muted', 'No revealed words recorded yet.'));
         return;
@@ -2781,8 +2947,47 @@ export class DuelProductFoundation {
       const table = element('table', 'scd-profile-word-table');
       const head = element('thead');
       const headRow = element('tr');
-      for (const label of ['Word', 'Language', 'Seen', 'Guessed', 'Avg WPM', 'Avg guess']) {
-        headRow.appendChild(element('th', '', label));
+      const columns: ReadonlyArray<{
+        label: string;
+        sort: NonNullable<LocalWordStatsQuery['sort']>;
+        defaultDirection: NonNullable<LocalWordStatsQuery['direction']>;
+      }> = [
+        { label: 'Word', sort: 'alphabetical', defaultDirection: 'ascending' },
+        { label: 'Language', sort: 'language', defaultDirection: 'ascending' },
+        { label: 'Seen', sort: 'occurrence', defaultDirection: 'descending' },
+        { label: 'Guessed', sort: 'guessed', defaultDirection: 'descending' },
+        { label: 'Avg WPM', sort: 'average-wpm', defaultDirection: 'descending' },
+        { label: 'Avg guess', sort: 'average-guess-time', defaultDirection: 'ascending' }
+      ];
+      for (const column of columns) {
+        const active = this.profileWordSort === column.sort;
+        const cell = element('th');
+        cell.setAttribute('aria-sort', active
+          ? (this.profileWordSortDirection === 'ascending' ? 'ascending' : 'descending')
+          : 'none');
+        const sortButton = element('button', 'scd-profile-word-sort') as HTMLButtonElement;
+        sortButton.type = 'button';
+        sortButton.append(
+          element('span', '', column.label),
+          element(
+            'span',
+            'scd-profile-word-sort-indicator',
+            active ? (this.profileWordSortDirection === 'ascending' ? '↑' : '↓') : ''
+          )
+        );
+        sortButton.addEventListener('click', () => {
+          if (active) {
+            this.profileWordSortDirection = this.profileWordSortDirection === 'ascending'
+              ? 'descending'
+              : 'ascending';
+          } else {
+            this.profileWordSort = column.sort;
+            this.profileWordSortDirection = column.defaultDirection;
+          }
+          this.openAllProfileStats();
+        });
+        cell.appendChild(sortButton);
+        headRow.appendChild(cell);
       }
       head.appendChild(headRow);
       const tableBody = element('tbody');
@@ -2840,28 +3045,36 @@ export class DuelProductFoundation {
     }, 'scd-profile-avatar'));
     const displayName = element('div', 'scd-profile-display-name');
     appendColoredDuelName(displayName, identity.displayName, identity.nameColorIndex);
-    identityColumn.appendChild(displayName);
+    identityColumn.append(
+      displayName,
+      element('div', 'scd-profile-private-copy', `Discord: ${authProfile.username}`)
+    );
 
     const statusEntry = this.profileUiPreferences.statusChallengeId
       ? this.manifest.entries.find(entry => entry.id === this.profileUiPreferences.statusChallengeId) ?? null
       : null;
-    const status = element('button', 'scd-button scd-profile-status-button') as HTMLButtonElement;
-    status.type = 'button';
-    status.append(
+    const statusWrapper = element('div', 'scd-profile-status-button-wrapper');
+    const statusIcon = element('button', 'scd-button scd-profile-status-button-icon') as HTMLButtonElement;
+    statusIcon.type = 'button';
+    statusIcon.setAttribute('aria-label', statusEntry ? `Status icon: ${statusEntry.name}` : 'Choose status icon');
+    statusIcon.append(
       statusEntry
         ? this.createChallengeIcon(statusEntry.id, 'scd-icon')
-        : element('span', 'scd-icon scd-icon-fallback', '+'),
-      element('span', '', statusEntry?.name ?? 'Choose status')
+        : element('span', 'scd-icon scd-icon-fallback', '+')
     );
-    status.addEventListener('click', () => this.openProfileStatusPicker());
+    statusIcon.addEventListener('click', () => this.openProfileStatusPicker());
+    if (statusEntry) this.tooltips.register(statusIcon, statusEntry.name);
+
+    const statusText = element('button', 'scd-button scd-profile-status-button') as HTMLButtonElement;
+    statusText.type = 'button';
+    statusText.appendChild(element('span', '', this.profileUiPreferences.statusText || 'Set status'));
+    statusText.addEventListener('click', () => this.openProfileStatusEditor());
+    statusWrapper.append(statusIcon, statusText);
     identityColumn.append(
-      status,
-      element('p', 'scd-muted scd-profile-status-copy', statusEntry?.description ?? 'Optional challenge status'),
-      element('div', 'scd-profile-private-copy', `Discord: ${authProfile.username}`),
-      element('div', 'scd-muted scd-profile-private-copy', 'Discord username is only visible to you.'),
+      statusWrapper,
       element('div', 'scd-muted scd-profile-private-copy', authProfile.createdAt === null
         ? 'Member since: unavailable'
-        : `Member since ${new Date(authProfile.createdAt).toLocaleDateString()}`)
+        : `Member since ${formatMemberSince(authProfile.createdAt)}`)
     );
 
     const statsColumn = element('section', 'scd-profile-stats-column');
@@ -4095,10 +4308,46 @@ export class DuelProductFoundation {
       this.settingsStore.reset();
       this.renderPanel();
     });
-    this.tooltips.register(resetBoard, 'Restore the default panel, board and Quick Access settings');
+    this.tooltips.register(resetBoard, 'Restore default panel, board, Quick Access and chat display settings');
     quickAccess.appendChild(resetBoard);
 
     const chat = element('div', 'scd-card scd-stack');
+    const wpmDisplayLabel = element('label', 'scd-label');
+    const wpmDisplay = element('select') as HTMLSelectElement;
+    for (const [value, label] of [
+      ['disabled', 'Disabled'],
+      ['correct-guesses', 'Correct Guesses'],
+      ['all-typed-messages', 'All Typed Messages']
+    ] as const) {
+      const option = element('option') as HTMLOptionElement;
+      option.value = value;
+      option.textContent = label;
+      option.selected = this.settings.wpmChatDisplay === value;
+      wpmDisplay.appendChild(option);
+    }
+    wpmDisplay.addEventListener('change', () => this.settingsStore.update({
+      wpmChatDisplay: wpmDisplay.value as ProductUiSettings['wpmChatDisplay']
+    }));
+    wpmDisplayLabel.append(element('span', '', 'Show WPM stat display'), wpmDisplay);
+
+    const guessTimeDisplayLabel = element('label', 'scd-label');
+    const guessTimeDisplay = element('select') as HTMLSelectElement;
+    for (const [value, label] of [
+      ['disabled', 'Disabled'],
+      ['self-guesses', 'Self Guesses'],
+      ['all-guesses', 'All Guesses']
+    ] as const) {
+      const option = element('option') as HTMLOptionElement;
+      option.value = value;
+      option.textContent = label;
+      option.selected = this.settings.guessTimeChatDisplay === value;
+      guessTimeDisplay.appendChild(option);
+    }
+    guessTimeDisplay.addEventListener('change', () => this.settingsStore.update({
+      guessTimeChatDisplay: guessTimeDisplay.value as ProductUiSettings['guessTimeChatDisplay']
+    }));
+    guessTimeDisplayLabel.append(element('span', '', 'Show guess time behind guess messages'), guessTimeDisplay);
+
     const commandLabel = element('label', 'scd-label');
     const commandInput = element('input') as HTMLInputElement;
     commandInput.type = 'text';
@@ -4129,6 +4378,8 @@ export class DuelProductFoundation {
       element('strong', '', 'UI integration'),
       this.checkbox('Show challenge completions in skribbl chat', this.settings.completionMessages, checked =>
         this.settingsStore.update({ completionMessages: checked })),
+      wpmDisplayLabel,
+      guessTimeDisplayLabel,
       this.checkbox('Show Match Chat toast notifications', this.settings.chatNotifications, checked =>
         this.settingsStore.update({ chatNotifications: checked })),
       this.checkbox('Show Match Chat messages in skribbl chat', this.settings.matchChatMessages, checked =>

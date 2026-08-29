@@ -2,6 +2,14 @@ import type { TelemetryStore } from '../telemetry/telemetryStore';
 
 export const TYPO_DROP_CLAIMED_EVENT_NAME = 'skribbl-duels:typo-drop-claimed';
 export const TYPO_DROP_CLAIMED_LEGACY_EVENT_NAME = 'skribblDuelsTypoDropClaimed';
+export const TYPO_DROP_SPAWNED_EVENT_NAME = 'skribbl-duels:typo-drop-spawned';
+export const TYPO_DROP_MISSED_EVENT_NAME = 'skribbl-duels:typo-drop-missed';
+
+export type TypoDropMissReason =
+  | 'cleared-or-expired'
+  | 'claim-unconfirmed'
+  | 'replaced'
+  | 'lobby-left';
 
 export interface TypoDropClaimInput {
   own?: unknown;
@@ -33,6 +41,20 @@ export interface NormalizedTypoDropClaim {
 export interface TypoDropTelemetryAdapterOptions {
   directEventNames?: readonly string[];
   duplicateWindowMs?: number;
+  missGraceMs?: number;
+}
+
+interface ActiveDropObservation {
+  observationId: string;
+  dropId: number | string | null;
+  method: 'typo-relay' | 'dom-observer';
+  element: Element | null;
+  pointerDownAt: number | null;
+}
+
+interface NormalizedDropBoundary {
+  dropId: number | string | null;
+  reason: TypoDropMissReason | null;
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -58,6 +80,23 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null
     ? value as Record<string, unknown>
     : null;
+}
+
+export function normalizeTypoDropBoundaryDetail(value: unknown): NormalizedDropBoundary | null {
+  const wrapper = objectValue(value);
+  if (!wrapper) return null;
+  const nested = objectValue(wrapper.drop);
+  const raw = nested ?? wrapper;
+  const reason = raw.reason;
+  return {
+    dropId: nullableId(raw.dropId ?? raw.dropID),
+    reason: reason === 'cleared-or-expired'
+      || reason === 'claim-unconfirmed'
+      || reason === 'replaced'
+      || reason === 'lobby-left'
+      ? reason
+      : null
+  };
 }
 
 export function normalizeTypoDropClaimDetail(
@@ -113,8 +152,12 @@ export function parseTypoOwnDropClaimMessage(text: string): NormalizedTypoDropCl
 export class TypoDropTelemetryAdapter {
   private readonly directEventNames: readonly string[];
   private readonly duplicateWindowMs: number;
+  private readonly missGraceMs: number;
   private observer: MutationObserver | null = null;
   private pendingOwnDropClickAt: number | null = null;
+  private activeDrop: ActiveDropObservation | null = null;
+  private pendingRemovalTimer: ReturnType<typeof setTimeout> | null = null;
+  private observationSequence = 0;
   private readonly recentClaimKeys = new Map<string, number>();
 
   public constructor(
@@ -123,9 +166,12 @@ export class TypoDropTelemetryAdapter {
   ) {
     this.directEventNames = options.directEventNames ?? [
       TYPO_DROP_CLAIMED_EVENT_NAME,
-      TYPO_DROP_CLAIMED_LEGACY_EVENT_NAME
+      TYPO_DROP_CLAIMED_LEGACY_EVENT_NAME,
+      TYPO_DROP_SPAWNED_EVENT_NAME,
+      TYPO_DROP_MISSED_EVENT_NAME
     ];
     this.duplicateWindowMs = options.duplicateWindowMs ?? 2500;
+    this.missGraceMs = options.missGraceMs ?? 5000;
   }
 
   public start(): void {
@@ -137,6 +183,7 @@ export class TypoDropTelemetryAdapter {
     }
     if (typeof document !== 'undefined') {
       document.addEventListener('pointerdown', this.handlePointerDown, true);
+      document.addEventListener('leftLobby', this.handleLobbyLeft, true);
     }
     if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
       this.startObserver();
@@ -155,19 +202,31 @@ export class TypoDropTelemetryAdapter {
     }
     if (typeof document !== 'undefined') {
       document.removeEventListener('pointerdown', this.handlePointerDown, true);
+      document.removeEventListener('leftLobby', this.handleLobbyLeft, true);
       document.removeEventListener('DOMContentLoaded', this.handleDomReady);
     }
     this.observer?.disconnect();
     this.observer = null;
+    if (this.pendingRemovalTimer !== null) clearTimeout(this.pendingRemovalTimer);
+    this.pendingRemovalTimer = null;
     this.pendingOwnDropClickAt = null;
+    this.activeDrop = null;
     this.recentClaimKeys.clear();
   }
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (!target.closest('.typo-drop')) return;
-    this.pendingOwnDropClickAt = Date.now();
+    const drop = target.closest('.typo-drop');
+    if (!drop) return;
+    if (this.activeDrop === null) this.observeDomSpawn(drop);
+    const now = Date.now();
+    this.pendingOwnDropClickAt = now;
+    if (this.activeDrop) this.activeDrop.pointerDownAt = now;
+  };
+
+  private readonly handleLobbyLeft = (): void => {
+    this.resolveActiveDropAsMissed('lobby-left', 'dom-observer');
   };
 
   private readonly handleDomReady = (): void => {
@@ -181,10 +240,22 @@ export class TypoDropTelemetryAdapter {
       childList: true,
       subtree: true
     });
+    const existing = document.querySelector('.typo-drop');
+    if (existing) this.observeDomSpawn(existing);
   }
 
   private readonly handleDirectEvent = (event: Event): void => {
     if (!(event instanceof CustomEvent)) return;
+    if (event.type === TYPO_DROP_SPAWNED_EVENT_NAME) {
+      const boundary = normalizeTypoDropBoundaryDetail(event.detail);
+      if (boundary) this.observeRelaySpawn(boundary.dropId);
+      return;
+    }
+    if (event.type === TYPO_DROP_MISSED_EVENT_NAME) {
+      const boundary = normalizeTypoDropBoundaryDetail(event.detail);
+      if (boundary) this.resolveRelayMiss(boundary.dropId, boundary.reason ?? 'cleared-or-expired');
+      return;
+    }
     const claim = normalizeTypoDropClaimDetail(event.detail, 'typo-relay');
     if (claim) this.emitClaim(claim, 'confirmed');
   };
@@ -193,6 +264,16 @@ export class TypoDropTelemetryAdapter {
     if (event.source !== window) return;
     const data = objectValue(event.data);
     if (!data) return;
+    if (data.type === TYPO_DROP_SPAWNED_EVENT_NAME) {
+      const boundary = normalizeTypoDropBoundaryDetail(data.detail ?? data.payload ?? data);
+      if (boundary) this.observeRelaySpawn(boundary.dropId);
+      return;
+    }
+    if (data.type === TYPO_DROP_MISSED_EVENT_NAME) {
+      const boundary = normalizeTypoDropBoundaryDetail(data.detail ?? data.payload ?? data);
+      if (boundary) this.resolveRelayMiss(boundary.dropId, boundary.reason ?? 'cleared-or-expired');
+      return;
+    }
     if (data.type !== TYPO_DROP_CLAIMED_EVENT_NAME && data.type !== TYPO_DROP_CLAIMED_LEGACY_EVENT_NAME) return;
     const claim = normalizeTypoDropClaimDetail(data.detail ?? data.payload ?? data.claim ?? data, 'typo-relay');
     if (claim) this.emitClaim(claim, 'confirmed');
@@ -203,10 +284,15 @@ export class TypoDropTelemetryAdapter {
       for (const node of Array.from(record.addedNodes)) {
         this.inspectAddedNode(node);
       }
+      for (const node of Array.from(record.removedNodes)) {
+        this.inspectRemovedNode(node);
+      }
     }
   }
 
   private inspectAddedNode(node: Node): void {
+    for (const drop of this.dropElementsInNode(node)) this.observeDomSpawn(drop);
+
     const clickedAt = this.pendingOwnDropClickAt;
     if (clickedAt === null || Date.now() - clickedAt > 10_000) {
       this.pendingOwnDropClickAt = null;
@@ -216,6 +302,110 @@ export class TypoDropTelemetryAdapter {
     if (!text) return;
     const claim = parseTypoOwnDropClaimMessage(text);
     if (claim) this.emitClaim(claim, 'derived');
+  }
+
+  private inspectRemovedNode(node: Node): void {
+    const activeElement = this.activeDrop?.element;
+    if (!activeElement || !(node instanceof Element)) return;
+    if (node !== activeElement && !node.contains(activeElement)) return;
+    this.scheduleRemovedDropResolution();
+  }
+
+  private dropElementsInNode(node: Node): Element[] {
+    if (!(node instanceof Element)) return [];
+    const drops: Element[] = [];
+    if (node.matches('.typo-drop')) drops.push(node);
+    drops.push(...Array.from(node.querySelectorAll('.typo-drop')));
+    return drops;
+  }
+
+  private createObservationId(): string {
+    this.observationSequence += 1;
+    return `typo-drop-${Date.now().toString(36)}-${this.observationSequence.toString(36)}`;
+  }
+
+  private observeDomSpawn(element: Element): void {
+    if (this.activeDrop?.element === element) return;
+    if (this.activeDrop && this.activeDrop.element === null) {
+      this.activeDrop.element = element;
+      return;
+    }
+    if (this.activeDrop) this.resolveActiveDropAsMissed('replaced', this.activeDrop.method);
+    const observation: ActiveDropObservation = {
+      observationId: this.createObservationId(),
+      dropId: null,
+      method: 'dom-observer',
+      element,
+      pointerDownAt: null
+    };
+    this.activeDrop = observation;
+    this.telemetryStore.emitDomEvent('TYPO_DROP_SPAWNED', {
+      dropObservationId: observation.observationId,
+      dropId: observation.dropId,
+      method: observation.method
+    }, { confidence: 'derived' });
+  }
+
+  private observeRelaySpawn(dropId: number | string | null): void {
+    if (this.activeDrop) {
+      const sameKnownDrop = dropId !== null && this.activeDrop.dropId === dropId;
+      const upgradesDomObservation = this.activeDrop.dropId === null;
+      if (sameKnownDrop || upgradesDomObservation) {
+        this.activeDrop.dropId = dropId;
+        this.activeDrop.method = 'typo-relay';
+        return;
+      }
+      this.resolveActiveDropAsMissed('replaced', this.activeDrop.method);
+    }
+    const observation: ActiveDropObservation = {
+      observationId: this.createObservationId(),
+      dropId,
+      method: 'typo-relay',
+      element: null,
+      pointerDownAt: null
+    };
+    this.activeDrop = observation;
+    this.telemetryStore.emitDomEvent('TYPO_DROP_SPAWNED', {
+      dropObservationId: observation.observationId,
+      dropId: observation.dropId,
+      method: observation.method
+    }, { confidence: 'confirmed' });
+  }
+
+  private scheduleRemovedDropResolution(): void {
+    if (this.pendingRemovalTimer !== null) clearTimeout(this.pendingRemovalTimer);
+    const reason: TypoDropMissReason = this.activeDrop?.pointerDownAt === null
+      ? 'cleared-or-expired'
+      : 'claim-unconfirmed';
+    this.pendingRemovalTimer = setTimeout(() => {
+      this.pendingRemovalTimer = null;
+      this.resolveActiveDropAsMissed(reason, 'dom-observer');
+    }, this.missGraceMs);
+  }
+
+  private resolveRelayMiss(dropId: number | string | null, reason: TypoDropMissReason): void {
+    if (!this.activeDrop) return;
+    if (dropId !== null && this.activeDrop.dropId !== null && dropId !== this.activeDrop.dropId) return;
+    if (this.activeDrop.dropId === null) this.activeDrop.dropId = dropId;
+    this.resolveActiveDropAsMissed(reason, 'typo-relay');
+  }
+
+  private resolveActiveDropAsMissed(
+    reason: TypoDropMissReason,
+    method: 'typo-relay' | 'dom-observer'
+  ): void {
+    const active = this.activeDrop;
+    if (!active) return;
+    if (this.pendingRemovalTimer !== null) clearTimeout(this.pendingRemovalTimer);
+    this.pendingRemovalTimer = null;
+    this.activeDrop = null;
+    this.pendingOwnDropClickAt = null;
+    this.telemetryStore.emitDomEvent('TYPO_DROP_MISSED', {
+      dropObservationId: active.observationId,
+      dropId: active.dropId,
+      reason,
+      method
+    }, { confidence: method === 'typo-relay' ? 'confirmed' : 'derived' });
   }
 
   private emitClaim(
@@ -230,7 +420,27 @@ export class TypoDropTelemetryAdapter {
     this.recentClaimKeys.set(key, now);
     this.pendingOwnDropClickAt = null;
 
-    this.telemetryStore.emitDomEvent('TYPO_DROP_CLAIMED', claim, {
+    let dropObservationId: string | null = null;
+    const active = this.activeDrop;
+    if (active) {
+      const compatibleDropId = active.dropId === null
+        || claim.dropId === null
+        || active.dropId === claim.dropId;
+      if (compatibleDropId) {
+        if (this.pendingRemovalTimer !== null) clearTimeout(this.pendingRemovalTimer);
+        this.pendingRemovalTimer = null;
+        active.dropId = claim.dropId ?? active.dropId;
+        dropObservationId = active.observationId;
+        this.activeDrop = null;
+      } else {
+        this.resolveActiveDropAsMissed('claim-unconfirmed', active.method);
+      }
+    }
+
+    this.telemetryStore.emitDomEvent('TYPO_DROP_CLAIMED', {
+      ...claim,
+      dropObservationId
+    }, {
       actor: {
         playerId: null,
         name: claim.username,

@@ -52,8 +52,12 @@ import { deafGuessDefinition } from './definitions/deafGuess';
 import { transcendedDefinition } from './definitions/transcended';
 import { ateAndLeftNoCrumbsDefinition } from './definitions/ateAndLeftNoCrumbs';
 import { guessingOatDefinition } from './definitions/guessingOat';
+import { dropStreakDefinition } from './definitions/dropStreak';
+import { internetExplorerDefinition } from './definitions/internetExplorer';
+import { wpMasterDefinition } from './definitions/wpmaster';
+import { typeRacerDefinition } from './definitions/typeRacer';
 
-export const CHALLENGE_DEFINITIONS_VERSION = '2.14.0' as const;
+export const CHALLENGE_DEFINITIONS_VERSION = '2.16.0' as const;
 
 export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   quickscopeDefinition,
@@ -104,7 +108,11 @@ export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   dropDownDefinition,
   transcendedDefinition,
   ateAndLeftNoCrumbsDefinition,
-  guessingOatDefinition
+  guessingOatDefinition,
+  dropStreakDefinition,
+  internetExplorerDefinition,
+  wpMasterDefinition,
+  typeRacerDefinition
 ];
 
 export const STARTER_CHALLENGE_IDS = [
@@ -156,7 +164,11 @@ export const STARTER_CHALLENGE_IDS = [
   'drop-down',
   'transcended',
   'ate-and-left-no-crumbs',
-  'guessingoat'
+  'guessingoat',
+  'drop-streak',
+  'internet-explorer',
+  'wpmaster',
+  'type-racer'
 ] as const;
 
 export type StarterChallengeId = typeof STARTER_CHALLENGE_IDS[number];
@@ -210,7 +222,11 @@ export const starterSandboxInstanceIds = {
   'drop-down': 'sandbox-field-drop-down',
   transcended: 'sandbox-field-transcended',
   'ate-and-left-no-crumbs': 'sandbox-field-ate-and-left-no-crumbs',
-  guessingoat: 'sandbox-field-guessingoat'
+  guessingoat: 'sandbox-field-guessingoat',
+  'drop-streak': 'sandbox-field-drop-streak',
+  'internet-explorer': 'sandbox-field-internet-explorer',
+  wpmaster: 'sandbox-field-wpmaster',
+  'type-racer': 'sandbox-field-type-racer'
 } as const satisfies Record<StarterChallengeId, string>;
 
 interface DefinitionEngine extends Pick<

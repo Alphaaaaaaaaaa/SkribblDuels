@@ -169,7 +169,18 @@ function applyDecodedGameState(
   let gameSessionId = game.gameSessionId;
   let roundSessionId = game.roundSessionId;
 
-  if (stateChanged && decodedState.stateId === 1) {
+  // A public lobby can restart immediately after the results screen without
+  // exposing state 1 to every connected client. Treat leaving the terminal
+  // results state for any active/pre-round state as a new game boundary as
+  // well. Otherwise every automatic restart in the same lobby keeps the old
+  // gameSessionId and downstream consumers deduplicate all later GAME_ENDED
+  // events as the first game.
+  const restartedAfterGameResults = stateChanged &&
+    previousStateId === 6 &&
+    decodedState.stateId >= 1 &&
+    decodedState.stateId <= 5;
+
+  if ((stateChanged && decodedState.stateId === 1) || restartedAfterGameResults) {
     gameSessionId = createId();
     roundSessionId = null;
   }

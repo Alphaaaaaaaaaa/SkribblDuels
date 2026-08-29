@@ -1,9 +1,78 @@
-# Skribbl Duels v0.59.0
+# Skribbl Duels v0.61.0
 
-This monorepo contains the growing 49-Challenge telemetry/challenge system, Product UI,
+This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.61.0
+
+- Adds persistent `Show WPM stat display` modes: Disabled, Correct Guesses and
+  All Typed Messages. Only clean, trusted local keyboard measurements are
+  displayed; paste, autofill, synthetic input and invalid timing samples stay
+  hidden.
+- Adds persistent `Show guess time behind guess messages` modes: Disabled,
+  Self Guesses and All Guesses. Self Guess time is absolute from Drawing start.
+  All Guesses shows the first correct Guess as an absolute time and each later
+  correct Guess as a `+` delta from the previous correct Guesser.
+- Formats sub-second deltas as milliseconds, second values with millisecond
+  precision and minute values as `1m 15s`. When both displays are enabled,
+  Guess Time appears before WPM. Guess Time uses
+  `var(--COLOR_CHAT_TEXT_GUESSED)` and WPM uses the existing muted UI color.
+- Correlates telemetry with only newly observed native chat rows, bounds every
+  pending queue and removes runtime-owned suffixes on disposal. Existing
+  Skribbl messages and every Challenge rule remain unchanged.
+
+v0.61.0 is a userscript/Product UI update. Gateway Contract v11, the v0.60.0
+Gateway, Supabase migrations and Railway variables remain unchanged; only the
+new userscript needs to be distributed.
+
+## v0.60.0
+
+- Adds Challenges 51–53 to Casual: `Internet Explorer`, `WPMaster` and
+  `TypeRacer`. Their definitions consume the existing versioned input and
+  Skribbl protocol telemetry; no DOM or packet implementation leaks into the
+  Challenge layer.
+- Internet Explorer requires one correct Guess below 20 WPM. First Guesser is
+  explicitly not required. WPMaster requires ten First Guesses at 150+ WPM and
+  keeps progress across lobby changes. TypeRacer requires one First Guess at
+  250+ WPM.
+- Certifies every qualifying Guess from a correlated three-event chain:
+  trusted `TEXT_INPUT_MEASURED`, the decoded outgoing `GUESS_SUBMITTED`, and
+  the confirmed self `CORRECT_GUESS`. Paste, autofill, untrusted input,
+  mismatched messages, stale ACKs and duplicate round/attempt evidence fail
+  closed.
+- Reserves independent fallback icon paths for all three new Challenges. They
+  remain Casual-only until live two-client certification; the other 50
+  Challenge definitions are unchanged.
+
+Deploy the v0.60.0 Gateway first, verify `/readyz`, then update the userscript.
+Gateway Contract v11 and the existing Supabase/Railway configuration remain
+unchanged; no migration or new environment variable is required.
+
+## v0.59.1
+
+- Separates the local Profile status into a decorative Challenge icon and an
+  independent 80-character status message. Discord identity now sits directly
+  below the Duel name; member dates use stable `DD.MM.YYYY` formatting.
+- Makes every coverage language selectable and filters the word table to that
+  language. Word, Language, Seen, Guessed, Avg WPM and Avg guess are sortable
+  in both directions; unavailable measurements remain last.
+- Repairs same-lobby automatic game restarts. A direct protocol transition
+  from game results (state 6) to the next round-one announcement (state 2)
+  creates a fresh game session, so later wins can complete Back to back.
+  Ate and left no crumbs and GuessingOAT recognize the same fully observed
+  automatic-restart boundary without accepting mid-game joins.
+- Embeds the supplied Ate and left no crumbs, GuessingOAT and all Profile-stat
+  artwork, including the PNG Drawing reactions icon.
+- Adds Challenge 50, Drop Streak, to Casual. It requires five correlated
+  Typo spawn/own-claim pairs; misses, replacements and uncorrelated claims
+  reset progress. Its dedicated icon path uses the standard fallback until
+  artwork is supplied, and Ranked remains disabled pending live certification.
+
+Deploy the v0.59.1 Gateway first, verify `/readyz`, then update the userscript.
+Gateway Contract v11 and the existing Supabase/Railway configuration remain
+unchanged; no migration or new environment variable is required.
 
 ## v0.59.0
 
@@ -465,7 +534,10 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/invite-link-v0.52.0-plan.md`,
+See `docs/chat-stat-display-v0.61.0.md`,
+`docs/certified-wpm-challenges-v0.60.0.md`,
+`docs/profile-lifecycle-drop-streak-v0.59.1.md`,
+`docs/invite-link-v0.52.0-plan.md`,
 `docs/durable-match-authority-v0.51.0.md`,
 `docs/reliability-challenge-hardening-v0.50.0.md`,
 `docs/full-build-roadmap-post-v0.50.0.md`,

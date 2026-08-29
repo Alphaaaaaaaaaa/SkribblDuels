@@ -5,7 +5,7 @@
 | Phase | Status | Result |
 | --- | --- | --- |
 | Telemetry and protocol state | Complete | Versioned telemetry contract, replay fixtures and protocol/lobby state |
-| Challenge system | Complete | Growing pool, currently 49 modular Challenges with automated runtime coverage |
+| Challenge system | Complete | Growing pool, currently 53 modular Challenges with automated runtime coverage |
 | Product foundation | Complete | Casual 3×3, Ranked 5×5, conflict-aware draft generation and match freeze |
 | Account identity | Complete | Discord OAuth through Supabase, RLS profiles and automatic profile synchronization |
 | Gateway foundation | Complete | Railway HTTPS service, token verification, profile lookup, `HELLO`/`WELCOME` and heartbeat |
@@ -17,7 +17,7 @@
 | Match reconnect continuity | Complete | Contract v3 resume cursor, 30-second server grace, authoritative snapshot restoration and stale-state rejection |
 | Draft interaction hardening | Complete | Stable clock updates, centered two-choice surface, Left/Right Arrow input and definition tooltips |
 | Lobby-series continuity | Complete | Back to back uses stable lobby identity; Noob vs. Pro vs. Hacker and Bullet retain global progress across lobby/language changes |
-| GIF asset template | Complete | Validated mappings for all 49 Challenge IDs plus logo, settings, about and countdown frames |
+| GIF asset template | Complete | Validated mappings for all 53 Challenge IDs plus logo, settings, about and countdown frames |
 | Vanilla Hub and match-start stage | Complete | Homepage entry, intro, modal Hub, dynamic Duels/Match navigation and standalone Versus/Draft/Countdown views |
 | Persistent Versus identity | Complete | Duel name, language, Discord/Skribbl avatar selection and server-controlled Special entitlement |
 | Embedded visual assets | Complete | Real Challenge icons in intro, Draft and board plus animated GIF countdown |
@@ -42,6 +42,8 @@
 | v0.58 local player statistics | Foundation complete | Versioned input evidence, clean/Guess WPM correlation, per-language word history and coverage, IndexedDB persistence and local-only export API |
 | v0.59 Duel Profile and expanded statistics | Complete | Local Profile, two pinned slots, 45-stat registry, all-stat/coverage view, schema-v2 distributions/trends/streaks and selected Versus avatar summary |
 | v0.59 deterministic Challenge expansion | Replay-certified | Ate and left no crumbs plus GuessingOAT expand Casual to 49; Ranked remains gated on live two-client certification |
+| v0.59.1 lifecycle and Drop expansion | Replay-certified | Same-lobby automatic restarts are distinct games; correlated Drop Streak expands Casual to 50 |
+| v0.60 certified WPM Challenge expansion | Replay-certified | Internet Explorer, WPMaster and TypeRacer use correlated anti-paste timing/submit/correct evidence and expand Casual to 53 |
 
 ## Active development sequence
 
@@ -70,21 +72,25 @@
 - Aggregate telemetry, Claim-source and rejection-reason metrics plus a visible
   client ACK/queue cursor make two-client certification measurable.
 - Transcended expands the Casual pool in v0.55.1. TL;DR v2 ships in v0.56.0
-  with deterministic offline dictionaries for all 28 languages; the other six
-  proposed additions remain gated by the events recorded in
-  `docs/challenge-live-certification-v0.55.0.md`.
+  with deterministic offline dictionaries for all 28 languages. Ate and left
+  no crumbs, GuessingOAT, Drop Streak and the three WPM Challenges now have
+  replay-certified reducers; uncertified entries remain Casual-only.
 
-### 4. Local statistics presentation and certification — UI delivered in v0.59.0
+### 4. Local statistics presentation and WPM rules — delivered through v0.61.0
 
 - The Profile UI, two configurable pinned slots, occurrence ranking, coverage,
   rolling Median/P90, improvement trends, Drawing effectiveness and streaks
   are implemented without rewriting lifetime aggregates.
-- Live-certify `TEXT_INPUT_MEASURED` against vanilla and Typo input, then define
-  the server rule for WPM Challenges. Paste/autofill/untrusted samples stay
-  ineligible; browser-only records never become public world records.
-- Supply stat/pin and the two new Challenge artworks for their reserved paths;
-  Transcended artwork is embedded. Missing art stays an explicit local
-  fallback and never blocks the release.
+- Internet Explorer, WPMaster and TypeRacer now use Gateway-replayed
+  `TEXT_INPUT_MEASURED` + outgoing Guess + confirmed correct-Guess evidence.
+  Paste/autofill/untrusted samples stay ineligible; live two-client
+  certification is still required before enabling them in Ranked.
+- All stat/pin artwork plus Transcended, Ate and left no crumbs and GuessingOAT
+  artwork is embedded. Drop Streak keeps its dedicated path and explicit local
+  fallback until its icon is supplied.
+- v0.61.0 adds opt-in native-chat WPM and Guess Time presentation. WPM remains
+  local and input-trust filtered; Guess Time consumes confirmed correct-Guess
+  elapsed telemetry and renders absolute/self or absolute-plus-delta/all modes.
 
 ### 5. Ranked competition and history
 
@@ -97,6 +103,9 @@
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
+- Compact Challenge tooltips after beta feedback and address only concrete
+  Challenge regressions found during those beta runs; the other definitions
+  remain unchanged meanwhile.
 - Complete accessibility, responsive/reduced-motion QA and profile entitlement
   administration.
 - Add two-browser end-to-end tests, transport/Gateway-restart tests, load tests,
@@ -122,3 +131,5 @@ are recorded in `docs/local-wpm-word-stats-v0.58.0.md`.
 The v0.59 Profile, SFX/autoplay diagnosis, extension assessment and new
 Challenge certification rules are recorded in
 `docs/duel-profile-stats-sfx-challenges-v0.59.0.md`.
+The v0.60 WPM evidence chain and threshold rules are recorded in
+`docs/certified-wpm-challenges-v0.60.0.md`.

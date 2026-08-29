@@ -1,12 +1,15 @@
 # Skribbl Duels icon template
 
 `registry.template.json` is the single source of truth for future GIF assets.
-It contains all 49 stable challenge IDs, their planned file paths and the
+It contains all 53 stable challenge IDs, their planned file paths and the
 metadata icon keys already present in the challenge definitions.
 
-Every Challenge owns a unique direct path. `transcended` now has supplied
-artwork; `ate-and-left-no-crumbs` and `guessingoat` reserve their individual
-paths and use the normal initial-letter fallback until their artwork arrives.
+Every Challenge owns a unique direct path. `transcended`,
+`ate-and-left-no-crumbs` and `guessingoat` have supplied artwork. Challenge 50,
+`drop-streak`, reserves its individual path and uses the normal fallback until
+its artwork arrives. Challenges 51–53 reserve `internet-explorer.gif`,
+`wpmaster.gif` and `type-racer.gif`; each also uses the normal fallback until
+its artwork is supplied.
 
 ## Adding artwork
 

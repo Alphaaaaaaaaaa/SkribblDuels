@@ -62,3 +62,8 @@ export * from './definitions/deafGuess';
 export * from './definitions/transcended';
 export * from './definitions/ateAndLeftNoCrumbs';
 export * from './definitions/guessingOat';
+export * from './definitions/dropStreak';
+export * from './definitions/certifiedWpm';
+export * from './definitions/internetExplorer';
+export * from './definitions/wpmaster';
+export * from './definitions/typeRacer';

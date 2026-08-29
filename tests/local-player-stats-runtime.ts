@@ -306,6 +306,39 @@ assert.equal(apple?.bestGuessTimeMs, 5_000);
 assert.equal(apple?.averageGuessTimeMs, 5_000);
 assert.equal(stats.getObservedUsernames()[0]?.name, 'Beta');
 
+context.languageId = 1;
+context.languageName = 'German';
+source.emit(telemetry('WORD_REVEALED', 5_100, {
+  previousStateId: 4,
+  stateId: 5,
+  stateName: 'ROUND_RESULTS',
+  time: 0,
+  roundIndex: 0,
+  roundNumber: 1,
+  maxRounds: 3,
+  reason: 0,
+  reasonName: 'TIME_UP',
+  word: 'Banane',
+  scores: []
+}));
+context.languageId = 0;
+context.languageName = 'English';
+assert.deepEqual(
+  stats.getWordStats({ sort: 'language' }).map(word => word.languageName),
+  ['English', 'German'],
+  'Language sorting must default to alphabetical order.'
+);
+assert.deepEqual(
+  stats.getWordStats({ sort: 'alphabetical', direction: 'descending' }).map(word => word.word),
+  ['Banane', 'Apple'],
+  'Clicking Word a second time must support reverse-alphabetical order.'
+);
+assert.deepEqual(
+  stats.getWordStats({ sort: 'average-wpm', direction: 'ascending' }).map(word => word.word),
+  ['Apple', 'Banane'],
+  'Unavailable WPM values must remain below measured words in either direction.'
+);
+
 await stats.flush();
 const durableBeforeDestroy = await persistence.load();
 stats.destroy();

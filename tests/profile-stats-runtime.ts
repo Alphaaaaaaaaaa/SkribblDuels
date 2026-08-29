@@ -7,6 +7,7 @@ import {
   PROFILE_STAT_DEFINITION_BY_ID,
   PROFILE_STAT_IDS
 } from '../apps/telemetry-inspector/src/profileStats';
+import { EMBEDDED_STAT_ICON_ASSETS } from '../apps/telemetry-inspector/src/generatedStatIconAssets';
 
 const registry = JSON.parse(await readFile(resolve(
   process.cwd(),
@@ -16,12 +17,27 @@ const registry = JSON.parse(await readFile(resolve(
   stats: Array<{ statId: string; assetPath: string }>;
 };
 assert.equal(registry.utilities.pin, 'stat-icons/pin.gif');
+assert.equal(
+  registry.stats.find(entry => entry.statId === 'drawing-reactions')?.assetPath,
+  'stat-icons/drawing-reactions.png',
+  'Drawing reactions must use the supplied PNG asset rather than a missing GIF path.'
+);
 assert.deepEqual(
   new Set(registry.stats.map(entry => entry.statId)),
   new Set(PROFILE_STAT_IDS),
   'Every selectable profile statistic needs a reserved icon path.'
 );
 assert.equal(new Set(registry.stats.map(entry => entry.assetPath)).size, registry.stats.length);
+assert.equal(
+  Object.keys(EMBEDDED_STAT_ICON_ASSETS).length,
+  registry.stats.length + 1,
+  'Every registered statistic icon and the pin utility must be embedded after the GitHub asset refresh.'
+);
+assert.match(
+  EMBEDDED_STAT_ICON_ASSETS['stat-icons/drawing-reactions.png'] ?? '',
+  /^data:image\/png;base64,/,
+  'Drawing reactions must retain its supplied PNG MIME type in the bundle.'
+);
 
 const snapshot: LocalPlayerStatsSnapshot = {
   schemaVersion: 2,
@@ -129,7 +145,14 @@ const uiSource = await readFile(resolve(
 assert.match(uiSource, /'button', 'scd-modal-account'/);
 assert.match(uiSource, /'Skribbl Duel Profile'/);
 assert.match(uiSource, /'View all Stats'/);
-assert.match(uiSource, /'Choose profile status'/);
+assert.match(uiSource, /'Choose status icon'/);
+assert.match(uiSource, /'Edit profile status'/);
+assert.match(uiSource, /`Choose \$\{pinnedStatisticOrdinal\(slot\)\} pinned statistic`/);
+assert.match(uiSource, /formatMemberSince\(authProfile\.createdAt\)/);
+assert.doesNotMatch(uiSource, /Discord username is only visible to you\./);
+assert.match(uiSource, /classList\.toggle\('selected', this\.profileWordLanguageId === languageId\)/);
+assert.match(uiSource, /\{ label: 'Language', sort: 'language', defaultDirection: 'ascending' \}/);
+assert.match(uiSource, /\{ label: 'Avg guess', sort: 'average-guess-time', defaultDirection: 'ascending' \}/);
 assert.match(uiSource, /subscribeLocalStats/);
 
 console.log('Local Duel Profile, coverage and stat-icon registry test passed.');

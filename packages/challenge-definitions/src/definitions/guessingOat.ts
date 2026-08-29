@@ -58,7 +58,7 @@ function clearCurrentTurn(state: GuessingOatState): GuessingOatState {
 
 export const guessingOatDefinition: ChallengeDefinition<GuessingOatState, GuessingOatParameters> = {
   id: 'guessingoat',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'guessing',
     localization: localization(
@@ -81,6 +81,7 @@ export const guessingOatDefinition: ChallengeDefinition<GuessingOatState, Guessi
   },
   relevantEvents: [
     'GAME_STARTING',
+    'ROUND_ANNOUNCED',
     'ROUND_STARTED',
     'FIRST_GUESS',
     'ROUND_RESULTS_AVAILABLE',
@@ -89,7 +90,10 @@ export const guessingOatDefinition: ChallengeDefinition<GuessingOatState, Guessi
   allowedLobbyTypes: [0],
   resetOn: ['lobby-change'],
   reduce({ event, runtime }) {
-    if (event.type === 'GAME_STARTING') {
+    const automaticRestartObserved = event.type === 'ROUND_ANNOUNCED'
+      && event.payload.previousStateId === 6
+      && event.payload.stateId === 2;
+    if (event.type === 'GAME_STARTING' || automaticRestartObserved) {
       const gameSessionId = event.context.gameSessionId;
       if (gameSessionId === null) {
         return {
@@ -101,7 +105,9 @@ export const guessingOatDefinition: ChallengeDefinition<GuessingOatState, Guessi
       return {
         internalState: initialState(gameSessionId, event.eventId),
         progress: 0,
-        reason: 'guessingoat-full-game-observation-started',
+        reason: automaticRestartObserved
+          ? 'guessingoat-full-game-observation-started-at-automatic-restart-banner'
+          : 'guessingoat-full-game-observation-started',
         evidenceEventIds: [event.eventId]
       };
     }

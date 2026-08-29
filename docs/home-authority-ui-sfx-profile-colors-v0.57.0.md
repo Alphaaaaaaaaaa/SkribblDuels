@@ -127,7 +127,7 @@ pass.
 | ---: | --- | --- |
 | 1 | Ate and left no crumbs | Implemented with full-game, zero/missing score, drawer-left and mid-join fixtures in v0.59.0; Casual live certification remains. |
 | 2 | GuessingOAT | Implemented with full-game, other/no First Guesser, own/interrupted turn and mid-join fixtures in v0.59.0; Casual live certification remains. |
-| 3 | Drop Streak | Five consecutive caught Typo drops; requires correlated `TYPO_DROP_SPAWNED` and `TYPO_DROP_MISSED`, because claims alone cannot prove a streak. |
+| 3 | Drop Streak | Implemented in v0.59.1 with correlated `TYPO_DROP_SPAWNED`, `TYPO_DROP_CLAIMED` and `TYPO_DROP_MISSED`; Casual enabled, Ranked awaiting live certification. |
 | 4 | Internet Explorer | First Guesser below 10 WPM; requires certified WPM/anti-paste evidence. |
 | 5 | WPMaster | Ten correct guesses at 150+ WPM; decide First-Guesser requirement and preserve distinct round IDs. |
 | 6 | TypeRacer | One correct guess at 250+ WPM with anti-paste evidence. |

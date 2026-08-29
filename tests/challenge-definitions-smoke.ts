@@ -61,7 +61,8 @@ setOfficialWordListForTesting(1, ['Reddit', 'Punkt', 'Ski', 'Atlantis', 'Nagel',
 const rebalancedChallengeIds = new Set([
   'bloodline', 'ouch', 'picasso', 'cool-number-detected', 'fanboy', 'color-picker',
   'time-waste', 'mogged', 'need-some-space', 'smol-words', 'big-word', 'hint-reflexes',
-  'transcended', 'ate-and-left-no-crumbs', 'guessingoat'
+  'transcended', 'ate-and-left-no-crumbs', 'guessingoat', 'drop-streak',
+  'internet-explorer', 'wpmaster', 'type-racer'
 ]);
 
 const validation = validateTelemetryFixture(fixtureJson);
@@ -71,10 +72,10 @@ const fixture = validation.fixture;
 const engine = new ChallengeEngine({ autoPersist: false });
 const registered = registerStarterChallengeDefinitions(engine);
 assertEqual(registered.length, starterChallengeDefinitions.length, 'All starter definitions should register.');
-assertEqual(engine.getDefinitionIds().length, 49, 'Forty-nine official starter definitions should exist.');
+assertEqual(engine.getDefinitionIds().length, 53, 'Fifty-three official starter definitions should exist.');
 
 const activated = activateStarterSandbox(engine);
-assertEqual(activated.length, 49, 'Forty-nine starter sandbox instances should activate.');
+assertEqual(activated.length, 53, 'Fifty-three starter sandbox instances should activate.');
 
 // The v30 fixture predates the strict "active before the drawing" rule. At
 // each of its three Typo turn boundaries, inject the already-recorded active

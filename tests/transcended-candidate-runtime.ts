@@ -46,7 +46,7 @@ function event(type: TelemetryEventType, eventId: string, payload: Record<string
   } as TelemetryEvent;
 }
 
-assert.equal(starterChallengeDefinitions.length, 49, 'The live pool must expand whenever new Challenges are introduced.');
+assert.equal(starterChallengeDefinitions.length, 53, 'The live pool must expand whenever new Challenges are introduced.');
 assert.equal(starterChallengeDefinitions.some(definition => definition.id === 'transcended'), true, 'Transcended must expand the Casual live draft pool.');
 assert.equal(transcendedDefinition.metadata.rankedEligible, true, 'User-confirmed live certification enables Ranked drafting.');
 

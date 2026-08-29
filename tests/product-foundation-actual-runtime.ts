@@ -23,7 +23,7 @@ const manifest = createChallengeManifest({
   }))
 }, 'en', 1_000);
 
-assert.equal(manifest.entries.length, 49);
+assert.equal(manifest.entries.length, 53);
 const capabilities = {
   available: new Set<ChallengeCapability>([
     'skribbl-telemetry',
@@ -38,20 +38,38 @@ const capabilities = {
 const newCasualChallenges = generateDraftBoard(manifest, {
   format: 'casual',
   seed: 5900,
-  includeIds: ['ate-and-left-no-crumbs', 'guessingoat'],
+  includeIds: [
+    'ate-and-left-no-crumbs',
+    'guessingoat',
+    'drop-streak',
+    'internet-explorer',
+    'wpmaster',
+    'type-racer'
+  ],
   capabilities
 });
-assert.ok(newCasualChallenges.board, 'Both v0.59 full-game Challenges must be draftable in Casual.');
+assert.ok(newCasualChallenges.board, 'The six post-v0.58 Challenges must be draftable in Casual.');
 assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'ate-and-left-no-crumbs'));
 assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'guessingoat'));
+assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'drop-streak'));
+assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'internet-explorer'));
+assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'wpmaster'));
+assert.ok(newCasualChallenges.board.fields.some(field => field.challengeId === 'type-racer'));
 
 const newRankedChallenges = generateDraftBoard(manifest, {
   format: 'ranked',
   seed: 5901,
-  includeIds: ['ate-and-left-no-crumbs', 'guessingoat'],
+  includeIds: [
+    'ate-and-left-no-crumbs',
+    'guessingoat',
+    'drop-streak',
+    'internet-explorer',
+    'wpmaster',
+    'type-racer'
+  ],
   capabilities
 });
-assert.equal(newRankedChallenges.board, null, 'New Challenges stay out of Ranked until live certification.');
+assert.equal(newRankedChallenges.board, null, 'Uncertified new Challenges stay out of Ranked.');
 
 for (let seed = 1; seed <= 250; seed += 1) {
   const result = generateDraftBoard(manifest, {
@@ -104,10 +122,24 @@ assert.equal(normalizedSettings.board.scale, 1.6);
 assert.equal(normalizedSettings.board.opacity, 0.35);
 assert.equal(normalizedSettings.board.mode, 'custom');
 assert.equal(normalizedSettings.launcher.anchor, 'center-right');
+assert.equal(normalizedSettings.wpmChatDisplay, 'disabled');
+assert.equal(normalizedSettings.guessTimeChatDisplay, 'disabled');
 const normalizedLauncher = normalizeProductUiSettings({ launcher: { mode: 'custom', x: 123, y: 456, size: 999 } });
 assert.equal(normalizedLauncher.launcher.mode, 'custom');
 assert.equal(normalizedLauncher.launcher.size, 120);
 assert.equal(normalizedSettings.panelTab, 'settings');
+const normalizedChatStats = normalizeProductUiSettings({
+  wpmChatDisplay: 'all-typed-messages',
+  guessTimeChatDisplay: 'all-guesses'
+});
+assert.equal(normalizedChatStats.wpmChatDisplay, 'all-typed-messages');
+assert.equal(normalizedChatStats.guessTimeChatDisplay, 'all-guesses');
+const invalidChatStats = normalizeProductUiSettings({
+  wpmChatDisplay: 'everyone',
+  guessTimeChatDisplay: 'fastest-only'
+});
+assert.equal(invalidChatStats.wpmChatDisplay, 'disabled');
+assert.equal(invalidChatStats.guessTimeChatDisplay, 'disabled');
 
 void (async () => {
   const casual = generateDraftBoard(manifest, {
@@ -155,7 +187,7 @@ void (async () => {
   assert.equal(resolvedRace?.owner, 'opponent');
   assert.equal(resolvedRace?.pendingCandidateId, null);
 
-  console.log('Product Foundation passed with the growing 49-Challenge manifest and 250 Ranked draft seeds.');
+  console.log('Product Foundation passed with the growing 53-Challenge manifest and 250 Ranked draft seeds.');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

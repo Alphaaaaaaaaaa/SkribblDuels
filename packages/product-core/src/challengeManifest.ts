@@ -30,7 +30,8 @@ const TYPO_CHALLENGE_IDS = new Set([
 
 const TYPO_DROP_IDS = new Set([
   'reflexes-like-a-cat',
-  'drop-down'
+  'drop-down',
+  'drop-streak'
 ]);
 
 const FAST_GUESS_IDS = new Set([
@@ -39,7 +40,9 @@ const FAST_GUESS_IDS = new Set([
   'better-late-than-never',
   'ouch',
   'as-close-as-it-gets',
-  'hint-reflexes'
+  'hint-reflexes',
+  'wpmaster',
+  'type-racer'
 ]);
 
 const overrides: Readonly<Record<string, ManifestOverride>> = {
@@ -62,6 +65,18 @@ const overrides: Readonly<Record<string, ManifestOverride>> = {
   },
   'drop-down': {
     tags: ['typo', 'drop']
+  },
+  'drop-streak': {
+    tags: ['typo', 'drop', 'streak']
+  },
+  'internet-explorer': {
+    tags: ['wpm', 'typing', 'slow-guess']
+  },
+  wpmaster: {
+    tags: ['wpm', 'typing', 'first-guesser', 'progress']
+  },
+  'type-racer': {
+    tags: ['wpm', 'typing', 'first-guesser']
   },
   'autodraw-detected': {
     capabilities: ['skribbl-telemetry', 'typo', 'typo-image-lab'],

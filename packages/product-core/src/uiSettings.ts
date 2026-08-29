@@ -33,7 +33,9 @@ export const DEFAULT_PRODUCT_UI_SETTINGS: ProductUiSettings = {
   matchChatMessages: true,
   matchChatCommandPrefix: '/sdchat',
   sfxVolume: 82,
-  matchChatPings: true
+  matchChatPings: true,
+  wpmChatDisplay: 'disabled',
+  guessTimeChatDisplay: 'disabled'
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -61,6 +63,8 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
     ? input.launcher
     : {};
   const validTabs = new Set(['duel', 'match', 'chat', 'settings', 'about']);
+  const validWpmChatDisplays = new Set(['disabled', 'correct-guesses', 'all-typed-messages']);
+  const validGuessTimeChatDisplays = new Set(['disabled', 'self-guesses', 'all-guesses']);
   const validAnchors = new Set([
     'top-left', 'top-center', 'top-right', 'center-left',
     'center-right', 'bottom-left', 'bottom-center', 'bottom-right'
@@ -126,7 +130,13 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
       : DEFAULT_PRODUCT_UI_SETTINGS.sfxVolume,
     matchChatPings: typeof input.matchChatPings === 'boolean'
       ? input.matchChatPings
-      : DEFAULT_PRODUCT_UI_SETTINGS.matchChatPings
+      : DEFAULT_PRODUCT_UI_SETTINGS.matchChatPings,
+    wpmChatDisplay: validWpmChatDisplays.has(String(input.wpmChatDisplay))
+      ? input.wpmChatDisplay as ProductUiSettings['wpmChatDisplay']
+      : DEFAULT_PRODUCT_UI_SETTINGS.wpmChatDisplay,
+    guessTimeChatDisplay: validGuessTimeChatDisplays.has(String(input.guessTimeChatDisplay))
+      ? input.guessTimeChatDisplay as ProductUiSettings['guessTimeChatDisplay']
+      : DEFAULT_PRODUCT_UI_SETTINGS.guessTimeChatDisplay
   };
 }
 

@@ -42,7 +42,7 @@ export const ateAndLeftNoCrumbsDefinition: ChallengeDefinition<
   AteAndLeftNoCrumbsParameters
 > = {
   id: 'ate-and-left-no-crumbs',
-  version: 1,
+  version: 2,
   metadata: {
     category: 'progress',
     localization: localization(
@@ -65,6 +65,7 @@ export const ateAndLeftNoCrumbsDefinition: ChallengeDefinition<
   },
   relevantEvents: [
     'GAME_STARTING',
+    'ROUND_ANNOUNCED',
     'ROUND_STARTED',
     'ROUND_RESULTS_AVAILABLE',
     'GAME_ENDED'
@@ -72,7 +73,10 @@ export const ateAndLeftNoCrumbsDefinition: ChallengeDefinition<
   allowedLobbyTypes: [0],
   resetOn: ['lobby-change'],
   reduce({ event, runtime }) {
-    if (event.type === 'GAME_STARTING') {
+    const automaticRestartObserved = event.type === 'ROUND_ANNOUNCED'
+      && event.payload.previousStateId === 6
+      && event.payload.stateId === 2;
+    if (event.type === 'GAME_STARTING' || automaticRestartObserved) {
       const gameSessionId = event.context.gameSessionId;
       if (gameSessionId === null) {
         return {
@@ -84,7 +88,9 @@ export const ateAndLeftNoCrumbsDefinition: ChallengeDefinition<
       return {
         internalState: initialState(gameSessionId, event.eventId),
         progress: 0,
-        reason: 'ate-full-game-observation-started',
+        reason: automaticRestartObserved
+          ? 'ate-full-game-observation-started-at-automatic-restart-banner'
+          : 'ate-full-game-observation-started',
         evidenceEventIds: [event.eventId]
       };
     }

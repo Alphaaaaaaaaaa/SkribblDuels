@@ -73,6 +73,10 @@
     { "challengeId": "drop-down", "assetPath": "challenge-icons/drop-down.gif", "currentMetadataIcon": "final-drop" },
     { "challengeId": "transcended", "assetPath": "challenge-icons/transcended.gif", "currentMetadataIcon": "transcended-lead" },
     { "challengeId": "ate-and-left-no-crumbs", "assetPath": "challenge-icons/ate-and-left-no-crumbs.gif", "currentMetadataIcon": "ate-and-left-no-crumbs-score" },
-    { "challengeId": "guessingoat", "assetPath": "challenge-icons/guessingoat.gif", "currentMetadataIcon": "guessingoat-first-guesser" }
+    { "challengeId": "guessingoat", "assetPath": "challenge-icons/guessingoat.gif", "currentMetadataIcon": "guessingoat-first-guesser" },
+    { "challengeId": "drop-streak", "assetPath": "challenge-icons/drop-streak.gif", "currentMetadataIcon": "drop-streak-catches" },
+    { "challengeId": "internet-explorer", "assetPath": "challenge-icons/internet-explorer.gif", "currentMetadataIcon": "internet-explorer-slow-guess" },
+    { "challengeId": "wpmaster", "assetPath": "challenge-icons/wpmaster.gif", "currentMetadataIcon": "wpmaster-fast-first-guesses" },
+    { "challengeId": "type-racer", "assetPath": "challenge-icons/type-racer.gif", "currentMetadataIcon": "type-racer-fastest-first-guess" }
   ]
 }

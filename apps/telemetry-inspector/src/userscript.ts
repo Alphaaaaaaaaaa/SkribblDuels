@@ -86,7 +86,7 @@ import {
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.58.0';
+const BUILD_VERSION = '0.61.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;

@@ -122,7 +122,7 @@ v0.59.0 expands the live manifest from 47 to 49:
 | Challenge | Deterministic rule | v0.59 status |
 | --- | --- | --- |
 | Transcended | Hold a positive score and lead every active opponent by at least 2,000 points. | User-certified; Casual and Ranked eligible; supplied GitHub artwork embedded. |
-| Ate and left no crumbs | Earn positive points in every regular drawing turn of one fully observed public game. Missing/zero own score fails; explicit drawer-left turns are skipped. | Full-game/zero/missing/mid-join replay fixtures passed; Casual enabled, Ranked awaiting live two-client certification. |
+| Ate and left no crumbs | Earn positive points in every regular drawing turn of one fully observed public game. Missing/zero own score fails; explicit drawer-left turns are skipped. | Full-game/zero/missing/mid-join replay fixtures passed; live-certified and Ranked-enabled in v0.62.0. |
 | GuessingOAT | Be First Guesser in every regular foreign drawing turn of one fully observed public game. Own and explicit drawer-left turns are skipped. | Full-game/other-first/no-first/mid-join replay fixtures passed; Casual enabled, Ranked awaiting live two-client certification. |
 | Drop Streak | Catch five consecutively spawned Typo drops. | Deferred fail-closed until correlated `TYPO_DROP_SPAWNED` and `TYPO_DROP_MISSED` evidence exists. |
 

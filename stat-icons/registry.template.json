@@ -1,5 +1,5 @@
 {
-  "registryVersion": 1,
+  "registryVersion": 2,
   "assetRules": {
     "formats": ["gif", "png"],
     "recommendedWidth": 40,
@@ -7,7 +7,8 @@
     "transparentBackground": true
   },
   "utilities": {
-    "pin": "stat-icons/pin.gif"
+    "pin": "stat-icons/pin.gif",
+    "trash": "stat-icons/trash.gif"
   },
   "stats": [
     { "statId": "observed-play-time", "assetPath": "stat-icons/observed-play-time.gif" },

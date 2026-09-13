@@ -42,7 +42,7 @@ export const ateAndLeftNoCrumbsDefinition: ChallengeDefinition<
   AteAndLeftNoCrumbsParameters
 > = {
   id: 'ate-and-left-no-crumbs',
-  version: 2,
+  version: 3,
   metadata: {
     category: 'progress',
     localization: localization(
@@ -52,9 +52,8 @@ export const ateAndLeftNoCrumbsDefinition: ChallengeDefinition<
       'Erhalte in jedem regulären Zeichen-Turn eines vollständig beobachteten öffentlichen Spiels positive Punkte. Durch den Abgang des Drawers abgebrochene Turns werden übersprungen.'
     ),
     icon: 'ate-and-left-no-crumbs-score',
-    // The deterministic reducer is fixture-certified. Ranked remains closed
-    // until the new rule has also passed live two-client certification.
-    rankedEligible: false,
+    // The deterministic reducer and live two-client path are certified.
+    rankedEligible: true,
     difficulty: 5
   },
   defaultParameters: {},

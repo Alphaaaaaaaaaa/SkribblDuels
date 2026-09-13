@@ -143,22 +143,27 @@ export function resolveChatStatRenderParts(
     && (settings.guessTimeDisplay === 'all-guesses'
       || (settings.guessTimeDisplay === 'self-guesses' && annotation.isSelf));
   if (showGuessTime && annotation.guessElapsedMs !== null) {
-    const laterGuess = annotation.guessPosition === null
-      ? annotation.guessDeltaMs !== null
-      : annotation.guessPosition > 1;
+    const firstGuess = annotation.guessPosition === 1;
+    const laterGuess = annotation.guessPosition !== null
+      && annotation.guessPosition > 1;
     const relative = settings.guessTimeDisplay === 'all-guesses'
       && laterGuess
       && annotation.guessDeltaMs !== null;
-    const formatted = formatChatStatDuration(
-      relative ? annotation.guessDeltaMs as number : annotation.guessElapsedMs,
-      relative
-    );
-    if (formatted) {
-      parts.push({
-        kind: 'guess-time',
-        text: `(${formatted})`,
-        className: 'scd-chat-stat scd-chat-guess-time'
-      });
+    const canRenderGuessTime = settings.guessTimeDisplay !== 'all-guesses'
+      || firstGuess
+      || relative;
+    if (canRenderGuessTime) {
+      const formatted = formatChatStatDuration(
+        relative ? annotation.guessDeltaMs as number : annotation.guessElapsedMs,
+        relative
+      );
+      if (formatted) {
+        parts.push({
+          kind: 'guess-time',
+          text: `(${formatted})`,
+          className: 'scd-chat-stat scd-chat-guess-time'
+        });
+      }
     }
   }
 
@@ -169,7 +174,7 @@ export function resolveChatStatRenderParts(
     parts.push({
       kind: 'wpm',
       text: `${annotation.wpm}wpm`,
-      className: 'scd-chat-stat scd-chat-wpm scd-muted'
+      className: 'scd-chat-stat scd-chat-wpm'
     });
   }
   return parts;
@@ -194,7 +199,8 @@ export function chatStatAnnotationMatchesLine(
 export class ChatStatTelemetryTracker {
   private pendingMeasurements: PendingMeasurement[] = [];
   private readonly pendingSubmissionByRound = new Map<string, PendingSubmission>();
-  private readonly previousGuessElapsedByRound = new Map<string, number>();
+  private readonly firstGuessElapsedByRound = new Map<string, number>();
+  private observedDrawingRoundKey: string | null = null;
   private readonly processedEventIds = new Set<string>();
   private processedEventOrder: string[] = [];
 
@@ -206,10 +212,18 @@ export class ChatStatTelemetryTracker {
       this.resetTransientState();
       return [];
     }
-    if (event.type === 'ROUND_STARTED' || event.type === 'DRAWING_STARTED') {
+    if (event.type === 'ROUND_STARTED') {
       this.pendingMeasurements = [];
       this.pendingSubmissionByRound.clear();
-      this.previousGuessElapsedByRound.clear();
+      this.firstGuessElapsedByRound.clear();
+      this.observedDrawingRoundKey = null;
+      return [];
+    }
+    if (event.type === 'DRAWING_STARTED') {
+      this.pendingMeasurements = [];
+      this.pendingSubmissionByRound.clear();
+      this.firstGuessElapsedByRound.clear();
+      this.observedDrawingRoundKey = roundKey(event);
       return [];
     }
 
@@ -277,17 +291,24 @@ export class ChatStatTelemetryTracker {
 
     if (event.type !== 'CORRECT_GUESS') return [];
     const key = roundKey(event);
-    const elapsedMs = event.payload.elapsedMs !== null && event.payload.elapsedMs >= 0
+    const drawingStartObserved = key !== null && key === this.observedDrawingRoundKey;
+    const elapsedMs = drawingStartObserved
+      && event.payload.elapsedMs !== null
+      && event.payload.elapsedMs >= 0
       ? Math.round(event.payload.elapsedMs)
       : null;
-    const previousElapsedMs = key === null
+    const firstGuessElapsedMs = key === null
       ? null
-      : this.previousGuessElapsedByRound.get(key) ?? null;
-    const deltaMs = elapsedMs !== null && previousElapsedMs !== null && elapsedMs >= previousElapsedMs
-      ? elapsedMs - previousElapsedMs
+      : this.firstGuessElapsedByRound.get(key) ?? null;
+    const deltaMs = event.payload.position !== null
+      && event.payload.position > 1
+      && elapsedMs !== null
+      && firstGuessElapsedMs !== null
+      && elapsedMs >= firstGuessElapsedMs
+      ? elapsedMs - firstGuessElapsedMs
       : null;
-    if (key !== null && elapsedMs !== null) {
-      boundedMapSet(this.previousGuessElapsedByRound, key, elapsedMs);
+    if (key !== null && elapsedMs !== null && event.payload.position === 1) {
+      boundedMapSet(this.firstGuessElapsedByRound, key, elapsedMs);
     }
 
     const self = isSelfEvent(event);
@@ -358,7 +379,8 @@ export class ChatStatTelemetryTracker {
   private resetTransientState(): void {
     this.pendingMeasurements = [];
     this.pendingSubmissionByRound.clear();
-    this.previousGuessElapsedByRound.clear();
+    this.firstGuessElapsedByRound.clear();
+    this.observedDrawingRoundKey = null;
   }
 }
 

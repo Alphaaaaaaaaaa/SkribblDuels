@@ -57,8 +57,9 @@ the production realtime/abuse foundation are now complete.
 
 ### Challenge certification
 
-- Run every one of the 46 Challenges through live two-client fixtures, not only
-  reducer replays.
+- Run every one of the 53 Challenges through live two-client fixtures, not only
+  reducer replays. Ate and left no crumbs is live-certified in v0.62.0; the
+  remaining five Casual-only definitions are the next promotion candidates.
 - Cover joining mid-round, lobby/language changes, reloads, reconnects,
   Forfeit/Rematch and both Typo relay/fallback paths.
 - Version Challenge behavior and balancing independently from the userscript;
@@ -107,8 +108,9 @@ the production realtime/abuse foundation are now complete.
 1. **Complete:** certify invite links with two real authenticated browsers.
 2. **Complete in v0.54.0:** multi-instance realtime infrastructure,
    observability and abuse controls.
-3. **Next:** Ranked rating, history and leaderboards.
-4. Full Challenge live certification and balancing telemetry.
+3. **Next:** certify the five remaining Casual-only Challenges with the shared
+   two-client evidence matrix.
+4. Ranked rating, history and leaderboards.
 5. Localization, accessibility, end-to-end/load testing and release automation.
 
 The product should be considered a complete production build only after P0 and

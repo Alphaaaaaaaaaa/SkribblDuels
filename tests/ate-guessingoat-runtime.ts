@@ -150,7 +150,11 @@ function firstGuess(engine: ChallengeEngine, id: string, playerId: number): void
 }
 
 assert.equal(starterChallengeDefinitions.length, 53, 'The growing live pool must retain Challenges 48–50 when Challenges 51–53 are added.');
-assert.equal(ateAndLeftNoCrumbsDefinition.metadata.rankedEligible, false);
+assert.equal(
+  ateAndLeftNoCrumbsDefinition.metadata.rankedEligible,
+  true,
+  'The live-certified Ate challenge must be selectable in Ranked drafts.'
+);
 assert.equal(guessingOatDefinition.metadata.rankedEligible, false);
 
 const ate = engineFor(ateAndLeftNoCrumbsDefinition, 'ate');

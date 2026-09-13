@@ -7,16 +7,21 @@ import {
   PROFILE_STAT_DEFINITION_BY_ID,
   PROFILE_STAT_IDS
 } from '../apps/telemetry-inspector/src/profileStats';
-import { EMBEDDED_STAT_ICON_ASSETS } from '../apps/telemetry-inspector/src/generatedStatIconAssets';
+import {
+  EMBEDDED_STAT_ICON_ASSETS,
+  STAT_UTILITY_ICON_ASSET_PATHS
+} from '../apps/telemetry-inspector/src/generatedStatIconAssets';
 
 const registry = JSON.parse(await readFile(resolve(
   process.cwd(),
   'stat-icons/registry.template.json'
 ), 'utf8')) as {
-  utilities: { pin: string };
+  utilities: { pin: string; trash: string };
   stats: Array<{ statId: string; assetPath: string }>;
 };
 assert.equal(registry.utilities.pin, 'stat-icons/pin.gif');
+assert.equal(registry.utilities.trash, 'stat-icons/trash.gif');
+assert.equal(STAT_UTILITY_ICON_ASSET_PATHS.trash, registry.utilities.trash);
 assert.equal(
   registry.stats.find(entry => entry.statId === 'drawing-reactions')?.assetPath,
   'stat-icons/drawing-reactions.png',
@@ -30,8 +35,10 @@ assert.deepEqual(
 assert.equal(new Set(registry.stats.map(entry => entry.assetPath)).size, registry.stats.length);
 assert.equal(
   Object.keys(EMBEDDED_STAT_ICON_ASSETS).length,
-  registry.stats.length + 1,
-  'Every registered statistic icon and the pin utility must be embedded after the GitHub asset refresh.'
+  registry.stats.length + Object.values(registry.utilities).filter(assetPath =>
+    EMBEDDED_STAT_ICON_ASSETS[assetPath]
+  ).length,
+  'Every supplied statistic and utility icon must be embedded; reserved utility paths may use their UI fallback until uploaded.'
 );
 assert.match(
   EMBEDDED_STAT_ICON_ASSETS['stat-icons/drawing-reactions.png'] ?? '',

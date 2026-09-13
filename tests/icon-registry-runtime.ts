@@ -68,7 +68,10 @@ assert.equal(
 for (const suppliedPath of [
   'challenge-icons/transcended.gif',
   'challenge-icons/ate-and-left-no-crumbs.gif',
-  'challenge-icons/guessingoat.gif'
+  'challenge-icons/guessingoat.gif',
+  'challenge-icons/internet-explorer.gif',
+  'challenge-icons/wpmaster.gif',
+  'challenge-icons/type-racer.gif'
 ]) {
   assert.match(
     EMBEDDED_ICON_ASSETS[suppliedPath] ?? '',
@@ -77,10 +80,7 @@ for (const suppliedPath of [
   );
 }
 for (const fallbackPath of [
-  'challenge-icons/drop-streak.gif',
-  'challenge-icons/internet-explorer.gif',
-  'challenge-icons/wpmaster.gif',
-  'challenge-icons/type-racer.gif'
+  'challenge-icons/drop-streak.gif'
 ]) {
   assert.equal(
     EMBEDDED_ICON_ASSETS[fallbackPath],
@@ -89,4 +89,4 @@ for (const fallbackPath of [
   );
 }
 
-console.log('All 53 challenges have unique direct icon paths; absent artwork uses the UI fallback.');
+console.log('All 53 challenges have unique direct icon paths; only missing artwork uses the UI fallback.');

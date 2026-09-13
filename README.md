@@ -1,9 +1,39 @@
-# Skribbl Duels v0.61.0
+# Skribbl Duels v0.62.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.62.0
+
+- Applies a saved Duel display name and custom name color immediately to the
+  account button, Profile, active Match UI, board Claims and private Match
+  Chat, including already rendered Duel-owned messages. Native mirrored
+  Skribbl-chat lines keep their native colors.
+- Hardens native chat statistics: WPM now uses
+  `var(--COLOR_CHAT_TEXT_GUESSCHAT)`. Guess Time is emitted only for rounds
+  whose Drawing start was observed, and every later Guesser is compared with
+  the First Guesser rather than the previous Guesser.
+- Isolates every key from the focused private Duel Chat input and restores its
+  focus/caret through authoritative telemetry rerenders, preventing text from
+  leaking into Skribbl controls.
+- Refines the local Profile status editor, adds an ellipsis-only full-status
+  tooltip and a one-click icon/text reset. The `stat-icons/trash.gif` utility
+  path is reserved and falls back to a text trash glyph when the asset is not
+  present in the source tree.
+- Adds a reduced-motion-aware Skribbl loading animation to the queue card and
+  closes the Hub plus nested Profile/color/detail modals when queue or Invite
+  matchmaking finds a player.
+- Restyles Profile statistic and word-coverage cards. Coverage language and
+  word-sort changes now reuse the existing detail modal, retain its scroll
+  position and do not replay the opening animation.
+- Promotes the live-certified `Ate and left no crumbs` definition to Ranked;
+  the Challenge pool remains 53.
+
+Deploy the v0.62.0 Gateway first, verify `/readyz`, then distribute the
+v0.62.0 userscript. Gateway Contract v11, Supabase migrations and Railway
+variables remain unchanged.
 
 ## v0.61.0
 
@@ -13,12 +43,14 @@ challenge claims.
   hidden.
 - Adds persistent `Show guess time behind guess messages` modes: Disabled,
   Self Guesses and All Guesses. Self Guess time is absolute from Drawing start.
-  All Guesses shows the first correct Guess as an absolute time and each later
-  correct Guess as a `+` delta from the previous correct Guesser.
+  As corrected in v0.62.0, All Guesses shows the first correct Guess as an
+  absolute time and each later correct Guess as a `+` delta from that First
+  Guesser, only when the Drawing start was observed.
 - Formats sub-second deltas as milliseconds, second values with millisecond
   precision and minute values as `1m 15s`. When both displays are enabled,
   Guess Time appears before WPM. Guess Time uses
-  `var(--COLOR_CHAT_TEXT_GUESSED)` and WPM uses the existing muted UI color.
+  `var(--COLOR_CHAT_TEXT_GUESSED)` and, as corrected in v0.62.0, WPM uses
+  `var(--COLOR_CHAT_TEXT_GUESSCHAT)`.
 - Correlates telemetry with only newly observed native chat rows, bounds every
   pending queue and removes runtime-owned suffixes on disposal. Existing
   Skribbl messages and every Challenge rule remain unchanged.
@@ -497,8 +529,8 @@ required for v0.49.1.
 - Adds 300-code-point input counting, submit auto-scroll, a top fade for scrolled
   chat, Skribbl-style scrollbars and optional Typo-compatible chat toasts.
 
-Gateway Contract is now v7. Existing profiles and match data need no new
-database migration for v0.49.0.
+Gateway Contract is now v11. Existing v0.62.0 profiles and Match data need no
+new database migration.
 
 ## Install the userscript
 
@@ -534,7 +566,9 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/chat-stat-display-v0.61.0.md`,
+See `docs/ui-polish-v0.62.0.md`,
+`docs/post-v0.62.0-roadmap.md`,
+`docs/chat-stat-display-v0.61.0.md`,
 `docs/certified-wpm-challenges-v0.60.0.md`,
 `docs/profile-lifecycle-drop-streak-v0.59.1.md`,
 `docs/invite-link-v0.52.0-plan.md`,

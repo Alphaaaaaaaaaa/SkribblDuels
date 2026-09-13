@@ -110,6 +110,48 @@ function submission(
   };
 }
 
+function drawingStarted(
+  id: string,
+  occurredAt: number,
+  roundSessionId: string
+): TelemetryEventOf<'DRAWING_STARTED'> {
+  sequence += 1;
+  return {
+    schemaVersion: 1,
+    eventId: `${id}-drawing-started`,
+    telemetrySequence: sequence,
+    type: 'DRAWING_STARTED',
+    category: 'drawing',
+    occurredAt,
+    monotonicMs: occurredAt - BASE_TIME,
+    actor: { playerId: 31, name: 'Drawer', isSelf: false },
+    context: context(roundSessionId),
+    source: {
+      origin: 'lobby-change',
+      rawRecordId: `${id}-round-record`,
+      changeId: `${id}-round-change`,
+      direction: null,
+      socketEvent: null,
+      packetId: null
+    },
+    payload: {
+      previousStateId: 3,
+      stateId: 4,
+      stateName: 'DRAWING',
+      time: 80,
+      roundIndex: 0,
+      roundNumber: 1,
+      maxRounds: 3,
+      drawerId: 31,
+      word: null,
+      wordLengths: [5],
+      initialTime: 80
+    },
+    confidence: 'confirmed',
+    highVolume: false
+  };
+}
+
 function correctGuess(options: {
   id: string;
   playerId: number;
@@ -117,7 +159,7 @@ function correctGuess(options: {
   self: boolean;
   occurredAt: number;
   elapsedMs: number;
-  position: number;
+  position: number | null;
   roundSessionId: string;
   word?: string | null;
 }): TelemetryEventOf<'CORRECT_GUESS'> {
@@ -168,6 +210,46 @@ assert.equal(formatChatStatDuration(11_593, true), '+11.593s');
 assert.equal(formatChatStatDuration(61_000, true), '+1m 1s');
 assert.equal(formatChatStatDuration(-1), null);
 
+const unobservedTracker = new ChatStatTelemetryTracker();
+const unobserved = unobservedTracker.observe(correctGuess({
+  id: 'unobserved',
+  playerId: 21,
+  playerName: 'Alpha',
+  self: true,
+  occurredAt: BASE_TIME + 500,
+  elapsedMs: 2_000,
+  position: 1,
+  roundSessionId: 'round-unobserved'
+}))[0];
+assert.ok(unobserved);
+assert.equal(unobserved.guessElapsedMs, null);
+assert.deepEqual(resolveChatStatRenderParts(unobserved, {
+  wpmDisplay: 'disabled',
+  guessTimeDisplay: 'all-guesses'
+}), [], 'Guess Time must fail closed without an observed DRAWING_STARTED boundary.');
+
+const unknownPositionTracker = new ChatStatTelemetryTracker();
+unknownPositionTracker.observe(drawingStarted(
+  'unknown-position',
+  BASE_TIME + 700,
+  'round-unknown-position'
+));
+const unknownPosition = unknownPositionTracker.observe(correctGuess({
+  id: 'unknown-position',
+  playerId: 24,
+  playerName: 'Unknown',
+  self: false,
+  occurredAt: BASE_TIME + 1_700,
+  elapsedMs: 1_000,
+  position: null,
+  roundSessionId: 'round-unknown-position'
+}))[0];
+assert.ok(unknownPosition);
+assert.deepEqual(resolveChatStatRenderParts(unknownPosition, {
+  wpmDisplay: 'disabled',
+  guessTimeDisplay: 'all-guesses'
+}), [], 'All Guesses must fail closed when First-Guesser position is unknown.');
+
 const tracker = new ChatStatTelemetryTracker();
 const normal = tracker.observe(measurement(
   'normal',
@@ -189,10 +271,11 @@ assert.deepEqual(
   resolveChatStatRenderParts(normal, {
     wpmDisplay: 'all-typed-messages',
     guessTimeDisplay: 'disabled'
-  }).map(part => part.text),
-  ['84wpm']
+  }),
+  [{ kind: 'wpm', text: '84wpm', className: 'scd-chat-stat scd-chat-wpm' }]
 );
 
+tracker.observe(drawingStarted('first', BASE_TIME + 9_000, 'round-first'));
 const measured = measurement('first', 'apple', BASE_TIME + 10_000, 328, 'round-first');
 tracker.observe(measured);
 tracker.observe(submission('first', 'apple', BASE_TIME + 10_050, 'round-first'));
@@ -243,6 +326,31 @@ assert.deepEqual(resolveChatStatRenderParts(second, {
   wpmDisplay: 'disabled',
   guessTimeDisplay: 'self-guesses'
 }), []);
+
+const third = tracker.observe(correctGuess({
+  id: 'third',
+  playerId: 23,
+  playerName: 'Racer',
+  self: false,
+  occurredAt: BASE_TIME + 21_743,
+  elapsedMs: 17_113,
+  position: 3,
+  roundSessionId: 'round-first',
+  word: null
+}))[0];
+assert.ok(third);
+assert.equal(
+  third.guessDeltaMs,
+  11_593,
+  'Every later Guess delta must stay anchored to the first Guesser, not the previous Guesser.'
+);
+assert.deepEqual(
+  resolveChatStatRenderParts(third, {
+    wpmDisplay: 'disabled',
+    guessTimeDisplay: 'all-guesses'
+  }).map(part => part.text),
+  ['(+11.593s)']
+);
 assert.equal(tracker.observe(correctGuess({
   id: 'second',
   playerId: 22,

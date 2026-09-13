@@ -44,6 +44,9 @@
 | v0.59 deterministic Challenge expansion | Replay-certified | Ate and left no crumbs plus GuessingOAT expand Casual to 49; Ranked remains gated on live two-client certification |
 | v0.59.1 lifecycle and Drop expansion | Replay-certified | Same-lobby automatic restarts are distinct games; correlated Drop Streak expands Casual to 50 |
 | v0.60 certified WPM Challenge expansion | Replay-certified | Internet Explorer, WPMaster and TypeRacer use correlated anti-paste timing/submit/correct evidence and expand Casual to 53 |
+| v0.61 native chat statistics | Complete | Opt-in trusted WPM and observed-round Guess Time suffixes in native Skribbl chat |
+| v0.62 UI and profile hardening | Complete | Immediate saved-color refresh, isolated private chat focus, stable Profile detail rerenders, queue loader and match-found modal cleanup |
+| Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
 
@@ -73,10 +76,11 @@
   client ACK/queue cursor make two-client certification measurable.
 - Transcended expands the Casual pool in v0.55.1. TL;DR v2 ships in v0.56.0
   with deterministic offline dictionaries for all 28 languages. Ate and left
-  no crumbs, GuessingOAT, Drop Streak and the three WPM Challenges now have
-  replay-certified reducers; uncertified entries remain Casual-only.
+  no crumbs, GuessingOAT, Drop Streak and the three WPM Challenges have
+  replay-certified reducers. Ate is live-certified and Ranked-enabled in
+  v0.62.0; the other five remain Casual-only.
 
-### 4. Local statistics presentation and WPM rules — delivered through v0.61.0
+### 4. Local statistics presentation and WPM rules — delivered through v0.62.0
 
 - The Profile UI, two configurable pinned slots, occurrence ranking, coverage,
   rolling Median/P90, improvement trends, Drawing effectiveness and streaks
@@ -85,12 +89,14 @@
   `TEXT_INPUT_MEASURED` + outgoing Guess + confirmed correct-Guess evidence.
   Paste/autofill/untrusted samples stay ineligible; live two-client
   certification is still required before enabling them in Ranked.
-- All stat/pin artwork plus Transcended, Ate and left no crumbs and GuessingOAT
-  artwork is embedded. Drop Streak keeps its dedicated path and explicit local
-  fallback until its icon is supplied.
+- Registered stat/utility and Challenge artwork is embedded whenever its source
+  file is present. Every reserved path has an explicit local fallback.
 - v0.61.0 adds opt-in native-chat WPM and Guess Time presentation. WPM remains
   local and input-trust filtered; Guess Time consumes confirmed correct-Guess
-  elapsed telemetry and renders absolute/self or absolute-plus-delta/all modes.
+  elapsed telemetry. v0.62.0 requires an observed Drawing start, anchors all
+  later deltas to the First Guesser and moves WPM to the Guess-chat color.
+- v0.62.0 also stabilizes Profile coverage/sorting rerenders, private-chat
+  focus, saved profile-color propagation and queue/match-found presentation.
 
 ### 5. Ranked competition and history
 
@@ -133,3 +139,6 @@ Challenge certification rules are recorded in
 `docs/duel-profile-stats-sfx-challenges-v0.59.0.md`.
 The v0.60 WPM evidence chain and threshold rules are recorded in
 `docs/certified-wpm-challenges-v0.60.0.md`.
+The v0.62 UI behavior and deployment boundary are recorded in
+`docs/ui-polish-v0.62.0.md`; the next prioritized work is in
+`docs/post-v0.62.0-roadmap.md`.

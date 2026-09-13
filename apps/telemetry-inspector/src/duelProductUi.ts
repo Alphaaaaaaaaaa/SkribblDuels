@@ -624,7 +624,7 @@ class CompletionChatAdapter {
 #game-chat .chat-content p.skribbl-duels-completion.match-chat .scd-match-chat-message { min-width:0;overflow-wrap:anywhere; }
 #game-chat .chat-content p .scd-chat-stat { white-space:nowrap;font-weight:700; }
 #game-chat .chat-content p .scd-chat-guess-time { color:var(--COLOR_CHAT_TEXT_GUESSED) !important; }
-#game-chat .chat-content p .scd-chat-wpm.scd-muted { color:rgba(255,255,255,.6) !important; }
+#game-chat .chat-content p .scd-chat-wpm { color:var(--COLOR_CHAT_TEXT_GUESSCHAT) !important; }
 .scd-tooltip { position:fixed;display:flex;z-index:2147483647;align-items:center;pointer-events:none;transform-origin:0 0;animation:scd-tooltip-appear .1s forwards ease-out; }
 .scd-tooltip-title { background:var(--COLOR_TOOL_TIP_BG,#20232c);color:var(--COLOR_PANEL_TEXT,#fff);border-radius:var(--BORDER_RADIUS,6px);padding:7px;text-shadow:1px 1px 0 #00000038;text-align:center;font-size:13px;font-weight:700;white-space:pre;max-width:320px; }
 .scd-tooltip-arrow { height:0;width:0; }
@@ -768,6 +768,12 @@ class CompletionChatAdapter {
 .scd-queue-button:disabled { opacity:.45;cursor:not-allowed; }
 .scd-stack { display: flex; flex-direction: column; gap: 9px; }
 .scd-card { background:var(--COLOR_PANEL_BG);border-radius:8px;padding:10px; }
+.scd-card.scd-queue-waiting { display:grid;grid-template-columns:minmax(0,1fr) 48px;grid-template-areas:'queue-info load' 'queue-other load' 'queue-last load' 'leave leave';column-gap:12px;row-gap:9px;align-items:center; }
+.scd-queue-waiting .scd-queue-info { grid-area:queue-info; }
+.scd-queue-waiting .scd-queue-other { grid-area:queue-other; }
+.scd-queue-waiting .scd-queue-last { grid-area:queue-last; }
+.scd-queue-waiting .scd-queue-leave { grid-area:leave;justify-self:stretch; }
+.scd-queue-loader { grid-area:load;width:48px;aspect-ratio:1/1;justify-self:end;align-self:center;background-image:url('/img/load.gif');background-position:center;background-repeat:no-repeat;background-size:contain;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-queue-load-rotate .8s ease-in-out infinite; }
 .scd-label { display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,45%);align-items:center;gap:10px;color:white; }
 .scd-label input[type='range'] { flex:1; }
 .scd-auth-profile { display:flex;align-items:center;gap:10px;min-width:0; }
@@ -809,12 +815,14 @@ class CompletionChatAdapter {
 .scd-profile-avatar { position:relative;width:124px !important;height:124px !important;display:grid;place-items:center;font-size:48px;font-weight:900; }
 .scd-profile-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:86%;height:86%; }
 .scd-profile-display-name { width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.45em;font-weight:900; }
-.scd-profile-status-button-wrapper { width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,4fr);gap:10px; }
+.scd-profile-status-button-wrapper { width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,4fr) 44px;gap:10px; }
 .scd-profile-status-button,.scd-profile-status-button-icon { min-width:0;min-height:48px;display:flex;align-items:center;justify-content:center;background:var(--COLOR_PANEL_BUTTON,#2a51d1);font-weight:800; }
 .scd-profile-status-button { padding-inline:10px;overflow:hidden; }
 .scd-profile-status-button span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-profile-status-button-icon { padding:6px; }
 .scd-profile-status-button-icon .scd-icon { width:34px;height:34px;flex:none; }
+.scd-profile-status-reset { min-width:44px;min-height:48px;padding:6px;display:grid;place-items:center; }
+.scd-profile-status-reset .scd-icon { width:30px;height:30px;flex:none; }
 .scd-profile-status-editor { display:flex;flex-direction:column;gap:10px; }
 .scd-profile-status-editor input { width:100%;box-sizing:border-box; }
 .scd-profile-status-editor-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
@@ -824,7 +832,7 @@ class CompletionChatAdapter {
 .scd-profile-private-copy { width:100%;font-size:11px;overflow-wrap:anywhere; }
 .scd-profile-stats-column { min-width:0;display:flex;flex-direction:column;gap:10px; }
 .scd-profile-stats-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px; }
-.scd-profile-stat { position:relative;min-width:0;min-height:92px;display:grid;grid-template-columns:38px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;column-gap:8px;border:0;border-radius:8px;padding:9px;background:rgba(255,255,255,.065);color:white;text-align:left; }
+.scd-profile-stat { position:relative;min-width:0;min-height:92px;display:grid;grid-template-columns:38px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;column-gap:8px;border:0;border-radius:8px;padding:9px;background:var(--COLOR_PANEL_BG);color:white;text-align:left; }
 .scd-profile-stat .scd-icon { grid-row:1/3;width:38px;height:38px; }
 .scd-profile-stat-label { align-self:end;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:rgba(255,255,255,.65); }
 .scd-profile-stat-value { align-self:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.05em;font-weight:900; }
@@ -844,9 +852,10 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-profile-choice.selected { outline:2px solid var(--SCD_ACCENT);outline-offset:-2px; }
 .scd-profile-all-stats { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px; }
 .scd-profile-coverage-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px; }
-.scd-profile-coverage-card { padding:9px;border:0;border-radius:8px;background:rgba(255,255,255,.06);color:white;font:inherit;text-align:left;cursor:pointer;transition:background-color .1s ease-in-out,outline-color .1s ease-in-out; }
-.scd-profile-coverage-card:hover { background:rgba(255,255,255,.12); }
-.scd-profile-coverage-card.selected { outline:2px solid var(--SCD_ACCENT);outline-offset:-2px;background:rgba(255,255,255,.1); }
+.scd-profile-coverage-card { min-height:72px;padding:9px;text-align:left;font-size:inherit;transition:background-color 80ms,transform .1s ease-in-out; }
+.scd-profile-coverage-card.selected { outline:0;background:#53e237; }
+.scd-profile-coverage-card.selected:hover:not(:disabled) { background:#38c41c; }
+.scd-profile-coverage-card.selected:active:not(:disabled) { background:#30aa19;transform:translateY(1px); }
 .scd-profile-word-table { width:100%;margin-top:12px;border-collapse:collapse;font-size:11px; }
 .scd-profile-word-table th,.scd-profile-word-table td { padding:6px;border-bottom:1px solid rgba(255,255,255,.11);text-align:right; }
 .scd-profile-word-table th:first-child,.scd-profile-word-table td:first-child { text-align:left; }
@@ -958,6 +967,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 @keyframes player_winner { 0% { transform:rotate(0) scale(1,1) translate(0,0); } 5%,8% { transform:rotate(0) scale(1.2,.8) translate(0,0); } 14%,16% { transform:rotate(20deg) scale(.8,1.2) translate(10%,-50%); } 24%,26% { transform:rotate(0) scale(1.4,.7) translate(0,0); } 28%,38% { transform:rotate(0) scale(1,1) translate(0,0); } 42% { transform:rotate(0) scale(1.2,.8) translate(0,0); } 48%,50% { transform:rotate(-20deg) scale(.8,1.2) translate(-10%,-50%); } 58%,60% { transform:rotate(0) scale(1.4,.7) translate(0,0); } 62%,100% { transform:rotate(0) scale(1,1) translate(0,0); } }
 @keyframes scd-toast-in { from { transform:translateY(-50vh);opacity:0; } to { transform:translateY(0);opacity:1; } }
 @keyframes scd-toast-out { from { transform:translateY(0);opacity:1; } to { transform:translateY(-50vh);opacity:0; } }
+@keyframes scd-queue-load-rotate { from { transform:rotate(0); } to { transform:rotate(360deg); } }
 @media (max-width:620px) {
   .scd-modal-header { grid-template-columns:1fr auto; }
   .scd-modal-title { display:none; }
@@ -976,7 +986,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
   .scd-profile-coverage-grid { grid-template-columns:minmax(0,1fr); }
 }
 @media (prefers-reduced-motion:reduce) {
-  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-player,.scd-duel-toast { animation:none !important; }
+  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-player,.scd-duel-toast,.scd-queue-loader { animation:none !important; }
 }
 `;
     (document.head ?? document.documentElement).appendChild(style);
@@ -1065,8 +1075,14 @@ class ProductTooltipManager {
 
   public register(target: HTMLElement, title: string, lock?: 'X' | 'Y'): void {
     target.dataset.scdTooltip = wrapTooltipText(title);
+    delete target.dataset.scdTooltipOverflowOnly;
     if (lock) target.dataset.scdTooltipLock = lock;
     else delete target.dataset.scdTooltipLock;
+  }
+
+  public registerOverflowOnly(target: HTMLElement, title: string, lock?: 'X' | 'Y'): void {
+    this.register(target, title, lock);
+    target.dataset.scdTooltipOverflowOnly = 'true';
   }
 
   private handlePointerOver(event: PointerEvent): void {
@@ -1076,6 +1092,11 @@ class ProductTooltipManager {
       : null;
     if (target === this.currentTarget) return;
     if (!target) {
+      this.hide();
+      return;
+    }
+    if (target.dataset.scdTooltipOverflowOnly === 'true'
+        && target.scrollWidth <= target.clientWidth + 1) {
       this.hide();
       return;
     }
@@ -1176,6 +1197,8 @@ export class DuelProductFoundation {
   private duelProfileModal: HTMLDivElement | null = null;
   private profileDetailModal: HTMLDivElement | null = null;
   private profileColorDraftIndex: number | null = null;
+  private savedSelfNameColorIndex: number | null = null;
+  private savedSelfDisplayName: string | null = null;
   private profileUiPreferences: DuelProfileUiPreferences;
   private localStatsSnapshot: LocalPlayerStatsSnapshot;
   private profileWordLanguageId: number | null = null;
@@ -1226,6 +1249,7 @@ export class DuelProductFoundation {
   private lastTelemetryEvent: TelemetryEvent | null;
   private homepageMatchmakingAuthority: HomepageMatchmakingAuthority;
   private restoreDuelChatFocus = false;
+  private duelChatFocusRequested = false;
   private duelChatScrollTop = 0;
   private duelChatStickToBottom = true;
   private duelChatDraft = '';
@@ -1344,9 +1368,15 @@ export class DuelProductFoundation {
         || previous.invite?.token !== state.invite?.token
         || previous.identity?.displayName !== state.identity?.displayName
         || previous.identity?.nameColorIndex !== state.identity?.nameColorIndex;
-      if (previous.queue && !state.queue && state.match
-          && previous.match?.matchId !== state.match.matchId) {
+      const playerFound = state.match !== null
+        && previous.match?.matchId !== state.match.matchId
+        && (previous.queue !== null
+          || previous.invite?.status === 'waiting'
+          || this.pendingInviteToken !== null
+          || this.inviteAcceptanceSubmitted);
+      if (playerFound) {
         this.soundEffects.play('matchFound');
+        this.closeProductModalsForMatchFound();
       }
       if (matchChanged) this.matchActionError = null;
       this.gatewayState = state;
@@ -1382,6 +1412,10 @@ export class DuelProductFoundation {
     }));
     this.unsubscribers.push(this.authClient.subscribe(state => {
       this.authState = state;
+      if (state.status === 'signed-out') {
+        this.savedSelfNameColorIndex = null;
+        this.savedSelfDisplayName = null;
+      }
       this.gatewayClient.setAccessToken(
         state.status === 'signed-in' ? state.accessToken : null
       );
@@ -1436,7 +1470,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.61.0',
+      version: '0.62.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1580,7 +1614,7 @@ export class DuelProductFoundation {
     this.duelProfileModal = null;
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.61.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.62.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2164,7 +2198,7 @@ export class DuelProductFoundation {
         const selfAccountId = this.gatewayState.identity?.accountId;
         const self = gatewayMatch.state.participants.find(participant => participant.accountId === selfAccountId);
         const opponent = gatewayMatch.state.participants.find(participant => participant.accountId !== selfAccountId);
-        score.textContent = `${self?.displayName ?? this.options.getSelfName()} · 0:0 · ${opponent?.displayName ?? 'Opponent'}`;
+        score.textContent = `${this.duelDisplayName('self')} · 0:0 · ${opponent?.displayName ?? 'Opponent'}`;
       }
       return;
     }
@@ -2234,7 +2268,7 @@ export class DuelProductFoundation {
     ));
     const players = element('div', 'scd-versus-players');
     players.append(
-      this.createVersusPlayer(self?.displayName ?? this.options.getSelfName(), Boolean(self?.ready), self ?? null, 'self'),
+      this.createVersusPlayer(this.duelDisplayName('self'), Boolean(self?.ready), self ?? null, 'self'),
       element('div', 'scd-versus-vs', 'VS'),
       this.createVersusPlayer(opponent?.displayName ?? 'Opponent', Boolean(opponent?.ready), opponent ?? null, 'opponent')
     );
@@ -2348,7 +2382,7 @@ export class DuelProductFoundation {
     shell.appendChild(this.createStageBoard(
       draft,
       match.state.format,
-      `${self?.displayName ?? this.options.getSelfName()} · 0:0 · ${opponent?.displayName ?? 'Opponent'}`
+      `${this.duelDisplayName('self')} · 0:0 · ${opponent?.displayName ?? 'Opponent'}`
     ));
 
     const controls = element('div', 'scd-draft-controls');
@@ -2563,8 +2597,10 @@ export class DuelProductFoundation {
     const previousChatInput = this.panelBody.querySelector<HTMLInputElement>(
       '[data-scd-duel-chat-input="true"]'
     );
-    const restoreFocusedChatInput = previousChatInput !== null
-      && document.activeElement === previousChatInput;
+    if (previousChatInput !== null && document.activeElement === previousChatInput) {
+      this.duelChatFocusRequested = true;
+    }
+    const restoreFocusedChatInput = this.duelChatFocusRequested;
     const previousSelectionStart = previousChatInput?.selectionStart ?? null;
     const previousSelectionEnd = previousChatInput?.selectionEnd ?? null;
     if (previousChatInput) this.duelChatDraft = previousChatInput.value;
@@ -2596,7 +2632,7 @@ export class DuelProductFoundation {
         const input = this.panelBody?.querySelector<HTMLInputElement>(
           '[data-scd-duel-chat-input="true"]'
         );
-        if (!input?.isConnected || input.disabled) return;
+        if (!input?.isConnected || input.disabled || !this.duelChatFocusRequested) return;
         input.focus({ preventScroll: true });
         if (previousSelectionStart !== null && previousSelectionEnd !== null) {
           input.setSelectionRange(previousSelectionStart, previousSelectionEnd);
@@ -2610,7 +2646,9 @@ export class DuelProductFoundation {
     this.panelAccount.replaceChildren();
     const profile = this.authState.profile;
     if (this.authState.status === 'signed-in' && profile) {
-      const duelDisplayName = this.gatewayState.identity?.displayName ?? profile.displayName;
+      const duelDisplayName = this.savedSelfDisplayName
+        ?? this.gatewayState.identity?.displayName
+        ?? profile.displayName;
       const identity = this.gatewayState.identity;
       const avatar = this.createParticipantAvatar(duelDisplayName, identity ? {
         avatarSource: identity.avatarSource ?? 'discord',
@@ -2624,7 +2662,7 @@ export class DuelProductFoundation {
       this.panelAccount.appendChild(avatar);
       const copy = element('div', 'scd-auth-copy');
       const name = element('div', 'scd-auth-name');
-      appendColoredDuelName(name, duelDisplayName, identity?.nameColorIndex);
+      appendColoredDuelName(name, duelDisplayName, this.duelNameColorIndex('self'));
       copy.append(name, element('div', 'scd-muted', `Discord: ${profile.username}`));
       this.panelAccount.appendChild(copy);
       this.panelAccount.disabled = false;
@@ -2712,12 +2750,28 @@ export class DuelProductFoundation {
 
   private createProfileDetail(
     titleText: string,
-    renderBody: (body: HTMLDivElement) => void
+    renderBody: (body: HTMLDivElement) => void,
+    reuseKey?: string
   ): void {
+    const existingBody = reuseKey
+      && this.profileDetailModal?.dataset.scdProfileDetailKey === reuseKey
+      ? this.profileDetailModal.querySelector<HTMLDivElement>('.scd-profile-detail-body')
+      : null;
+    if (existingBody) {
+      const scrollTop = existingBody.scrollTop;
+      existingBody.replaceChildren();
+      renderBody(existingBody);
+      existingBody.scrollTop = scrollTop;
+      queueMicrotask(() => {
+        if (existingBody.isConnected) existingBody.scrollTop = scrollTop;
+      });
+      return;
+    }
     this.closeProfileDetail();
     const overlay = element('div', 'scd-modal-overlay scd-profile-detail-overlay');
     overlay.id = 'skribbl-duels-profile-detail';
     overlay.dataset.scdRuntimeId = this.options.runtimeId;
+    if (reuseKey) overlay.dataset.scdProfileDetailKey = reuseKey;
     isolateScrollRoot(overlay);
     const wrapper = element('div', 'scd-modal-wrapper');
     const modal = element('div', 'scd-modal-container scd-profile-detail-modal');
@@ -2780,16 +2834,18 @@ export class DuelProductFoundation {
     this.createProfileDetail('Edit profile status', body => {
       const editor = element('div', 'scd-profile-status-editor');
       const label = element('label', 'scd-profile-field');
-      label.appendChild(element('span', 'scd-muted', `Status text · ${DUEL_PROFILE_STATUS_MAX_LENGTH} characters maximum`));
       const input = element('input') as HTMLInputElement;
       input.type = 'text';
       input.maxLength = DUEL_PROFILE_STATUS_MAX_LENGTH;
       input.placeholder = 'Working...';
       input.value = this.profileUiPreferences.statusText;
-      label.appendChild(input);
+      label.append(
+        input,
+        element('span', 'scd-muted', `${DUEL_PROFILE_STATUS_MAX_LENGTH} characters maximum`)
+      );
 
       const actions = element('div', 'scd-profile-status-editor-actions');
-      const cancel = element('button', 'scd-button', 'Cancel') as HTMLButtonElement;
+      const cancel = element('button', 'scd-button danger', 'Cancel') as HTMLButtonElement;
       cancel.type = 'button';
       cancel.addEventListener('click', () => this.closeProfileDetail());
       const save = element('button', 'scd-button primary scd-profile-status-save', 'Save') as HTMLButtonElement;
@@ -2867,7 +2923,10 @@ export class DuelProductFoundation {
         seenCoverage: number | null,
         guessedCoverage: number | null
       ): HTMLButtonElement => {
-        const card = element('button', 'scd-profile-coverage-card') as HTMLButtonElement;
+        const card = element(
+          'button',
+          'scd-button scd-profile-view-all scd-profile-coverage-card'
+        ) as HTMLButtonElement;
         card.type = 'button';
         card.classList.toggle('selected', this.profileWordLanguageId === languageId);
         card.setAttribute('aria-pressed', String(this.profileWordLanguageId === languageId));
@@ -3006,7 +3065,7 @@ export class DuelProductFoundation {
       }
       table.append(head, tableBody);
       body.appendChild(table);
-    });
+    }, 'all-local-statistics');
   }
 
   private openDuelProfile(): void {
@@ -3038,13 +3097,14 @@ export class DuelProductFoundation {
     const body = element('div', 'scd-profile-view-body');
     const layout = element('div', 'scd-duel-profile-layout');
     const identityColumn = element('section', 'scd-profile-identity');
-    identityColumn.appendChild(this.createParticipantAvatar(identity.displayName, {
+    const effectiveDisplayName = this.savedSelfDisplayName ?? identity.displayName;
+    identityColumn.appendChild(this.createParticipantAvatar(effectiveDisplayName, {
       avatarSource: identity.avatarSource ?? 'discord',
       avatarUrl: identity.avatarSource === 'skribbl' ? null : (identity.avatarUrl ?? authProfile.avatarUrl),
       skribblAvatar: identity.skribblAvatar ?? null
     }, 'scd-profile-avatar'));
     const displayName = element('div', 'scd-profile-display-name');
-    appendColoredDuelName(displayName, identity.displayName, identity.nameColorIndex);
+    appendColoredDuelName(displayName, effectiveDisplayName, this.duelNameColorIndex('self'));
     identityColumn.append(
       displayName,
       element('div', 'scd-profile-private-copy', `Discord: ${authProfile.username}`)
@@ -3067,9 +3127,33 @@ export class DuelProductFoundation {
 
     const statusText = element('button', 'scd-button scd-profile-status-button') as HTMLButtonElement;
     statusText.type = 'button';
-    statusText.appendChild(element('span', '', this.profileUiPreferences.statusText || 'Set status'));
+    const statusLabel = element('span', '', this.profileUiPreferences.statusText || 'Set status');
+    statusText.appendChild(statusLabel);
     statusText.addEventListener('click', () => this.openProfileStatusEditor());
-    statusWrapper.append(statusIcon, statusText);
+    if (this.profileUiPreferences.statusText) {
+      this.tooltips.registerOverflowOnly(statusLabel, this.profileUiPreferences.statusText);
+    }
+
+    const resetStatus = element(
+      'button',
+      'scd-button danger scd-profile-status-reset'
+    ) as HTMLButtonElement;
+    resetStatus.type = 'button';
+    resetStatus.disabled = statusEntry === null && this.profileUiPreferences.statusText.length === 0;
+    resetStatus.setAttribute('aria-label', 'Clear status icon and text');
+    const trashPath = STAT_UTILITY_ICON_ASSET_PATHS.trash;
+    resetStatus.appendChild(EMBEDDED_STAT_ICON_ASSETS[trashPath]
+      ? this.createIconAsset(trashPath, '🗑', 'Clear profile status')
+      : element('span', 'scd-icon scd-icon-fallback', '🗑'));
+    resetStatus.addEventListener('click', () => {
+      this.profileUiPreferences.statusChallengeId = null;
+      this.profileUiPreferences.statusText = '';
+      this.saveProfileUiPreferences();
+      this.openDuelProfile();
+    });
+    this.tooltips.register(resetStatus, 'Clear status icon and text');
+
+    statusWrapper.append(statusIcon, statusText, resetStatus);
     identityColumn.append(
       statusWrapper,
       element('div', 'scd-muted scd-profile-private-copy', authProfile.createdAt === null
@@ -3122,7 +3206,7 @@ export class DuelProductFoundation {
     const account = element('div', 'scd-card scd-stack');
     account.appendChild(element('strong', '', 'Skribbl Duels account'));
     if (this.authState.status === 'signed-in' && this.authState.profile) {
-      const duelDisplayName = this.gatewayState.identity?.displayName ?? this.authState.profile.displayName;
+      const duelDisplayName = this.duelDisplayName('self');
       const profile = element('div', 'scd-auth-profile');
       if (this.authState.profile.avatarUrl) {
         const avatar = element('img', 'scd-auth-avatar') as HTMLImageElement;
@@ -3136,10 +3220,9 @@ export class DuelProductFoundation {
         profile.appendChild(fallback);
       }
       const copy = element('div', 'scd-auth-copy');
-      copy.append(
-        element('div', 'scd-auth-name', duelDisplayName),
-        element('div', 'scd-auth-email', `Discord: ${this.authState.profile.username}`)
-      );
+      const coloredName = element('div', 'scd-auth-name');
+      appendColoredDuelName(coloredName, duelDisplayName, this.duelNameColorIndex('self'));
+      copy.append(coloredName, element('div', 'scd-auth-email', `Discord: ${this.authState.profile.username}`));
       const signOut = element('button', 'scd-button', 'Sign out') as HTMLButtonElement;
       signOut.type = 'button';
       signOut.addEventListener('click', () => {
@@ -3201,7 +3284,8 @@ export class DuelProductFoundation {
 
   private createMatchmakingCard(): HTMLDivElement {
     const card = element('div', 'scd-card scd-stack');
-    card.appendChild(element('strong', '', 'Homepage matchmaking'));
+    const heading = element('strong', '', 'Homepage matchmaking');
+    card.appendChild(heading);
     const homepage = this.isHomepageVisible();
     const gatewayMatch = this.gatewayState.match;
     const queue = this.gatewayState.queue;
@@ -3258,11 +3342,32 @@ export class DuelProductFoundation {
     }
 
     if (queue) {
-      card.append(
-        element('div', '', `Queued for ${queue.format === 'casual' ? 'Casual 3×3' : 'Ranked 5×5'}`),
-        element('div', 'scd-muted', `Queue position: ${queue.position ?? '-'} · Waiting for a player in a separate Skribbl lobby flow.`)
+      card.classList.add('scd-queue-waiting');
+      heading.classList.add('scd-queue-info');
+      const queueMode = element(
+        'div',
+        'scd-queue-other',
+        `Queued for ${queue.format === 'casual' ? 'Casual 3×3' : 'Ranked 5×5'}`
       );
-      const cancel = element('button', 'scd-button danger', 'Leave queue') as HTMLButtonElement;
+      const queuePosition = element(
+        'div',
+        'scd-muted scd-queue-last',
+        `Queue position: ${queue.position ?? '-'} · Waiting for a player in a separate Skribbl lobby flow.`
+      );
+      const loader = element('div', 'scd-queue-loader');
+      loader.setAttribute('role', 'img');
+      loader.setAttribute('aria-label', 'Searching for a Duel player');
+      card.append(
+        queueMode,
+        queuePosition,
+        loader
+      );
+      const cancel = element(
+        'button',
+        'scd-button danger scd-queue-leave',
+        'Leave queue'
+      ) as HTMLButtonElement;
+      cancel.type = 'button';
       cancel.addEventListener('click', () => this.cancelMatchmaking());
       card.appendChild(cancel);
       return card;
@@ -3402,7 +3507,7 @@ export class DuelProductFoundation {
         : this.matchState.outcome === 'win'
           ? `Status: ${this.duelDisplayName(this.matchState.winner ?? 'opponent')} won`
           : `Status: ${this.matchState.phase}`),
-      element('div', '', `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`),
+      element('div', '', `${this.duelDisplayName('self')} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`),
       element('div', 'scd-muted', 'Challenge claims are confirmed by the authoritative Gateway.'),
       element(
         'div',
@@ -3591,7 +3696,7 @@ export class DuelProductFoundation {
     const score = element(
       'div',
       'scd-result-score',
-      `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`
+      `${this.duelDisplayName('self')} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`
     );
     const actions = element('div', 'scd-result-actions');
     const returnButton = element('button', 'scd-button primary scd-result-return', 'Return') as HTMLButtonElement;
@@ -3747,8 +3852,20 @@ export class DuelProductFoundation {
       count.classList.toggle('visible', document.activeElement === input || input.value.length > 0);
     };
     input.addEventListener('input', updateCount);
-    input.addEventListener('focus', updateCount);
-    input.addEventListener('blur', updateCount);
+    input.addEventListener('focus', () => {
+      this.duelChatFocusRequested = true;
+      updateCount();
+    });
+    input.addEventListener('blur', () => {
+      updateCount();
+      queueMicrotask(() => {
+        const current = this.panelBody?.querySelector<HTMLInputElement>(
+          '[data-scd-duel-chat-input="true"]'
+        ) ?? null;
+        if (current !== null && current !== input) return;
+        if (document.activeElement !== input) this.duelChatFocusRequested = false;
+      });
+    });
     updateCount();
     inputShell.append(input, count);
     const send = element('button', 'scd-button primary', 'Send') as HTMLButtonElement;
@@ -3771,6 +3888,7 @@ export class DuelProductFoundation {
     });
     if (this.restoreDuelChatFocus) {
       this.restoreDuelChatFocus = false;
+      this.duelChatFocusRequested = true;
       queueMicrotask(() => {
         this.panel?.querySelector<HTMLInputElement>('[data-scd-duel-chat-input="true"]')?.focus();
       });
@@ -3868,19 +3986,19 @@ export class DuelProductFoundation {
   private handleDuelChatKeydown(event: KeyboardEvent): void {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
-    if (target.dataset.scdDuelChatInput === 'true' && event.key === 'Escape') {
-      event.preventDefault();
+    if (target.dataset.scdDuelChatInput === 'true') {
       event.stopImmediatePropagation();
-      target.blur();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.duelChatFocusRequested = false;
+        target.blur();
+      } else if (event.key === 'Enter' && !event.isComposing) {
+        event.preventDefault();
+        target.form?.requestSubmit();
+      }
       return;
     }
     if (event.key !== 'Enter' || event.isComposing) return;
-    if (target.dataset.scdDuelChatInput === 'true') {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      target.form?.requestSubmit();
-      return;
-    }
 
     const vanillaChatInput = target.matches('#newChat, #game-chat input:not([type="hidden"])');
     const typoCommandInput = target.id === 'typo-command-input';
@@ -3970,6 +4088,32 @@ export class DuelProductFoundation {
   private renderColoredNamePreview(target: HTMLElement, name: string, colorIndex: number): void {
     target.replaceChildren();
     appendColoredDuelName(target, name || 'Preview', colorIndex);
+  }
+
+  private applySavedProfilePresentation(displayName: string, colorIndexValue: number): void {
+    const colorIndex = normalizeDuelNameColorIndex(colorIndexValue);
+    this.savedSelfDisplayName = displayName;
+    this.savedSelfNameColorIndex = colorIndex;
+    this.profileColorDraftIndex = colorIndex;
+    if (this.authState.profile) {
+      this.authState = {
+        ...this.authState,
+        profile: { ...this.authState.profile, displayName }
+      };
+    }
+    this.duelChatMessages = this.duelChatMessages.map(message => {
+      if (message.side !== 'self' && message.side !== 'opponent') return message;
+      return {
+        ...message,
+        ...(message.side === 'self' ? { author: displayName } : {}),
+        nameColorIndex: this.duelNameColorIndex(message.side)
+      };
+    });
+    this.renderVisibility();
+    this.renderStage();
+    this.renderBoard();
+    if (this.settings.panelOpen) this.renderPanel();
+    if (this.duelProfileModal?.isConnected) this.openDuelProfile();
   }
 
   private openProfileColorPicker(
@@ -4064,8 +4208,11 @@ export class DuelProductFoundation {
     const identity = this.gatewayState.identity;
     if (this.authState.status === 'signed-in' && identity) {
       if (this.profileColorDraftIndex === null) {
-        this.profileColorDraftIndex = normalizeDuelNameColorIndex(identity.nameColorIndex);
+        this.profileColorDraftIndex = normalizeDuelNameColorIndex(
+          this.savedSelfNameColorIndex ?? identity.nameColorIndex
+        );
       }
+      const effectiveDisplayName = this.savedSelfDisplayName ?? identity.displayName;
       const initialLanguage = profileLanguage(identity.preferredLanguage);
       const copy = PROFILE_COPY[initialLanguage];
       const profile = element('form', 'scd-card scd-stack') as HTMLFormElement;
@@ -4075,7 +4222,7 @@ export class DuelProductFoundation {
       const nameField = element('div', 'scd-profile-field');
       const nameLabel = element('label', 'scd-label');
       const name = element('input') as HTMLInputElement;
-      name.value = identity.displayName;
+      name.value = effectiveDisplayName;
       name.minLength = 3;
       name.maxLength = 24;
       name.pattern = '[A-Za-z0-9]{3,24}';
@@ -4114,12 +4261,12 @@ export class DuelProductFoundation {
       colorButton.type = 'button';
       const renderColorButton = (): void => this.renderColoredNamePreview(
         colorButton,
-        name.value || identity.displayName,
+        name.value || effectiveDisplayName,
         normalizeDuelNameColorIndex(this.profileColorDraftIndex)
       );
       renderColorButton();
       colorButton.addEventListener('click', () => this.openProfileColorPicker(
-        () => name.value || identity.displayName,
+        () => name.value || effectiveDisplayName,
         () => renderColorButton()
       ));
       colorLabel.append(element('span', '', copy.nameColor), colorButton);
@@ -4171,16 +4318,18 @@ export class DuelProductFoundation {
         this.showProfileEntitlementFeedback = true;
         feedback.hidden = false;
         feedback.textContent = PROFILE_COPY[profileLanguage(language.value)].saving;
-        void this.authClient.updateDuelProfile({
+        const savedProfile = {
           displayName: name.value,
           preferredLanguage: language.value === 'de' ? 'de' : 'en',
           avatarSource: avatarSource.value === 'skribbl' ? 'skribbl' : 'discord',
           skribblAvatar: currentAvatar,
           specialAvatarId: avatarSource.value === 'skribbl' ? (identity.specialAvatarId ?? null) : null,
           nameColorIndex: normalizeDuelNameColorIndex(this.profileColorDraftIndex)
-        }).then(() => {
+        } as const;
+        void this.authClient.updateDuelProfile(savedProfile).then(() => {
           feedback.textContent = `${PROFILE_COPY[profileLanguage(language.value)].saved} · ${entitlementText}`;
           this.gatewayClient.reconnect();
+          this.applySavedProfilePresentation(savedProfile.displayName, savedProfile.nameColorIndex);
         }).catch(error => {
           feedback.hidden = true;
           this.showProfileEntitlementFeedback = false;
@@ -4937,7 +5086,7 @@ export class DuelProductFoundation {
       const confirmed: DuelChatMessage = {
         id: message.messageId,
         side: ownMessage ? 'self' : 'opponent',
-        author: message.authorDisplayName,
+        author: ownMessage ? this.duelDisplayName('self') : message.authorDisplayName,
         message: message.message,
         occurredAt: message.occurredAt,
         nameColorIndex: this.duelNameColorIndex(ownMessage ? 'self' : 'opponent')
@@ -5328,6 +5477,7 @@ export class DuelProductFoundation {
   }
 
   private duelDisplayName(side: DuelPlayerSide): string {
+    if (side === 'self' && this.savedSelfDisplayName) return this.savedSelfDisplayName;
     const localParticipant = this.matchState.participants.find(participant => participant.side === side);
     if (localParticipant) return localParticipant.displayName;
     const selfAccountId = this.gatewayState.identity?.accountId;
@@ -5351,7 +5501,9 @@ export class DuelProductFoundation {
     const selfParticipant = participants.find(item => item.accountId === selfAccountId);
     const opponentParticipant = participants.find(item => item.accountId !== selfAccountId);
     const selfIndex = normalizeDuelNameColorIndex(
-      selfParticipant?.nameColorIndex ?? this.gatewayState.identity?.nameColorIndex
+      this.savedSelfNameColorIndex
+        ?? selfParticipant?.nameColorIndex
+        ?? this.gatewayState.identity?.nameColorIndex
     );
     if (side === 'self') return selfIndex;
     return resolveLocalOpponentColorIndex(
@@ -5448,12 +5600,12 @@ export class DuelProductFoundation {
         0,
         Math.ceil(((this.matchState.countdownEndsAt ?? this.serverNow()) - this.serverNow()) / 1000)
       );
-      score.textContent = `${self?.displayName ?? this.options.getSelfName()} · 0:0 · ${opponent?.displayName ?? 'Opponent'} · ${remaining}s`;
+      score.textContent = `${this.duelDisplayName('self')} · 0:0 · ${opponent?.displayName ?? 'Opponent'} · ${remaining}s`;
       return;
     }
     score.textContent = this.matchState.phase === 'finished'
-      ? `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'} · frozen`
-      : `${self?.displayName ?? this.options.getSelfName()} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`;
+      ? `${this.duelDisplayName('self')} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'} · frozen`
+      : `${this.duelDisplayName('self')} · ${this.matchState.scores.self}:${this.matchState.scores.opponent} · ${opponent?.displayName ?? 'Opponent'}`;
   }
 
   private activateBoardChallenges(
@@ -5656,6 +5808,24 @@ export class DuelProductFoundation {
     this.duelProfileModal = null;
     this.showProfileEntitlementFeedback = false;
     this.profileColorDraftIndex = null;
+    this.settingsStore.update({ panelOpen: false });
+  }
+
+  private closeProductModalsForMatchFound(): void {
+    if (this.introTimer !== null) window.clearTimeout(this.introTimer);
+    this.introTimer = null;
+    this.stopIntroAnimation();
+    this.intro?.remove();
+    this.intro = null;
+    this.profileColorPicker?.remove();
+    this.profileColorPicker = null;
+    this.profileDetailModal?.remove();
+    this.profileDetailModal = null;
+    this.duelProfileModal?.remove();
+    this.duelProfileModal = null;
+    this.showProfileEntitlementFeedback = false;
+    this.profileColorDraftIndex = null;
+    this.duelChatFocusRequested = false;
     this.settingsStore.update({ panelOpen: false });
   }
 

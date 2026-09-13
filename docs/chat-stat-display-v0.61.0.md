@@ -1,5 +1,9 @@
 # Native Chat Stat Display — v0.61.0
 
+> v0.62.0 correction: later Guess deltas are anchored to the First Guesser,
+> Guess Time requires an observed Drawing-start boundary, and WPM uses
+> `var(--COLOR_CHAT_TEXT_GUESSCHAT)`.
+
 ## Scope
 
 v0.61.0 adds two opt-in presentation settings to Skribbl Duels without
@@ -20,8 +24,8 @@ match behavior.
 - `Self Guesses`: the local player's correct Guess shows its absolute elapsed
   time from the beginning of the Drawing turn.
 - `All Guesses`: the first correct Guesser shows the absolute elapsed time;
-  later Guessers show the positive delta from the immediately preceding
-  correct Guess.
+  later Guessers show the positive delta from the First Guesser. No Guess Time
+  is rendered when this client did not observe the Drawing start.
 
 Both settings default to `Disabled` so an existing installation retains its
 current chat presentation.
@@ -34,7 +38,7 @@ current chat presentation.
 - When both values exist, the suffix order is Guess Time followed by WPM:
   `Alpha guessed the word! (5.520s) 183wpm`.
 - Guess Time uses `var(--COLOR_CHAT_TEXT_GUESSED)`.
-- WPM uses the existing `.scd-muted` color.
+- WPM uses `var(--COLOR_CHAT_TEXT_GUESSCHAT)`.
 
 The adapter appends dedicated spans to a newly observed native Skribbl chat
 row. It does not rewrite the native player name or message text. A runtime

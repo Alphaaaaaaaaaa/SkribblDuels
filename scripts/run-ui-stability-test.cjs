@@ -166,7 +166,8 @@ assert(source.includes('.scd-duel-toast.clickable:hover { background:var(--COLOR
 assert(source.includes('.scd-chat-toast > span:not(.close-toast) { display:block;max-width:min(32rem,calc(100vw - 6rem));overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }'), 'Only the Match Chat message span should own ellipsis overflow');
 assert(!source.includes('.scd-chat-toast { width:'), 'Match Chat toast container still receives the message overflow width');
 assert(source.includes('private duelChatDraft =') && source.includes('this.duelChatDraft = input.value'), 'Duel Chat draft does not survive authoritative rerenders');
-assert(source.includes('const restoreFocusedChatInput = previousChatInput !== null') && source.includes('input.focus({ preventScroll: true })'), 'Incoming Match state can still steal Duel Chat focus');
+assert(source.includes('const restoreFocusedChatInput = this.duelChatFocusRequested') && source.includes('input.focus({ preventScroll: true })'), 'Incoming Match state can still steal Duel Chat focus');
+assert(source.includes("if (target.dataset.scdDuelChatInput === 'true') {\n      event.stopImmediatePropagation();"), 'Private Duel Chat keys can still leak to Skribbl while telemetry rerenders the panel');
 assert(source.includes('input.setSelectionRange(previousSelectionStart, previousSelectionEnd)'), 'Incoming Match state does not restore the Duel Chat caret');
 assert(source.includes('evaluateDuelChatSpam(previousSpam, Date.now())'), 'Duel Chat does not mirror the authoritative Skribbl spam score');
 assert(source.includes("element('strong', '', message.message)"), 'Spam detected is not rendered as a bold Duel Chat system line');

@@ -47,6 +47,7 @@
 | v0.61 native chat statistics | Complete | Opt-in trusted WPM and observed-round Guess Time suffixes in native Skribbl chat |
 | v0.62 UI and profile hardening | Complete | Immediate saved-color refresh, isolated private chat focus, stable Profile detail rerenders, queue loader and match-found modal cleanup |
 | v0.63 Typo gate and About/UI metrics | Complete | Typo-only matchmaking, five-page About tutorial, unified `res/` assets, modal scroll containment, WPM reset and lower-is-better P90 Guess Time |
+| v0.64 Typo recovery and Ranked foundation | Complete | Persistent underscore/runtime-marker detection with retry, unavailable-action tooltips, tutorial inactivity handling and deterministic Elo v1 rules/tests |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
@@ -103,6 +104,9 @@
 
 ### 5. Ranked competition and history
 
+- The deterministic v0.64 Elo foundation, eligibility matrix, provisional and
+  season rules are specified and regression-tested without enabling production
+  rating writes. Durable exactly-once persistence remains the next gate.
 - Define rating, provisional, season, Draw, Forfeit and reconnect-timeout rules.
 - Apply each rating update exactly once and add leaderboard plus match history.
 - Prevent repeated-opponent farming and certify every active Challenge in live
@@ -143,6 +147,9 @@ Challenge certification rules are recorded in
 The v0.60 WPM evidence chain and threshold rules are recorded in
 `docs/certified-wpm-challenges-v0.60.0.md`.
 The v0.63 Typo gate, tutorial, resource layout and metric corrections are in
-`docs/ui-tutorial-typo-metrics-v0.63.0.md`. The v0.62 UI behavior and deployment
-boundary are recorded in `docs/ui-polish-v0.62.0.md`; the next prioritized work is in
-`docs/post-v0.62.0-roadmap.md`.
+`docs/ui-tutorial-typo-metrics-v0.63.0.md`. The v0.64 Ranked decisions and
+worked examples are in `docs/ranked-progression-v0.64.0.md`; the proposed
+Advancements, Mini-Games, Skribbl Coins, Pets and Chain Reaction direction is in
+`docs/progression-ecosystem-backlog-v0.64.0.md`. The v0.62 UI behavior and
+deployment boundary are recorded in `docs/ui-polish-v0.62.0.md`; the current
+prioritized work remains in `docs/post-v0.62.0-roadmap.md`.

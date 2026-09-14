@@ -73,6 +73,13 @@ entry has a replayable two-client certificate and version match.
 
 Target: turn Ranked from a format selector into a durable competitive system.
 
+> v0.64.0 foundation: the rating formula, provisional/season behavior, terminal
+> outcome eligibility and repeated-opponent cap are implemented as a pure,
+> deterministic module with worked examples in
+> `docs/ranked-progression-v0.64.0.md`. Production rating writes, public rank
+> surfaces and schema changes remain intentionally disabled until the durable
+> conclusion transaction and the P0 Claim-reconnect failure matrix pass.
+
 1. Decide and document rating algorithm, provisional games, season reset and
    placement behavior with worked examples.
 2. Specify Draw, Forfeit, disconnect timeout, cancellation, Rematch and repeated
@@ -110,6 +117,10 @@ closed beta can be diagnosed without exposing chat, tokens or raw telemetry.
 
 Target: define the long-term progression layer without weakening Duel fairness
 or coupling it directly to skribbl.io implementation details.
+
+The concrete Achievement ladders, evidence classifications, currency-ledger
+rules, Pet/Mini-Game boundaries and the proposed Chain Reaction definition are
+captured in `docs/progression-ecosystem-backlog-v0.64.0.md`.
 
 1. Specify `Advancements` as a separate, versioned progression system. Decide
    which are local, account-wide or server-certified and which Telemetry Event

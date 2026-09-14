@@ -123,6 +123,16 @@ assert.equal(floorLimited.playerBDelta, 0);
 assert.equal(floorLimited.playerANextRating, 1_000);
 assert.equal(floorLimited.playerBNextRating, 0);
 
+const inverseFloorLimited = calculateRankedRating({
+  playerA: { rating: 0, placementGamesRemaining: 0 },
+  playerB: { rating: 1_000, placementGamesRemaining: 0 },
+  outcome: 'player-b-win',
+  ratedPairMatchesInWindow: 0
+});
+assert.equal(inverseFloorLimited.playerADelta, 0);
+assert.equal(Object.is(inverseFloorLimited.playerADelta, -0), false);
+assert.equal(inverseFloorLimited.playerBDelta, 0);
+
 const repeatLimited = calculateRankedRating({
   playerA: { rating: 1_050, placementGamesRemaining: 0 },
   playerB: { rating: 950, placementGamesRemaining: 0 },

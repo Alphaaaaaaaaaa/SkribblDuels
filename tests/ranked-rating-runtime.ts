@@ -110,6 +110,18 @@ const draw = calculateRankedRating({
 });
 assert.equal(draw.playerADelta, 0);
 assert.equal(draw.playerBDelta, 0);
+assert.equal(Object.is(draw.playerBDelta, -0), false);
+
+const floorLimited = calculateRankedRating({
+  playerA: { rating: 1_000, placementGamesRemaining: 0 },
+  playerB: { rating: 0, placementGamesRemaining: 0 },
+  outcome: 'player-a-win',
+  ratedPairMatchesInWindow: 0
+});
+assert.equal(floorLimited.playerADelta, 0);
+assert.equal(floorLimited.playerBDelta, 0);
+assert.equal(floorLimited.playerANextRating, 1_000);
+assert.equal(floorLimited.playerBNextRating, 0);
 
 const repeatLimited = calculateRankedRating({
   playerA: { rating: 1_050, placementGamesRemaining: 0 },

@@ -47,7 +47,7 @@
 | v0.61 native chat statistics | Complete | Opt-in trusted WPM and observed-round Guess Time suffixes in native Skribbl chat |
 | v0.62 UI and profile hardening | Complete | Immediate saved-color refresh, isolated private chat focus, stable Profile detail rerenders, queue loader and match-found modal cleanup |
 | v0.63 Typo gate and About/UI metrics | Complete | Typo-only matchmaking, five-page About tutorial, unified `res/` assets, modal scroll containment, WPM reset and lower-is-better P90 Guess Time |
-| v0.64 Typo recovery and Ranked foundation | Source complete, CI pending | Persistent underscore/runtime-marker detection with retry, unavailable-action tooltips, tutorial inactivity handling and deterministic Elo v1 rules/tests |
+| v0.64 Typo recovery and Ranked foundation | Complete | Persistent underscore/runtime-marker detection with retry, unavailable-action tooltips, tutorial inactivity handling and deterministic Elo v1 rules/tests |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence

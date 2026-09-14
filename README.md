@@ -26,6 +26,8 @@ challenge claims.
   the P0 Claim-reconnect matrix are implemented.
 - Records the proposed Advancements, Skribbl Coins, Pets, Mini-Games and Chain
   Reaction backlog with explicit authority and anti-farming boundaries.
+- Rebuilds the tracked userscript and generated resource registries from the
+  same locked source used by the release verification workflow.
 
 v0.64.0 requires no database migration or new Railway variable. Gateway Contract
 v11 remains compatible; the Ranked module is a non-persistent foundation.

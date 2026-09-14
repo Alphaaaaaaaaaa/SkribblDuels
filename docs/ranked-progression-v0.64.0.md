@@ -32,7 +32,7 @@ population is large enough to justify rating deviation and inactivity models.
 | Win / Draw / Loss score | 1 / 0.5 / 0 |
 | Score margin or match duration multiplier | None |
 | Rating floor | 0 |
-| Rounding | Nearest whole point; a decisive rated result moves at least 1 point |
+| Rounding | Nearest whole point; a decisive result moves at least 1 point unless the loser is already at the 0 floor |
 | Pair farming limit | At most 3 rated conclusions for the same pair in a rolling 24 hours |
 
 For player A:
@@ -43,8 +43,10 @@ deltaA = round(K * (actualA - expectedA))
 deltaB = -deltaA
 ```
 
-Using one shared K-factor preserves a zero-sum result. The Challenge score and
-elapsed time are stored in history but do not alter rating; this avoids
+Using one shared K-factor preserves a zero-sum result. A delta is bounded by
+the losing account's available rating before both sides are applied, so the
+zero floor cannot mint points. The Challenge score and elapsed time are stored
+in history but do not alter rating; this avoids
 incentives to delay a won match or farm extra fields.
 
 ### Worked examples

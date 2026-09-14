@@ -141,6 +141,7 @@ export function calculateRankedRating(
   // absolute floor a decisive result can therefore move zero points rather
   // than minting a point that the losing account did not own.
   playerADelta = Math.max(-playerARating, Math.min(playerBRating, playerADelta));
+  if (playerADelta === 0) playerADelta = 0;
   const playerBDelta = playerADelta === 0 ? 0 : -playerADelta;
 
   return {

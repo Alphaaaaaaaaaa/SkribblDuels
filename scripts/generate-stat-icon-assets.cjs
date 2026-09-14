@@ -2,7 +2,7 @@ const { existsSync, readFileSync, writeFileSync } = require('node:fs');
 const { extname, resolve } = require('node:path');
 
 const root = resolve(__dirname, '..');
-const registry = JSON.parse(readFileSync(resolve(root, 'stat-icons/registry.template.json'), 'utf8'));
+const registry = JSON.parse(readFileSync(resolve(root, 'res/stat-icons/registry.template.json'), 'utf8'));
 const mime = { '.gif': 'image/gif', '.png': 'image/png' };
 const statPaths = Object.fromEntries(registry.stats.map(entry => [entry.statId, entry.assetPath]));
 const utilityPaths = registry.utilities;

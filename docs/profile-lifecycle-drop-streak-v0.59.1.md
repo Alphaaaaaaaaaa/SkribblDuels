@@ -66,7 +66,7 @@ evidence contains all five spawn/claim pairs.
 The existing Typo UI works through `.typo-drop` observation plus the confirmed
 `You caught/cleared the drop` line. The example relay exposes direct spawn,
 miss and claim hooks for a future first-party Typo integration. Missing
-`challenge-icons/drop-streak.gif` remains a visual fallback only.
+`res/challenge-icons/drop-streak.gif` remains a visual fallback only.
 
 No Supabase migration, Railway variable or Gateway Contract bump is required.
 Deploy Gateway v0.59.1 before distributing the userscript.

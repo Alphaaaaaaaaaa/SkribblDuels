@@ -93,6 +93,7 @@ import {
   type HomepageMatchmakingAuthority
 } from './homepageMatchmakingEligibility';
 import { SkribblChatStatDisplay } from './chatStatDisplay';
+import { isTypoRuntimeDetected } from './typoRuntimeDetection';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -170,9 +171,37 @@ interface DuelProfileUiPreferences {
 const DUEL_PROFILE_UI_STORAGE_KEY = 'skribblDuelsProfileUiV1';
 const DUEL_PROFILE_STATUS_MAX_LENGTH = 80;
 
+const ABOUT_TUTORIAL_PAGES = [
+  {
+    assetPath: 'res/about-icons/step1.gif',
+    title: 'Casual Duels',
+    description: 'Casual uses a 3×3 Challenge board. Be the first player to claim five fields.'
+  },
+  {
+    assetPath: 'res/about-icons/step2.gif',
+    title: 'Ranked Duels',
+    description: 'Ranked expands the board to 5×5. Thirteen confirmed claims win the match.'
+  },
+  {
+    assetPath: 'res/about-icons/step3.gif',
+    title: 'Draft the board',
+    description: 'Take turns choosing one of two Challenges. The Gateway selects the final parity field.'
+  },
+  {
+    assetPath: 'res/about-icons/step4.gif',
+    title: 'Claim Challenges',
+    description: 'Play Skribbl normally. Eligible telemetry becomes a claim candidate and the Gateway confirms the field.'
+  },
+  {
+    assetPath: 'res/about-icons/step5.gif',
+    title: 'Win the Duel',
+    description: 'Reach the format target first. The board freezes at the result and the winner animation begins.'
+  }
+] as const;
+
 function normalizeDuelProfileStatusText(value: unknown): string {
   return typeof value === 'string'
-    ? value.replace(/\s+/g, ' ').trim().slice(0, DUEL_PROFILE_STATUS_MAX_LENGTH)
+    ? Array.from(value.replace(/\s+/g, ' ').trim()).slice(0, DUEL_PROFILE_STATUS_MAX_LENGTH).join('')
     : '';
 }
 
@@ -388,6 +417,9 @@ function element<K extends keyof HTMLElementTagNameMap>(
   if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') {
     node.style.pointerEvents = 'auto';
     for (const eventName of ISOLATED_POINTER_EVENTS) {
+      // The modal scroll root must see wheel events so it can either scroll an
+      // internal container or cancel scroll chaining into Skribbl's homepage.
+      if (eventName === 'wheel') continue;
       node.addEventListener(eventName, event => event.stopPropagation());
     }
   }
@@ -658,12 +690,14 @@ class CompletionChatAdapter {
 .scd-modal-overlay { position:fixed;inset:0;z-index:2147483645;background:rgba(0,0,0,.55);animation:scd-modal-opacity .21s ease-in-out; }
 .scd-modal-wrapper { width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px;pointer-events:none;animation:scd-modal-position .21s ease-in-out; }
 .scd-modal-container { width:min(760px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px));display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));backdrop-filter:blur(4px);border-radius:10px;box-shadow:0 0 50px rgba(0,0,0,.15);color:white; }
+html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow:hidden !important;overscroll-behavior:none !important; }
 #skribbl-duels-panel [data-role='body'],.scd-stage-shell,.scd-chat-log { overscroll-behavior:contain; }
-#skribbl-duels-panel ::-webkit-scrollbar,#skribbl-duels-stage ::-webkit-scrollbar,#skribbl-duels-board ::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
-#skribbl-duels-panel ::-webkit-scrollbar-track,#skribbl-duels-stage ::-webkit-scrollbar-track,#skribbl-duels-board ::-webkit-scrollbar-track { border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
-#skribbl-duels-panel ::-webkit-scrollbar-thumb,#skribbl-duels-stage ::-webkit-scrollbar-thumb,#skribbl-duels-board ::-webkit-scrollbar-thumb { min-height:28px;border:0;border-radius:7px;background-color:var(--COLOR_PANEL_HI);background-clip:border-box; }
-#skribbl-duels-panel ::-webkit-scrollbar-button,#skribbl-duels-stage ::-webkit-scrollbar-button,#skribbl-duels-board ::-webkit-scrollbar-button { display:none;width:0;height:0; }
-#skribbl-duels-panel *,#skribbl-duels-stage *,#skribbl-duels-board * { scrollbar-color:var(--COLOR_PANEL_HI) var(--COLOR_PANEL_LO);scrollbar-width:auto; }
+[data-scd-runtime-id]::-webkit-scrollbar,[data-scd-runtime-id] ::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO) !important; }
+[data-scd-runtime-id]::-webkit-scrollbar-track,[data-scd-runtime-id] ::-webkit-scrollbar-track { border-radius:7px;background-color:var(--COLOR_PANEL_LO) !important; }
+[data-scd-runtime-id]::-webkit-scrollbar-thumb,[data-scd-runtime-id] ::-webkit-scrollbar-thumb { min-height:28px;border:0;border-radius:7px;background-color:var(--COLOR_PANEL_HI) !important;background-clip:border-box; }
+[data-scd-runtime-id]::-webkit-scrollbar-thumb:hover,[data-scd-runtime-id] ::-webkit-scrollbar-thumb:hover,[data-scd-runtime-id]::-webkit-scrollbar-thumb:focus,[data-scd-runtime-id] ::-webkit-scrollbar-thumb:focus,[data-scd-runtime-id]::-webkit-scrollbar-thumb:active,[data-scd-runtime-id] ::-webkit-scrollbar-thumb:active { background-color:var(--COLOR_PANEL_HI) !important; }
+[data-scd-runtime-id]::-webkit-scrollbar-button,[data-scd-runtime-id] ::-webkit-scrollbar-button { display:none;width:0;height:0; }
+[data-scd-runtime-id],[data-scd-runtime-id] * { scrollbar-color:var(--COLOR_PANEL_HI) var(--COLOR_PANEL_LO);scrollbar-width:auto; }
 .scd-modal-header { display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:10px;padding:8px 10px 4px; }
 .scd-modal-title { font-size:1.8em;font-weight:700;text-align:center;white-space:nowrap; }
 .scd-modal-account { min-width:0;display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:4px;background:var(--SCD_ACCENT);color:white;font:inherit;font-size:11px;text-align:left;pointer-events:auto;cursor:pointer;transition:background-color 80ms; }
@@ -773,11 +807,11 @@ class CompletionChatAdapter {
 .scd-queue-waiting .scd-queue-other { grid-area:queue-other; }
 .scd-queue-waiting .scd-queue-last { grid-area:queue-last; }
 .scd-queue-waiting .scd-queue-leave { grid-area:leave;justify-self:stretch; }
-.scd-queue-loader { grid-area:load;width:48px;aspect-ratio:1/1;justify-self:end;align-self:center;background-image:url('/img/load.gif');background-position:center;background-repeat:no-repeat;background-size:contain;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-queue-load-rotate .8s ease-in-out infinite; }
+.scd-queue-loader { grid-area:load;width:48px;aspect-ratio:1/1;justify-self:end;align-self:center;background-image:url('/img/load.gif');background-position:center;background-repeat:no-repeat;background-size:contain;animation:scd-queue-load-rotate .8s ease-in-out infinite; }
 .scd-label { display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,45%);align-items:center;gap:10px;color:white; }
 .scd-label input[type='range'] { flex:1; }
 .scd-auth-profile { display:flex;align-items:center;gap:10px;min-width:0; }
-.scd-auth-avatar { width:42px;height:42px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.1);flex:none; }
+.scd-auth-avatar { width:42px;height:42px;border-radius:50%;object-fit:cover;background:transparent;flex:none; }
 .scd-auth-copy { min-width:0;flex:1; }
 .scd-auth-name { font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-auth-email { color:rgba(255,255,255,.58);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
@@ -822,9 +856,12 @@ class CompletionChatAdapter {
 .scd-profile-status-button-icon { padding:6px; }
 .scd-profile-status-button-icon .scd-icon { width:34px;height:34px;flex:none; }
 .scd-profile-status-reset { min-width:44px;min-height:48px;padding:6px;display:grid;place-items:center; }
+.scd-button.danger.scd-profile-status-reset,.scd-button.danger.scd-profile-status-reset:hover:not(:disabled),.scd-button.danger.scd-profile-status-reset:active:not(:disabled) { background:transparent; }
 .scd-profile-status-reset .scd-icon { width:30px;height:30px;flex:none; }
 .scd-profile-status-editor { display:flex;flex-direction:column;gap:10px; }
 .scd-profile-status-editor input { width:100%;box-sizing:border-box; }
+.scd-profile-status-input-shell { position:relative;min-width:0;display:flex; }
+.scd-profile-status-input-shell input { padding-right:3em; }
 .scd-profile-status-editor-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
 .scd-profile-status-save { background:#53e237; }
 .scd-profile-status-save:hover:not(:disabled) { background:#38c41c; }
@@ -847,9 +884,13 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-profile-detail-modal { width:min(900px,calc(100vw - 24px)); }
 .scd-profile-detail-body { min-height:0;overflow:auto;padding:12px; }
 .scd-profile-choice-grid { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px; }
-.scd-profile-choice { min-height:74px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.065);text-align:left; }
+.scd-profile-choice { min-height:74px;display:flex;align-items:center;gap:8px;background:var(--SCD_ACCENT);text-align:left; }
+.scd-profile-choice:hover:not(:disabled) { background:var(--SCD_ACCENT_HOVER); }
+.scd-profile-choice:active:not(:disabled) { background:var(--SCD_ACCENT_ACTIVE); }
 .scd-profile-choice .scd-icon { width:38px;height:38px;flex:none; }
-.scd-profile-choice.selected { outline:2px solid var(--SCD_ACCENT);outline-offset:-2px; }
+.scd-profile-choice.selected { outline:0;background:#53e237; }
+.scd-profile-choice.selected:hover:not(:disabled) { background:#38c41c; }
+.scd-profile-choice.selected:active:not(:disabled) { background:#30aa19; }
 .scd-profile-all-stats { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px; }
 .scd-profile-coverage-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px; }
 .scd-profile-coverage-card { min-height:72px;padding:9px;text-align:left;font-size:inherit;transition:background-color 80ms,transform .1s ease-in-out; }
@@ -864,6 +905,28 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-profile-word-sort:hover { color:#fff; }
 .scd-profile-word-sort-indicator { min-width:1ch;opacity:.75; }
 .scd-profile-section-title { display:block;margin:14px 0 7px; }
+.scd-about-layout { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch; }
+.scd-about-copy { min-width:0;display:flex;flex-direction:column;gap:10px; }
+.scd-about-copy .scd-card p { margin:.55em 0 0; }
+.scd-about-tutorial { position:relative;min-width:0;display:flex;flex-direction:column;align-items:center;overflow:hidden; }
+.scd-about-tutorial-heading { position:relative;width:100%;min-height:36px;display:flex;align-items:center;justify-content:center;padding:0 42px;text-align:center; }
+.scd-about-tutorial-logo { position:absolute;left:0;top:50%;width:32px;height:32px;transform:translateY(-50%); }
+.scd-about-pages { width:100%;min-height:340px;display:grid; }
+.scd-about-page { display:none;grid-area:1/1;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;text-align:center; }
+.scd-about-page.active { display:flex; }
+.scd-about-page-visual { width:min(100%,300px);aspect-ratio:5/4;image-rendering:pixelated;animation:scd-about-image-introduce .3s ease-in-out 1; }
+.scd-about-page-title { font-size:1.08em; }
+.scd-about-page-description { width:100%;min-height:3.2em; }
+.scd-about-navigation { width:100%;height:25px; }
+.scd-about-dots { width:100%;height:100%;display:flex;justify-content:center; }
+.scd-about-dot { height:100%;width:auto;aspect-ratio:1;display:flex;justify-content:center;align-items:center;border:0;padding:0;background:transparent;opacity:.3;transition:opacity .1s ease-in-out;cursor:pointer; }
+.scd-about-dot:hover,.scd-about-dot.active { background:transparent;opacity:1; }
+.scd-about-dot-inner { width:44%;height:44%;background:#fff;border-radius:999px;box-shadow:0 0 3px rgba(0,0,0,.6); }
+.scd-about-dot.active .scd-about-dot-inner { width:57%;height:57%; }
+.scd-about-contact { grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;text-align:left; }
+.scd-about-contact .scd-icon { width:32px;height:32px;flex:none; }
+.scd-about-contact-copy { display:flex;flex-direction:column;gap:2px; }
+@keyframes scd-about-image-introduce { from { transform:translateY(-40px);opacity:0; } to { transform:translateY(0);opacity:1; } }
 .scd-volume-group .scd-volume-title { position:relative;display:flex;align-items:center;font-size:1.3em;font-weight:700;margin-bottom:.1em; }
 .scd-volume-group .scd-volume-icon { display:inline-block;width:1.4em;height:1.4em;margin-right:.5ch;background-image:url('/img/audio.gif');background-size:contain;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)); }
 .scd-volume-group .scd-volume-icon.muted { background-image:url('/img/audio_off.gif'); }
@@ -984,9 +1047,11 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
   .scd-profile-stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .scd-profile-choice-grid,.scd-profile-all-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .scd-profile-coverage-grid { grid-template-columns:minmax(0,1fr); }
+  .scd-about-layout { grid-template-columns:minmax(0,1fr); }
+  .scd-about-contact { grid-column:auto; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-player,.scd-duel-toast,.scd-queue-loader { animation:none !important; }
+  .scd-intro-logo,.scd-countdown-phase,.scd-field.drafted,.scd-final-slot-name,.scd-win-animation,.scd-win-player,.scd-duel-toast,.scd-queue-loader,.scd-about-page-visual { animation:none !important; }
 }
 `;
     (document.head ?? document.documentElement).appendChild(style);
@@ -1208,6 +1273,8 @@ export class DuelProductFoundation {
   private mountGuard: number | null = null;
   private draftSlotTimer: number | null = null;
   private introTimer: number | null = null;
+  private aboutTutorialTimer: number | null = null;
+  private aboutTutorialPageIndex = 0;
   private introAnimationFrame: number | null = null;
   private countdownAnimationFrame: number | null = null;
   private countdownVisualEndsAt = 0;
@@ -1274,6 +1341,8 @@ export class DuelProductFoundation {
   private pendingInviteToken: string | null = new URLSearchParams(window.location.search).get('scd-invite');
   private inviteAcceptanceSubmitted = false;
   private inviteAuthPrompted = false;
+  private inviteTypoNoticeShown = false;
+  private typoDetected = false;
   private copiedInviteId: string | null = null;
   private destroyed = false;
 
@@ -1292,6 +1361,7 @@ export class DuelProductFoundation {
     this.awaitingTelemetryResumeCursor = persisted?.state.phase === 'running'
       && persisted.state.matchId !== null;
     this.lastTelemetryEvent = options.getLastTelemetryEvent();
+    this.typoDetected = this.isTypoDetected();
     this.homepageMatchmakingAuthority = createHomepageMatchmakingAuthority(
       this.isHomepageDomVisible(),
       options.getLobbyAuthoritySnapshot()
@@ -1464,13 +1534,14 @@ export class DuelProductFoundation {
     this.mountGuard = window.setInterval(() => {
       this.removeForeignRuntimeDom();
       this.ensureMounted();
+      this.reconcileTypoDetection();
       this.ensureTypoCommandPreview();
       this.tickGatewayClock();
       if (this.matchState.phase === 'countdown') this.updateBoardScore();
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.62.0',
+      version: '0.63.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1489,15 +1560,24 @@ export class DuelProductFoundation {
         reconnect: () => this.gatewayClient.reconnect(),
         joinMatchmaking: format => this.beginMatchmaking(format),
         leaveMatchmaking: () => this.cancelMatchmaking(),
-        createInvite: format => this.gatewayClient.createInvite(format),
-        acceptInvite: token => this.gatewayClient.acceptInvite(token),
+        createInvite: format => {
+          if (!this.isMatchmakingAvailable()) throw new Error(this.matchmakingUnavailableMessage());
+          return this.gatewayClient.createInvite(format);
+        },
+        acceptInvite: token => {
+          if (!this.isMatchmakingAvailable()) throw new Error(this.matchmakingUnavailableMessage());
+          return this.gatewayClient.acceptInvite(token);
+        },
         cancelInvite: inviteId => this.gatewayClient.cancelInvite(inviteId),
         setReady: (matchId, ready) => this.gatewayClient.setReady(matchId, ready),
         pickDraftChallenge: (matchId, challengeId, clientRevision) =>
           this.gatewayClient.pickDraftChallenge(matchId, challengeId, clientRevision),
         sendDuelChat: (matchId, message) => this.gatewayClient.sendDuelChat(matchId, message),
         forfeitMatch: matchId => this.gatewayClient.forfeitMatch(matchId),
-        requestRematch: matchId => this.gatewayClient.requestRematch(matchId),
+        requestRematch: matchId => {
+          if (!this.isMatchmakingAvailable()) throw new Error(this.matchmakingUnavailableMessage());
+          return this.gatewayClient.requestRematch(matchId);
+        },
         proposeDraw: matchId => this.gatewayClient.proposeDraw(matchId),
         respondToDraw: (matchId, proposalId, accept) =>
           this.gatewayClient.respondToDraw(matchId, proposalId, accept),
@@ -1593,6 +1673,7 @@ export class DuelProductFoundation {
     this.introTimer = null;
     if (this.winAnimationTimer !== null) window.clearTimeout(this.winAnimationTimer);
     this.winAnimationTimer = null;
+    this.stopAboutTutorial();
     this.clearReadySubmission();
     this.clearCancellationSubmission();
     this.stopIntroAnimation();
@@ -1612,9 +1693,10 @@ export class DuelProductFoundation {
     this.profileColorPicker = null;
     this.profileDetailModal = null;
     this.duelProfileModal = null;
+    this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.62.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.63.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1689,7 +1771,7 @@ export class DuelProductFoundation {
     button.dataset.scdRuntimeId = this.options.runtimeId;
     button.type = 'button';
     button.append(
-      this.createIconAsset('challenge-icons/skribbl-duels-logo.gif', 'SD', 'Skribbl Duels logo'),
+      this.createIconAsset('res/challenge-icons/skribbl-duels-logo.gif', 'SD', 'Skribbl Duels logo'),
       element('span', '', 'Skribbl Duels')
     );
     button.addEventListener('click', () => this.openWithIntroduction());
@@ -1701,7 +1783,7 @@ export class DuelProductFoundation {
     launcher.id = 'skribbl-duels-launcher';
     launcher.dataset.scdRuntimeId = this.options.runtimeId;
     launcher.type = 'button';
-    const icon = this.createIconAsset('challenge-icons/skribbl-duels-logo.gif', 'SD', 'Skribbl Duels');
+    const icon = this.createIconAsset('res/challenge-icons/skribbl-duels-logo.gif', 'SD', 'Skribbl Duels');
     launcher.appendChild(icon);
     launcher.addEventListener('click', () => this.handleLauncherClick());
     this.tooltips.register(launcher, 'Open Skribbl Duels', 'X');
@@ -1729,12 +1811,12 @@ export class DuelProductFoundation {
     const actions = element('div', 'scd-modal-actions');
     const settings = element('button', 'scd-icon-button') as HTMLButtonElement;
     settings.type = 'button';
-    settings.appendChild(this.createIconAsset('challenge-icons/settings.gif', '⚙', 'Settings'));
+    settings.appendChild(this.createIconAsset('res/challenge-icons/settings.gif', '⚙', 'Settings'));
     settings.addEventListener('click', () => this.openPanel('settings'));
     this.tooltips.register(settings, 'Settings', 'Y');
     const about = element('button', 'scd-icon-button') as HTMLButtonElement;
     about.type = 'button';
-    about.appendChild(this.createIconAsset('challenge-icons/about.gif', '?', 'About'));
+    about.appendChild(this.createIconAsset('res/challenge-icons/about.gif', '?', 'About'));
     about.addEventListener('click', () => this.openPanel('about'));
     this.tooltips.register(about, 'About and help', 'Y');
     const close = element('button', 'scd-icon-button scd-modal-close', '×') as HTMLButtonElement;
@@ -1930,7 +2012,7 @@ export class DuelProductFoundation {
     const wrapper = element('div', 'scd-modal-wrapper');
     const card = element('div', 'scd-intro-card');
     const logo = this.createIconAsset(
-      'challenge-icons/skribbl-duels-logo.gif',
+      'res/challenge-icons/skribbl-duels-logo.gif',
       'SD',
       'Skribbl Duels'
     );
@@ -1940,6 +2022,7 @@ export class DuelProductFoundation {
     intro.appendChild(wrapper);
     (document.body ?? document.documentElement).appendChild(intro);
     this.intro = intro;
+    this.syncPageScrollLock();
     this.startIntroAnimation(card);
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = window.setTimeout(() => {
@@ -2055,6 +2138,35 @@ export class DuelProductFoundation {
       this.board.style.display = this.settings.board.visible && hasMatchBoard && !stagePhase
         ? 'block'
         : 'none';
+    }
+    this.syncPageScrollLock();
+  }
+
+  private syncPageScrollLock(): void {
+    const isVisible = (node: HTMLElement | null): boolean => Boolean(
+      node?.isConnected && node.style.display !== 'none'
+    );
+    const locked = isVisible(this.panel)
+      || isVisible(this.stage)
+      || isVisible(this.intro)
+      || isVisible(this.profileColorPicker)
+      || isVisible(this.duelProfileModal)
+      || isVisible(this.profileDetailModal);
+    for (const node of [document.documentElement, document.body]) {
+      if (!node) continue;
+      if (locked) {
+        node.dataset.scdScrollLockRuntime = this.options.runtimeId;
+      } else if (node.dataset.scdScrollLockRuntime === this.options.runtimeId) {
+        delete node.dataset.scdScrollLockRuntime;
+      }
+    }
+  }
+
+  private releasePageScrollLock(): void {
+    for (const node of [document.documentElement, document.body]) {
+      if (node?.dataset.scdScrollLockRuntime === this.options.runtimeId) {
+        delete node.dataset.scdScrollLockRuntime;
+      }
     }
   }
 
@@ -2280,7 +2392,7 @@ export class DuelProductFoundation {
     const ready = element('button', 'scd-button primary scd-ready-action') as HTMLButtonElement;
     ready.type = 'button';
     ready.append(
-      this.createIconAsset('challenge-icons/checkmark.gif', '✓', 'Ready'),
+      this.createIconAsset('res/challenge-icons/checkmark.gif', '✓', 'Ready'),
       element('span', '', self?.ready ? 'Ready' : accepting ? 'Accepting…' : 'Ready')
     );
     ready.disabled = Boolean(self?.ready) || accepting || cancelling;
@@ -2289,7 +2401,7 @@ export class DuelProductFoundation {
     const cancel = element('button', 'scd-button danger scd-ready-action') as HTMLButtonElement;
     cancel.type = 'button';
     cancel.append(
-      this.createIconAsset('challenge-icons/crossmark.gif', '×', 'Cancel'),
+      this.createIconAsset('res/challenge-icons/crossmark.gif', '×', 'Cancel'),
       element('span', '', cancelling ? 'Cancelling…' : 'Cancel')
     );
     cancel.disabled = cancelling;
@@ -2312,7 +2424,7 @@ export class DuelProductFoundation {
     const status = element('div', 'scd-ready-state');
     status.append(
       this.createIconAsset(
-        ready ? 'challenge-icons/checkmark.gif' : 'challenge-icons/crossmark.gif',
+        ready ? 'res/challenge-icons/checkmark.gif' : 'res/challenge-icons/crossmark.gif',
         ready ? '✓' : '×',
         ready ? 'Ready' : 'Not ready'
       ),
@@ -2487,11 +2599,11 @@ export class DuelProductFoundation {
           const phaseNode = element('div', `scd-countdown-phase${phase === 'GO' ? ' go' : ''}`);
           const assetPaths = phase === 'GO'
             ? [
-              'challenge-icons/countdown_G.gif',
-              'challenge-icons/countdown_O.gif',
-              'challenge-icons/countdown_ExclamationMark.gif'
+              'res/challenge-icons/countdown_G.gif',
+              'res/challenge-icons/countdown_O.gif',
+              'res/challenge-icons/countdown_ExclamationMark.gif'
             ]
-            : [`challenge-icons/countdown_${phase}.gif`];
+            : [`res/challenge-icons/countdown_${phase}.gif`];
           assetPaths.forEach((assetPath, index) => phaseNode.appendChild(this.createIconAsset(
             assetPath,
             phase === 'GO' ? ['G', 'O', '!'][index]! : phase,
@@ -2592,6 +2704,7 @@ export class DuelProductFoundation {
 
   private renderPanel(): void {
     if (!this.panel || !this.panelBody) return;
+    this.stopAboutTutorial();
     const previousScrollTop = this.panelBody.scrollTop;
     const previousChatLog = this.panelBody.querySelector<HTMLElement>('[data-scd-chat-log="true"]');
     const previousChatInput = this.panelBody.querySelector<HTMLInputElement>(
@@ -2839,10 +2952,28 @@ export class DuelProductFoundation {
       input.maxLength = DUEL_PROFILE_STATUS_MAX_LENGTH;
       input.placeholder = 'Working...';
       input.value = this.profileUiPreferences.statusText;
+      const inputShell = element('span', 'scd-profile-status-input-shell');
+      const characterCount = element(
+        'span',
+        'scd-chat-characters',
+        String(Array.from(input.value).length)
+      );
+      const updateCharacterCount = (): void => {
+        const codePoints = Array.from(input.value);
+        if (codePoints.length > DUEL_PROFILE_STATUS_MAX_LENGTH) {
+          input.value = codePoints.slice(0, DUEL_PROFILE_STATUS_MAX_LENGTH).join('');
+        }
+        const length = Array.from(input.value).length;
+        characterCount.textContent = String(length);
+        characterCount.classList.toggle('visible', length > 0);
+      };
+      input.addEventListener('input', updateCharacterCount);
+      inputShell.append(input, characterCount);
       label.append(
-        input,
+        inputShell,
         element('span', 'scd-muted', `${DUEL_PROFILE_STATUS_MAX_LENGTH} characters maximum`)
       );
+      updateCharacterCount();
 
       const actions = element('div', 'scd-profile-status-editor-actions');
       const cancel = element('button', 'scd-button danger', 'Cancel') as HTMLButtonElement;
@@ -3287,13 +3418,16 @@ export class DuelProductFoundation {
     const heading = element('strong', '', 'Homepage matchmaking');
     card.appendChild(heading);
     const homepage = this.isHomepageVisible();
+    const typoDetected = this.isTypoDetected();
     const gatewayMatch = this.gatewayState.match;
     const queue = this.gatewayState.queue;
     const invite = this.gatewayState.invite;
     const connected = this.gatewayState.status === 'connected';
     const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 
-    if (!homepage) {
+    if (!typoDetected) {
+      card.appendChild(element('div', 'scd-muted', 'Matchmaking is available only while the Typo loader is active. Enable Typo and reload Skribbl first.'));
+    } else if (!homepage) {
       card.appendChild(element('div', 'scd-muted', 'Matchmaking requires the visible Skribbl homepage and Telemetry confirming that no lobby is active.'));
     }
     if (this.matchmakingError) card.appendChild(element('div', 'scd-auth-error', this.matchmakingError));
@@ -3420,6 +3554,8 @@ export class DuelProductFoundation {
       return card;
     }
 
+    if (!typoDetected) return card;
+
     const row = element('div', 'scd-queue-row');
     const casual = element('button', 'scd-queue-button scd-queue-casual', 'Casual 3×3') as HTMLButtonElement;
     const ranked = element('button', 'scd-queue-button scd-queue-ranked', 'Ranked 5×5') as HTMLButtonElement;
@@ -3440,9 +3576,9 @@ export class DuelProductFoundation {
     this.tooltips.register(inviteButton, 'Create a single-use link for a real authenticated opponent');
     row.append(casual, ranked, inviteButton);
     card.appendChild(row);
-    card.appendChild(element('div', 'scd-muted', connected
-      ? 'The current Gateway test can supply a simulated queued opponent; the browser never invents the opponent itself.'
-      : 'Connect the authenticated Gateway before entering matchmaking.'));
+    if (!connected) {
+      card.appendChild(element('div', 'scd-muted', 'Connect the authenticated Gateway before entering matchmaking.'));
+    }
     return card;
   }
 
@@ -3674,7 +3810,7 @@ export class DuelProductFoundation {
       visual.append(avatar, element('span', 'scd-result-trophy'));
     } else {
       visual.appendChild(this.createIconAsset(
-        'challenge-icons/skribbl-duels-logo.gif',
+        'res/challenge-icons/skribbl-duels-logo.gif',
         'SD',
         'Agreed Draw'
       ));
@@ -3707,9 +3843,9 @@ export class DuelProductFoundation {
     });
     const newMatch = element('button', 'scd-button primary scd-result-new', 'New Match') as HTMLButtonElement;
     newMatch.type = 'button';
-    const homepageAvailable = this.isHomepageVisible();
+    const homepageAvailable = this.isMatchmakingAvailable();
     newMatch.disabled = !this.matchState.format || !homepageAvailable || this.gatewayState.status !== 'connected';
-    if (!homepageAvailable) newMatch.title = 'Leave the active Skribbl lobby and return to the homepage first.';
+    if (!homepageAvailable) newMatch.title = this.matchmakingUnavailableMessage();
     newMatch.addEventListener('click', () => {
       const format = this.matchState.format;
       if (format) this.beginMatchmaking(format);
@@ -3729,10 +3865,10 @@ export class DuelProductFoundation {
       || ownRematchReady
       || !homepageAvailable
       || this.gatewayState.status !== 'connected';
-    if (!homepageAvailable) rematch.title = 'Leave the active Skribbl lobby and return to the homepage first.';
+    if (!homepageAvailable) rematch.title = this.matchmakingUnavailableMessage();
     if (ownRematchReady) rematch.textContent = 'Rematch requested';
     rematch.addEventListener('click', () => {
-      if (!gatewayMatch || !this.isHomepageVisible()) return;
+      if (!gatewayMatch || !this.isMatchmakingAvailable()) return;
       this.runMatchAction(() => this.gatewayClient.requestRematch(gatewayMatch.matchId), rematch);
     });
     actions.append(returnButton, newMatch);
@@ -3813,11 +3949,11 @@ export class DuelProductFoundation {
       const accept = element('button', 'scd-button scd-chat-rematch-accept', 'Rematch') as HTMLButtonElement;
       accept.type = 'button';
       const snapshot = this.gatewayState.match;
-      const homepageAvailable = this.isHomepageVisible();
+      const homepageAvailable = this.isMatchmakingAvailable();
       accept.disabled = !snapshot || !homepageAvailable || this.gatewayState.status !== 'connected';
-      if (!homepageAvailable) accept.title = 'Leave the active Skribbl lobby and return to the homepage first.';
+      if (!homepageAvailable) accept.title = this.matchmakingUnavailableMessage();
       accept.addEventListener('click', () => {
-        if (!snapshot || !this.isHomepageVisible()) return;
+        if (!snapshot || !this.isMatchmakingAvailable()) return;
         this.runMatchAction(() => this.gatewayClient.requestRematch(snapshot.matchId), accept);
       });
       request.append(row, accept);
@@ -4603,32 +4739,129 @@ export class DuelProductFoundation {
 
   private renderAboutTab(): void {
     if (!this.panelBody) return;
-    const stack = element('div', 'scd-stack');
+    const layout = element('div', 'scd-about-layout');
+    const copy = element('div', 'scd-about-copy');
     const rules = element('div', 'scd-card');
     rules.append(
-      element('strong', '', 'How Skribbl Duels works'),
+      element('strong', '', 'Duel formats'),
       element('p', 'scd-muted', 'Casual uses a 3×3 board; the first player to claim five challenges wins. Ranked uses a 5×5 board and requires thirteen claims.'),
       element('p', 'scd-muted', 'Both players draft the board from two choices at a time. The Gateway selects the final parity field and starts one synchronized ten-second countdown.')
     );
-    const authentication = element('div', 'scd-card');
-    authentication.append(
-      element('strong', '', `Authentication v${AUTH_CLIENT_VERSION}`),
+    const connection = element('div', 'scd-card');
+    connection.append(
+      element('strong', '', `Authentication v${AUTH_CLIENT_VERSION} · Gateway Contract v${GATEWAY_CONTRACT_VERSION}`),
       element('p', 'scd-muted', this.authState.status === 'signed-in'
         ? `Signed in as ${this.authState.profile?.displayName ?? 'Discord user'}. The access token is supplied only to the authenticated Socket.IO handshake.`
-        : 'Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway.')
+        : 'Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway.'),
+      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`)
     );
     const freeze = element('div', 'scd-card');
     freeze.append(
       element('strong', '', 'What match freeze means'),
       element('p', 'scd-muted', 'The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw.')
     );
-    const gateway = element('div', 'scd-card');
-    gateway.append(
-      element('strong', '', `Gateway Contract v${GATEWAY_CONTRACT_VERSION}`),
-      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`)
+    copy.append(rules, connection, freeze);
+
+    const tutorial = element('section', 'scd-card scd-about-tutorial');
+    tutorial.setAttribute('aria-label', 'How Skribbl Duels works tutorial');
+    const tutorialHeading = element('div', 'scd-about-tutorial-heading');
+    const tutorialLogo = this.createIconAsset(
+      'res/challenge-icons/skribbl-duels-logo.gif',
+      'SD',
+      'Skribbl Duels logo'
     );
-    stack.append(rules, authentication, freeze, gateway);
-    this.panelBody.appendChild(stack);
+    tutorialLogo.classList.add('scd-about-tutorial-logo');
+    tutorialHeading.append(tutorialLogo, element('strong', '', 'How Skribbl Duels works'));
+    const pages = element('div', 'scd-about-pages');
+    pages.setAttribute('aria-live', 'polite');
+    const pageNodes = ABOUT_TUTORIAL_PAGES.map((page, index) => {
+      const node = element('div', 'scd-about-page');
+      node.dataset.scdTutorialPage = String(index);
+      const visual = this.createIconAsset(page.assetPath, String(index + 1), page.title);
+      visual.classList.add('scd-about-page-visual');
+      node.append(
+        visual,
+        element('strong', 'scd-about-page-title', page.title),
+        element('div', 'scd-muted scd-about-page-description', page.description)
+      );
+      pages.appendChild(node);
+      return node;
+    });
+    const navigation = element('div', 'scd-about-navigation');
+    const dots = element('div', 'scd-about-dots');
+    dots.setAttribute('role', 'tablist');
+    const dotNodes = ABOUT_TUTORIAL_PAGES.map((page, index) => {
+      const dot = element('button', 'scd-about-dot') as HTMLButtonElement;
+      dot.type = 'button';
+      dot.setAttribute('role', 'tab');
+      dot.setAttribute('aria-label', `Show tutorial page ${index + 1}: ${page.title}`);
+      dot.appendChild(element('span', 'scd-about-dot-inner'));
+      dots.appendChild(dot);
+      return dot;
+    });
+    navigation.appendChild(dots);
+
+    const selectPage = (index: number, restartTimer: boolean): void => {
+      const pageIndex = (index + ABOUT_TUTORIAL_PAGES.length) % ABOUT_TUTORIAL_PAGES.length;
+      this.aboutTutorialPageIndex = pageIndex;
+      pageNodes.forEach((page, itemIndex) => {
+        const active = itemIndex === pageIndex;
+        page.classList.toggle('active', active);
+        page.setAttribute('aria-hidden', String(!active));
+      });
+      dotNodes.forEach((dot, itemIndex) => {
+        const active = itemIndex === pageIndex;
+        dot.classList.toggle('active', active);
+        dot.setAttribute('aria-selected', String(active));
+        dot.tabIndex = active ? 0 : -1;
+      });
+      if (restartTimer) startAutoAdvance();
+    };
+    const startAutoAdvance = (): void => {
+      this.stopAboutTutorial();
+      this.aboutTutorialTimer = window.setInterval(() => {
+        if (!tutorial.isConnected) {
+          this.stopAboutTutorial();
+          return;
+        }
+        selectPage(this.aboutTutorialPageIndex + 1, false);
+      }, 3_500);
+    };
+    dotNodes.forEach((dot, index) => {
+      dot.addEventListener('click', () => selectPage(index, true));
+    });
+    let lastWheelAt = 0;
+    tutorial.addEventListener('wheel', event => {
+      if (Math.abs(event.deltaY) < 4) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const now = performance.now();
+      if (now - lastWheelAt < 250) return;
+      lastWheelAt = now;
+      selectPage(this.aboutTutorialPageIndex + Math.sign(event.deltaY), true);
+    }, { passive: false });
+    selectPage(this.aboutTutorialPageIndex, false);
+    startAutoAdvance();
+    tutorial.append(tutorialHeading, pages, navigation);
+
+    const contact = element('div', 'scd-card scd-about-contact');
+    contact.append(
+      this.createIconAsset('res/about-icons/contact.gif', '@', 'Contact'),
+      element('div', 'scd-about-contact-copy')
+    );
+    const contactCopy = contact.querySelector<HTMLElement>('.scd-about-contact-copy');
+    contactCopy?.append(
+      element('strong', '', 'Contact'),
+      element('span', 'scd-muted', 'Discord: analphabetism#0')
+    );
+
+    layout.append(copy, tutorial, contact);
+    this.panelBody.appendChild(layout);
+  }
+
+  private stopAboutTutorial(): void {
+    if (this.aboutTutorialTimer !== null) window.clearInterval(this.aboutTutorialTimer);
+    this.aboutTutorialTimer = null;
   }
 
   private checkbox(labelText: string, checked: boolean, onChange: (checked: boolean) => void): HTMLLabelElement {
@@ -4722,8 +4955,39 @@ export class DuelProductFoundation {
       && isHomepageTelemetryEligible(this.homepageMatchmakingAuthority);
   }
 
+  private isTypoDetected(): boolean {
+    return isTypoRuntimeDetected(document.body?.dataset);
+  }
+
+  private isMatchmakingAvailable(): boolean {
+    return this.isTypoDetected() && this.isHomepageVisible();
+  }
+
+  private matchmakingUnavailableMessage(): string {
+    return this.isTypoDetected()
+      ? 'Leave the active Skribbl lobby and return to the confirmed homepage first.'
+      : 'Enable Typo and reload Skribbl before using matchmaking.';
+  }
+
+  private reconcileTypoDetection(): void {
+    const detected = this.isTypoDetected();
+    if (detected === this.typoDetected) return;
+    this.typoDetected = detected;
+    this.inviteTypoNoticeShown = false;
+    if (this.settings.panelOpen) this.renderPanel();
+    if (detected) {
+      this.handleInviteAuthenticationState();
+      this.handleInviteGatewayState(this.gatewayState, this.gatewayState);
+    }
+  }
+
   private beginMatchmaking(format: 'casual' | 'ranked'): string {
     this.matchmakingError = null;
+    if (!this.isTypoDetected()) {
+      this.matchmakingError = 'Matchmaking requires the active Typo loader. Enable Typo and reload Skribbl first.';
+      this.renderPanel();
+      throw new Error(this.matchmakingError);
+    }
     if (!this.isHomepageVisible()) {
       this.matchmakingError = 'Matchmaking requires the visible Skribbl homepage and a confirmed lobby-exit Telemetry state.';
       this.renderPanel();
@@ -4744,6 +5008,10 @@ export class DuelProductFoundation {
 
   private async beginInviteCreation(): Promise<void> {
     this.matchmakingError = null;
+    if (!this.isTypoDetected()) {
+      this.showSimpleToast('Typo required', 'Enable Typo and reload Skribbl before creating a Duel invite.');
+      return;
+    }
     if (!this.isHomepageVisible()) {
       this.showSimpleToast('Invite unavailable', 'Return to the visible Skribbl homepage first.');
       return;
@@ -4807,6 +5075,15 @@ export class DuelProductFoundation {
     }
     if (state.status === 'connected'
         && this.pendingInviteToken
+        && !this.isTypoDetected()) {
+      if (!this.inviteTypoNoticeShown) {
+        this.inviteTypoNoticeShown = true;
+        this.showSimpleToast('Typo required', 'Enable Typo and reload Skribbl before accepting this Duel invite.', 6_000);
+      }
+      return;
+    }
+    if (state.status === 'connected'
+        && this.pendingInviteToken
         && !this.inviteAcceptanceSubmitted
         && !state.match) {
       this.inviteAcceptanceSubmitted = true;
@@ -4821,8 +5098,15 @@ export class DuelProductFoundation {
   }
 
   private handleInviteAuthenticationState(): void {
-    if (!this.pendingInviteToken
-        || this.authState.status === 'initializing'
+    if (!this.pendingInviteToken) return;
+    if (!this.isTypoDetected()) {
+      if (!this.inviteTypoNoticeShown) {
+        this.inviteTypoNoticeShown = true;
+        this.showSimpleToast('Typo required', 'Enable Typo and reload Skribbl before accepting this Duel invite.', 6_000);
+      }
+      return;
+    }
+    if (this.authState.status === 'initializing'
         || this.authState.status === 'signed-in'
         || this.inviteAuthPrompted) return;
     this.inviteAuthPrompted = true;
@@ -5800,6 +6084,7 @@ export class DuelProductFoundation {
   }
 
   private closePanel(): void {
+    this.stopAboutTutorial();
     this.profileColorPicker?.remove();
     this.profileColorPicker = null;
     this.profileDetailModal?.remove();
@@ -5812,6 +6097,7 @@ export class DuelProductFoundation {
   }
 
   private closeProductModalsForMatchFound(): void {
+    this.stopAboutTutorial();
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = null;
     this.stopIntroAnimation();

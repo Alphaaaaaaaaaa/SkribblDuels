@@ -76,14 +76,14 @@ Expected optional files are:
 
 | Effect | Registry path |
 | --- | --- |
-| Join queue | `sound-effects/join-queue.ogg` — embedded |
-| Leave queue | `sound-effects/leave-queue.ogg` — embedded |
-| Countdown tick | `sound-effects/countdown.ogg` — embedded |
-| Challenge completion | `sound-effects/challenge-completion.ogg` — missing/silent |
-| Match Chat ping | `sound-effects/match-chat.ogg` — missing/silent |
-| Match found | `sound-effects/match-found.ogg` — embedded |
-| Intro | `sound-effects/intro.ogg` — missing/silent |
-| Match win | `sound-effects/match-win.ogg` — missing/silent |
+| Join queue | `res/sound-effects/join-queue.ogg` — embedded |
+| Leave queue | `res/sound-effects/leave-queue.ogg` — embedded |
+| Countdown tick | `res/sound-effects/countdown.ogg` — embedded |
+| Challenge completion | `res/sound-effects/challenge-completion.ogg` — missing/silent |
+| Match Chat ping | `res/sound-effects/match-chat.ogg` — missing/silent |
+| Match found | `res/sound-effects/match-found.ogg` — embedded |
+| Intro | `res/sound-effects/intro.ogg` — missing/silent |
+| Match win | `res/sound-effects/match-win.ogg` — missing/silent |
 
 `.ogg`, `.mp3` and `.wav` are accepted by the generator. A missing file stays
 a silent no-op.

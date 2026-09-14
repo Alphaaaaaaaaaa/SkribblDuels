@@ -1,9 +1,35 @@
-# Skribbl Duels v0.62.0
+# Skribbl Duels v0.63.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.63.0
+
+- Makes Homepage matchmaking, Invite creation/acceptance, New Match and
+  Rematch available only when the official Typo body marker is present. The
+  detector follows Typo's loader-owned `data-typo_loader`/`data-typo_loaded`
+  contract instead of guessing from optional UI elements.
+- Rebuilds About and Help as a responsive two-column surface. Its right half
+  contains a five-page Skribbl-style tutorial with automatic 3.5-second
+  progression, dots and mouse-wheel navigation; Contact currently exposes
+  `Discord: analphabetism#0` with the supplied icon.
+- Consolidates Challenge, About, sound and statistic artwork below `res/`,
+  embeds every supplied file and adds the uploaded Drop Streak icon.
+- Prevents Hub controls from leaking wheel events to the homepage, contains
+  every modal scroll surface and standardizes all product scrollbars at 14 px
+  with fixed Skribbl panel colors.
+- Refines Profile UI colors, transparent authentication/status-reset
+  backgrounds and adds the live Unicode-aware status character counter.
+- Resets trusted WPM timing as soon as a full-selection deletion begins, so
+  Ctrl+A, Backspace and immediate retyping cannot retain the old attempt.
+- Corrects lower-is-better P90 Guess Time to the fastest-decile threshold
+  (the 90th performance percentile) rather than the slowest tail.
+
+v0.63.0 is a userscript, local-statistics and resource-layout release. Gateway
+Contract v11, the deployed Gateway, Supabase migrations and Railway variables
+remain compatible and unchanged.
 
 ## v0.62.0
 
@@ -19,7 +45,7 @@ challenge claims.
   focus/caret through authoritative telemetry rerenders, preventing text from
   leaking into Skribbl controls.
 - Refines the local Profile status editor, adds an ellipsis-only full-status
-  tooltip and a one-click icon/text reset. The `stat-icons/trash.gif` utility
+  tooltip and a one-click icon/text reset. The `res/stat-icons/trash.gif` utility
   path is reserved and falls back to a text trash glyph when the asset is not
   present in the source tree.
 - Adds a reduced-motion-aware Skribbl loading animation to the queue card and
@@ -135,7 +161,7 @@ unchanged; no migration or new environment variable is required.
   fail closed on missing boundaries and skip explicit drawer-left turns.
   Ranked eligibility remains closed until live two-client certification.
 - Marks the user-certified Transcended definition Ranked-eligible and embeds
-  its supplied `challenge-icons/transcended.gif` artwork from GitHub.
+  its supplied `res/challenge-icons/transcended.gif` artwork from GitHub.
 
 Deploy the v0.59.0 Gateway first, verify `/readyz`, then update the userscript.
 Gateway Contract v11 and the existing Supabase/Railway configuration remain
@@ -205,7 +231,7 @@ v11 is required on both sides; no new Railway variable is required.
   `/sdchat`, `/msg` and `/chat`, including Typo's command input.
 - Removes the development redirect copy and the Discord `email` OAuth scope.
 - Gives all then-47 Challenges unique future-proof icon paths; Transcended reserves
-  `challenge-icons/transcended.gif` and uses the normal fallback until supplied.
+  `res/challenge-icons/transcended.gif` and uses the normal fallback until supplied.
 
 Deploy the v0.56.0 Gateway first, verify `/readyz`, then install or update the
 v0.56.0 userscript. Gateway Contract v10 remains compatible; no Supabase
@@ -529,7 +555,7 @@ required for v0.49.1.
 - Adds 300-code-point input counting, submit auto-scroll, a top fade for scrolled
   chat, Skribbl-style scrollbars and optional Typo-compatible chat toasts.
 
-Gateway Contract is now v11. Existing v0.62.0 profiles and Match data need no
+Gateway Contract is now v11. Existing v0.62.0/v0.63.0 profiles and Match data need no
 new database migration.
 
 ## Install the userscript
@@ -566,7 +592,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/ui-polish-v0.62.0.md`,
+See `docs/ui-tutorial-typo-metrics-v0.63.0.md`,
+`docs/ui-polish-v0.62.0.md`,
 `docs/post-v0.62.0-roadmap.md`,
 `docs/chat-stat-display-v0.61.0.md`,
 `docs/certified-wpm-challenges-v0.60.0.md`,

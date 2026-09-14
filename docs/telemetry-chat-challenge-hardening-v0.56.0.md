@@ -29,11 +29,11 @@ homepage/lobby authority state and explicit Typo `leftLobby` confirmation.
   player has a positive score strictly above every active opponent. A zero,
   tie, transient per-player score update or any observed local First Guesser
   disqualifies that result.
-- Transcended owns the reserved `challenge-icons/transcended.gif` path. Missing
+- Transcended owns the reserved `res/challenge-icons/transcended.gif` path. Missing
   Challenge artwork is legal at build time and uses the initial-letter fallback;
   required UI/countdown artwork remains fail-fast.
 
-Every Challenge registry entry now owns `challenge-icons/<challenge-id>.gif`
+Every Challenge registry entry now owns `res/challenge-icons/<challenge-id>.gif`
 or `.png`. This is the required convention for future pool additions.
 
 ## TL;DR v2 offline prose detector

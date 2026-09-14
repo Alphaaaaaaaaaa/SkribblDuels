@@ -4,18 +4,16 @@
 It contains all 53 stable challenge IDs, their planned file paths and the
 metadata icon keys already present in the challenge definitions.
 
-Every Challenge owns a unique direct path. `transcended`,
-`ate-and-left-no-crumbs` and `guessingoat` have supplied artwork. Challenge 50,
-`drop-streak`, reserves its individual path and uses the normal fallback until
-its artwork arrives. Challenges 51–53 reserve `internet-explorer.gif`,
-`wpmaster.gif` and `type-racer.gif`; each also uses the normal fallback until
-its artwork is supplied.
+Every Challenge owns a unique direct path. All 53 current Challenge files,
+including `drop-streak`, `internet-explorer`, `wpmaster` and `type-racer`, are
+supplied and embedded. The fallback remains available for future Challenge
+entries whose artwork has not arrived yet.
 
 ## Adding artwork
 
 1. Export each asset as a transparent animated GIF, preferably 40x40 pixels.
 2. Use the exact `assetPath` from the registry. New Challenges must reserve
-   `challenge-icons/<challenge-id>.gif` (or `.png`) when their definition is
+   `res/challenge-icons/<challenge-id>.gif` (or `.png`) when their definition is
    added, even if the artwork will arrive later.
 3. Do not rename a `challengeId`. Saved boards and Gateway snapshots use it as
    the permanent identifier.

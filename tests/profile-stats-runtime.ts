@@ -14,17 +14,17 @@ import {
 
 const registry = JSON.parse(await readFile(resolve(
   process.cwd(),
-  'stat-icons/registry.template.json'
+  'res/stat-icons/registry.template.json'
 ), 'utf8')) as {
   utilities: { pin: string; trash: string };
   stats: Array<{ statId: string; assetPath: string }>;
 };
-assert.equal(registry.utilities.pin, 'stat-icons/pin.gif');
-assert.equal(registry.utilities.trash, 'stat-icons/trash.gif');
+assert.equal(registry.utilities.pin, 'res/stat-icons/pin.gif');
+assert.equal(registry.utilities.trash, 'res/stat-icons/trash.gif');
 assert.equal(STAT_UTILITY_ICON_ASSET_PATHS.trash, registry.utilities.trash);
 assert.equal(
   registry.stats.find(entry => entry.statId === 'drawing-reactions')?.assetPath,
-  'stat-icons/drawing-reactions.png',
+  'res/stat-icons/drawing-reactions.png',
   'Drawing reactions must use the supplied PNG asset rather than a missing GIF path.'
 );
 assert.deepEqual(
@@ -41,7 +41,7 @@ assert.equal(
   'Every supplied statistic and utility icon must be embedded; reserved utility paths may use their UI fallback until uploaded.'
 );
 assert.match(
-  EMBEDDED_STAT_ICON_ASSETS['stat-icons/drawing-reactions.png'] ?? '',
+  EMBEDDED_STAT_ICON_ASSETS['res/stat-icons/drawing-reactions.png'] ?? '',
   /^data:image\/png;base64,/,
   'Drawing reactions must retain its supplied PNG MIME type in the bundle.'
 );

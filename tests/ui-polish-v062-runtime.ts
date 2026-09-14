@@ -2,15 +2,10 @@ import * as assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { ateAndLeftNoCrumbsDefinition } from '@skribbl-duels/challenge-definitions';
-import { GATEWAY_CLIENT_VERSION } from '@skribbl-duels/gateway-client';
 
 const source = await readFile(resolve(
   process.cwd(),
   'apps/telemetry-inspector/src/duelProductUi.ts'
-), 'utf8');
-const userscriptSource = await readFile(resolve(
-  process.cwd(),
-  'apps/telemetry-inspector/src/userscript.ts'
 ), 'utf8');
 
 assert.match(
@@ -44,7 +39,7 @@ assert.match(
   'The status tooltip must contain only the complete status value.'
 );
 
-const inputAppendIndex = source.indexOf("label.append(\n        input,\n        element('span', 'scd-muted', `${DUEL_PROFILE_STATUS_MAX_LENGTH} characters maximum`)\n      );");
+const inputAppendIndex = source.indexOf("label.append(\n        inputShell,\n        element('span', 'scd-muted', `${DUEL_PROFILE_STATUS_MAX_LENGTH} characters maximum`)\n      );");
 assert.notEqual(inputAppendIndex, -1, 'The status limit must render below the input in the same label.');
 assert.doesNotMatch(source, /Status text · \$\{DUEL_PROFILE_STATUS_MAX_LENGTH\}/);
 assert.match(source, /element\('button', 'scd-button danger', 'Cancel'\)/);
@@ -78,7 +73,5 @@ assert.match(source, /author: ownMessage \? this\.duelDisplayName\('self'\) : me
 
 assert.equal(ateAndLeftNoCrumbsDefinition.version, 3);
 assert.equal(ateAndLeftNoCrumbsDefinition.metadata.rankedEligible, true);
-assert.equal(GATEWAY_CLIENT_VERSION, '0.62.0');
-assert.match(userscriptSource, /const BUILD_VERSION = '0\.62\.0';/);
 
-console.log('v0.62.0 UI polish, profile refresh, queue and Ranked eligibility tests passed.');
+console.log('v0.62.0 baseline UI polish, profile refresh, queue and Ranked eligibility tests passed.');

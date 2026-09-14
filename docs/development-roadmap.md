@@ -46,6 +46,7 @@
 | v0.60 certified WPM Challenge expansion | Replay-certified | Internet Explorer, WPMaster and TypeRacer use correlated anti-paste timing/submit/correct evidence and expand Casual to 53 |
 | v0.61 native chat statistics | Complete | Opt-in trusted WPM and observed-round Guess Time suffixes in native Skribbl chat |
 | v0.62 UI and profile hardening | Complete | Immediate saved-color refresh, isolated private chat focus, stable Profile detail rerenders, queue loader and match-found modal cleanup |
+| v0.63 Typo gate and About/UI metrics | Complete | Typo-only matchmaking, five-page About tutorial, unified `res/` assets, modal scroll containment, WPM reset and lower-is-better P90 Guess Time |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
@@ -80,7 +81,7 @@
   replay-certified reducers. Ate is live-certified and Ranked-enabled in
   v0.62.0; the other five remain Casual-only.
 
-### 4. Local statistics presentation and WPM rules — delivered through v0.62.0
+### 4. Local statistics presentation and WPM rules — delivered through v0.63.0
 
 - The Profile UI, two configurable pinned slots, occurrence ranking, coverage,
   rolling Median/P90, improvement trends, Drawing effectiveness and streaks
@@ -97,6 +98,8 @@
   later deltas to the First Guesser and moves WPM to the Guess-chat color.
 - v0.62.0 also stabilizes Profile coverage/sorting rerenders, private-chat
   focus, saved profile-color propagation and queue/match-found presentation.
+- v0.63.0 resets WPM attempts at full-selection deletion and defines P90 Guess
+  Time as the fastest-decile threshold for the lower-is-better duration metric.
 
 ### 5. Ranked competition and history
 
@@ -139,6 +142,7 @@ Challenge certification rules are recorded in
 `docs/duel-profile-stats-sfx-challenges-v0.59.0.md`.
 The v0.60 WPM evidence chain and threshold rules are recorded in
 `docs/certified-wpm-challenges-v0.60.0.md`.
-The v0.62 UI behavior and deployment boundary are recorded in
-`docs/ui-polish-v0.62.0.md`; the next prioritized work is in
+The v0.63 Typo gate, tutorial, resource layout and metric corrections are in
+`docs/ui-tutorial-typo-metrics-v0.63.0.md`. The v0.62 UI behavior and deployment
+boundary are recorded in `docs/ui-polish-v0.62.0.md`; the next prioritized work is in
 `docs/post-v0.62.0-roadmap.md`.

@@ -23,7 +23,7 @@ names, portrait surfaces, individual Ready states and the authoritative
 available; other portraits fall back to initials until the profile/avatar
 migration supplies server-owned identities.
 
-`challenge-icons/checkmark.gif` and `challenge-icons/crossmark.gif` are reserved
+`res/challenge-icons/checkmark.gif` and `res/challenge-icons/crossmark.gif` are reserved
 for Ready, not-ready and cancel states. Text glyphs remain functional fallbacks
 while artwork is absent. All icon surfaces scale to `1.1` on hover.
 

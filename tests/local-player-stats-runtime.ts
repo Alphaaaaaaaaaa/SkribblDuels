@@ -428,6 +428,11 @@ for (let index = 0; index < 40; index += 1) {
 const trendSnapshot = trendStats.getSnapshot();
 assert.equal(trendSnapshot.typing.medianWpm, 90);
 assert.equal(trendSnapshot.typing.p90Wpm, 120);
+assert.equal(
+  trendSnapshot.guessing.p90GuessTimeMs,
+  5_000,
+  'P90 Guess Time must select the fastest-decile threshold for a lower-is-better metric.'
+);
 assert.equal(trendSnapshot.typing.improvementTrendPercent, 100);
 assert.equal(trendSnapshot.guessing.wpmImprovementTrendPercent, 100);
 assert.equal(trendSnapshot.guessing.timeImprovementTrendPercent, 50);

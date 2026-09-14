@@ -58,8 +58,8 @@ auto-Claim path without trusting a browser-created Claim result.
 - Gateway app: `0.7.4`
 - Gateway Contract: unchanged at v11
 - Telemetry Contract: unchanged; v0.60.0 consumes existing events
-- Icon paths: `challenge-icons/internet-explorer.gif`,
-  `challenge-icons/wpmaster.gif`, and `challenge-icons/type-racer.gif`
+- Icon paths: `res/challenge-icons/internet-explorer.gif`,
+  `res/challenge-icons/wpmaster.gif`, and `res/challenge-icons/type-racer.gif`
 
 The icon files are optional. Until supplied, the UI uses its established
 Challenge fallback. No Supabase migration, Railway variable or OAuth change is

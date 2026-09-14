@@ -2,7 +2,7 @@ const { existsSync, readFileSync, writeFileSync } = require('node:fs');
 const { resolve, extname } = require('node:path');
 
 const root = resolve(__dirname, '..');
-const registryPath = resolve(root, 'sound-effects/registry.template.json');
+const registryPath = resolve(root, 'res/sound-effects/registry.template.json');
 const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
 const entries = Object.entries(registry.sounds ?? {});
 const supported = {
@@ -19,7 +19,7 @@ for (const [soundId, assetPath] of entries) {
   if (typeof soundId !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(soundId)) {
     throw new Error(`Invalid sound registry id: ${String(soundId)}`);
   }
-  if (typeof assetPath !== 'string' || !assetPath.startsWith('sound-effects/')) {
+  if (typeof assetPath !== 'string' || !assetPath.startsWith('res/sound-effects/')) {
     throw new Error(`Invalid sound asset path for ${soundId}: ${String(assetPath)}`);
   }
   const mediaType = supported[extname(assetPath).toLowerCase()];

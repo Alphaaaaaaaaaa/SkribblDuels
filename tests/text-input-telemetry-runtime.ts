@@ -4,6 +4,7 @@ import {
   completeTextInputAttempt,
   countTypingCharacters,
   createTextInputAttempt,
+  shouldResetTextInputAttemptBeforeInput,
   updateTextInputAttempt
 } from '@skribbl-duels/telemetry-core';
 
@@ -32,5 +33,21 @@ const replacement = updateTextInputAttempt(
 );
 assert.equal(replacement.autofillDetected, true);
 assert.equal(replacement.trustedInput, false);
+
+assert.equal(
+  shouldResetTextInputAttemptBeforeInput('already typed', 0, 13, 'deleteContentBackward'),
+  true,
+  'Ctrl+A followed by Backspace must reset the attempt before the next character arrives.'
+);
+assert.equal(
+  shouldResetTextInputAttemptBeforeInput('already typed', 2, 13, 'deleteContentBackward'),
+  false,
+  'Partial corrections must remain part of the active attempt.'
+);
+assert.equal(
+  shouldResetTextInputAttemptBeforeInput('already typed', 0, 13, 'insertText'),
+  false,
+  'Selecting all and replacing text is still one edited attempt unless a deletion actually occurs.'
+);
 
 console.log('Local text-input telemetry helpers test passed.');

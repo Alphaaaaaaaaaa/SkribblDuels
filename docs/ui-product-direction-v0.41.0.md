@@ -82,14 +82,14 @@ snapshot is shown to the opponent on the Versus screen after matchmaking.
 - Tooltips wrap at no more than 50 characters per line.
 
 Challenge icons use an immutable registry keyed by challenge ID, for example
-`challenge-icons/<challenge-id>.gif` plus a generated manifest containing
+`res/challenge-icons/<challenge-id>.gif` plus a generated manifest containing
 content hashes and dimensions. The release build should embed small GIF
 assets as data URLs in the userscript or publish hash-addressed files from a
 versioned repository release. Imgur links are suitable as design references,
 not as runtime dependencies for competitive UI.
 
 The initial complete path template is stored at
-`challenge-icons/registry.template.json`. It also reserves logo, Settings,
+`res/challenge-icons/registry.template.json`. It also reserves logo, Settings,
 About and `5, 4, 3, 2, 1, G, O, !` countdown GIF paths.
 
 ## Safe implementation order

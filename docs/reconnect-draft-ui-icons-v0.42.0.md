@@ -71,7 +71,7 @@ hydration or round event. Claimed challenges remain immutable.
 
 ## GIF asset registry
 
-`challenge-icons/registry.template.json` contains:
+`res/challenge-icons/registry.template.json` contains:
 
 - all 46 stable challenge IDs;
 - one planned `.gif` path per challenge;

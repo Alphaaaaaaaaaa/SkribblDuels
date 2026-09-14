@@ -800,7 +800,9 @@ export class LocalPlayerStatsService {
         bestGuessWpm: this.summary.bestGuessWpm,
         averageGuessTimeMs: average(this.summary.totalGuessTimeMs, this.summary.guessTimeSamples),
         medianGuessTimeMs: percentile(this.summary.guessTimeDistributionMs, .5),
-        p90GuessTimeMs: percentile(this.summary.guessTimeDistributionMs, .9),
+        // Guess time is lower-is-better. P90 therefore reports the threshold
+        // reached by the fastest 10% (the 90th performance percentile).
+        p90GuessTimeMs: percentile(this.summary.guessTimeDistributionMs, .1),
         bestGuessTimeMs: this.summary.bestGuessTimeMs,
         wpmImprovementTrendPercent: improvementTrend(this.summary.guessWpmDistribution),
         timeImprovementTrendPercent: improvementTrend(this.summary.guessTimeDistributionMs, true)

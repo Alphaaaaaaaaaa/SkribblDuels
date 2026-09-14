@@ -67,6 +67,18 @@ export function updateTextInputAttempt(
   };
 }
 
+export function shouldResetTextInputAttemptBeforeInput(
+  value: string,
+  selectionStart: number | null,
+  selectionEnd: number | null,
+  inputType: string
+): boolean {
+  return value.length > 0
+    && inputType.startsWith('delete')
+    && selectionStart === 0
+    && selectionEnd === value.length;
+}
+
 export function completeTextInputAttempt(
   state: TextInputAttemptState,
   message: string,
@@ -101,6 +113,7 @@ export interface TextInputTelemetryAdapterOptions {
  */
 export class TextInputTelemetryAdapter {
   private readonly attempts = new WeakMap<HTMLInputElement, TextInputAttemptState>();
+  private readonly resetBeforeNextInput = new WeakSet<HTMLInputElement>();
   private started = false;
   private composingInput: HTMLInputElement | null = null;
   private lastEmission: { message: string; occurredAt: number } | null = null;
@@ -121,6 +134,7 @@ export class TextInputTelemetryAdapter {
   public start(): void {
     if (this.started) return;
     this.started = true;
+    document.addEventListener('beforeinput', this.onBeforeInput, true);
     document.addEventListener('input', this.onInput, true);
     document.addEventListener('paste', this.onPaste, true);
     document.addEventListener('compositionstart', this.onCompositionStart, true);
@@ -131,6 +145,7 @@ export class TextInputTelemetryAdapter {
   public stop(): void {
     if (!this.started) return;
     this.started = false;
+    document.removeEventListener('beforeinput', this.onBeforeInput, true);
     document.removeEventListener('input', this.onInput, true);
     document.removeEventListener('paste', this.onPaste, true);
     document.removeEventListener('compositionstart', this.onCompositionStart, true);
@@ -139,16 +154,31 @@ export class TextInputTelemetryAdapter {
     this.composingInput = null;
   }
 
+  private readonly onBeforeInput = (event: Event): void => {
+    const input = this.chatInput(event.target);
+    if (!input || !(event instanceof InputEvent)) return;
+    if (shouldResetTextInputAttemptBeforeInput(
+      input.value,
+      input.selectionStart,
+      input.selectionEnd,
+      event.inputType
+    )) {
+      this.resetBeforeNextInput.add(input);
+    }
+  };
+
   private readonly onInput = (event: Event): void => {
     const input = this.chatInput(event.target);
     if (!input) return;
     const value = input.value;
     if (value.length === 0) {
       this.attempts.delete(input);
+      this.resetBeforeNextInput.delete(input);
       return;
     }
     const inputType = event instanceof InputEvent ? event.inputType : '';
-    const existing = this.attempts.get(input);
+    const resetAttempt = this.resetBeforeNextInput.delete(input);
+    const existing = resetAttempt ? undefined : this.attempts.get(input);
     const next = existing
       ? updateTextInputAttempt(existing, value, inputType, event.isTrusted)
       : createTextInputAttempt(value, this.now(), this.monotonicNow(), event.isTrusted);

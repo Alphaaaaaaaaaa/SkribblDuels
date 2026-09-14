@@ -2,7 +2,7 @@ const { existsSync, readFileSync, writeFileSync } = require('node:fs');
 const { resolve, extname } = require('node:path');
 
 const root = resolve(__dirname, '..');
-const registry = JSON.parse(readFileSync(resolve(root, 'challenge-icons/registry.template.json'), 'utf8'));
+const registry = JSON.parse(readFileSync(resolve(root, 'res/challenge-icons/registry.template.json'), 'utf8'));
 const paths = new Set([
   ...Object.values(registry.ui),
   ...Object.values(registry.countdown),

@@ -24,8 +24,8 @@ assert(!source.includes("if (this.activeTab === 'duel' && (gatewayPhase"), 'the 
 assert(source.includes("this.tooltips.register(node, challengeTooltip(this.manifest, field.challengeId))"), 'active board fields do not expose challenge definitions');
 assert(source.includes("stage.id = 'skribbl-duels-stage'"), 'standalone match-start stage is missing');
 assert(source.includes('this.renderVersusStage(match)'), 'ready check is not rendered as a Versus stage');
-assert(source.includes("'challenge-icons/checkmark.gif'"), 'ready checkmark asset slot is missing');
-assert(source.includes("'challenge-icons/crossmark.gif'"), 'not-ready/cancel crossmark asset slot is missing');
+assert(source.includes("'res/challenge-icons/checkmark.gif'"), 'ready checkmark asset slot is missing');
+assert(source.includes("'res/challenge-icons/crossmark.gif'"), 'not-ready/cancel crossmark asset slot is missing');
 assert(source.includes('this.renderDraftStage(match)'), 'draft is not rendered in the standalone stage');
 assert(source.includes("background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG))"), 'draft controls do not use the panel background');
 assert(!source.includes('board fields filled · server revision'), 'draft still exposes board counts or server revision');
@@ -63,7 +63,7 @@ assert(source.includes("node.addEventListener(eventName, event => event.stopProp
 assert(source.includes('isolatePointerRoot(modal);'), 'the complete Hub surface does not isolate pointer events from Skribbl');
 assert(source.includes('.scd-profile-field input { min-width:0;max-width:100%; }'), 'Duel display-name input can still overflow its container');
 assert(source.includes('filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25))'), 'animated icons do not use the 135-degree Skribbl drop shadow');
-assert(source.includes("'challenge-icons/countdown_ExclamationMark.gif'"), 'GO countdown asset sequence is missing');
+assert(source.includes("'res/challenge-icons/countdown_ExclamationMark.gif'"), 'GO countdown asset sequence is missing');
 assert(source.includes('@keyframes scd-countdown-drop'), 'countdown drop animation is missing');
 assert(source.includes("backgroundPosition = `${-(index % 10) * 100}% ${-Math.floor(index / 10) * 100}%`"), 'Skribbl sprite-sheet positions are missing');
 assert(source.includes("'https://skribbl.io/img/avatar/special_atlas.gif'"), 'Skribbl special atlas is missing');
@@ -128,7 +128,7 @@ assert(source.includes('.scd-versus-avatar { width:min(88px,15vw)'), 'Versus ava
 assert(source.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(70px,.5fr)'), 'Invite button does not use the compact third queue column');
 assert(source.includes('.scd-invite-button { min-height:54px') && source.includes('font-size:1.45em; }'), 'Invite button font size does not match the other matchmaking buttons');
 assert(source.includes("inviteIcon.src = '/img/link.svg'"), 'Skribbl-style invite link icon is missing');
-assert(viteConfig.includes("icon: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/challenge-icons/skribbl-duels-logo.gif'"), 'Tampermonkey metadata icon is missing');
+assert(viteConfig.includes("icon: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif'"), 'Tampermonkey metadata icon is missing');
 assert(viteConfig.includes("updateURL: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js'"), 'Tampermonkey stable update URL is missing');
 assert(viteConfig.includes("downloadURL: 'https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/userscript/skribbl-duels-telemetry-inspector.user.js'"), 'Tampermonkey stable download URL is missing');
 assert(source.includes("const info = element('div', 'scd-invite-info')"), 'Invite metadata is not grouped into one responsive row');

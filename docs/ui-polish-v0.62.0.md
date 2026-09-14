@@ -23,7 +23,7 @@ server-authoritative Ranked pool now admits `Ate and left no crumbs` v3.
   unmodified complete status and contains no label or icon description.
 - The status text limit sits below the input. Cancel uses the shared danger
   palette. The reset control clears both local status fields and uses the
-  reserved `stat-icons/trash.gif` asset or the visible `🗑` fallback.
+  reserved `res/stat-icons/trash.gif` asset or the visible `🗑` fallback.
 
 ## Chat and timing
 

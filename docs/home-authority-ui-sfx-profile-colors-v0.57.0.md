@@ -35,7 +35,7 @@ and `#typo-command-input`. A compatible command result is injected into Typo's
 
 ## Optional SFX registry
 
-`sound-effects/registry.template.json` owns all paths. `.ogg`, `.mp3` and `.wav`
+`res/sound-effects/registry.template.json` owns all paths. `.ogg`, `.mp3` and `.wav`
 are accepted. Build-time registry syntax, path and extension errors fail the
 build; an intentionally absent audio file is omitted from the generated assets
 and playback becomes a silent no-op.

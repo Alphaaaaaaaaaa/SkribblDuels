@@ -175,27 +175,27 @@ const ABOUT_TUTORIAL_PAGES = [
   {
     assetPath: 'res/about-icons/step1.gif',
     title: 'Casual Duels',
-    description: 'Casual uses a 3×3 Challenge board. Be the first player to claim five fields.'
+    description: 'Casual uses a 3×3 challenge board. Be the first player to claim five challenges.'
   },
   {
     assetPath: 'res/about-icons/step2.gif',
     title: 'Ranked Duels',
-    description: 'Ranked expands the board to 5×5. Thirteen confirmed claims win the match.'
+    description: 'Ranked uses a 5×5 challenge board. Be the first player to claim thirteen challenges.'
   },
   {
     assetPath: 'res/about-icons/step3.gif',
     title: 'Draft the board',
-    description: 'Take turns choosing one of two Challenges. The Gateway selects the final parity field.'
+    description: 'Take turns choosing one of two challenges. The last challenge is chosen at random.'
   },
   {
     assetPath: 'res/about-icons/step4.gif',
     title: 'Claim Challenges',
-    description: 'Play Skribbl normally. Eligible telemetry becomes a claim candidate and the Gateway confirms the field.'
+    description: 'Play skribbl.io and complete challenges as quickly as possible.'
   },
   {
     assetPath: 'res/about-icons/step5.gif',
     title: 'Win the Duel',
-    description: 'Reach the format target first. The board freezes at the result and the winner animation begins.'
+    description: 'Complete the target amount of challenges and win the match!'
   }
 ] as const;
 
@@ -908,7 +908,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-about-layout { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch; }
 .scd-about-copy { min-width:0;display:flex;flex-direction:column;gap:10px; }
 .scd-about-copy .scd-card p { margin:.55em 0 0; }
-.scd-about-tutorial { position:relative;min-width:0;display:flex;flex-direction:column;align-items:center;overflow:hidden; }
+.scd-about-tutorial { position:relative;min-width:0;max-height:450px;display:flex;flex-direction:column;align-items:center;overflow:hidden; }
 .scd-about-tutorial-heading { position:relative;width:100%;min-height:36px;display:flex;align-items:center;justify-content:center;padding:0 42px;text-align:center; }
 .scd-about-tutorial-logo { position:absolute;left:0;top:50%;width:32px;height:32px;transform:translateY(-50%); }
 .scd-about-pages { width:100%;min-height:340px;display:grid; }
@@ -926,6 +926,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-about-contact { grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;text-align:left; }
 .scd-about-contact .scd-icon { width:32px;height:32px;flex:none; }
 .scd-about-contact-copy { display:flex;flex-direction:column;gap:2px; }
+.scd-unavailable-action { opacity:.55;cursor:not-allowed !important; }
 @keyframes scd-about-image-introduce { from { transform:translateY(-40px);opacity:0; } to { transform:translateY(0);opacity:1; } }
 .scd-volume-group .scd-volume-title { position:relative;display:flex;align-items:center;font-size:1.3em;font-weight:700;margin-bottom:.1em; }
 .scd-volume-group .scd-volume-icon { display:inline-block;width:1.4em;height:1.4em;margin-right:.5ch;background-image:url('/img/audio.gif');background-size:contain;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)); }
@@ -1271,9 +1272,11 @@ export class DuelProductFoundation {
   private profileWordSortDirection: NonNullable<LocalWordStatsQuery['direction']> = 'descending';
   private showProfileEntitlementFeedback = false;
   private mountGuard: number | null = null;
+  private typoDetectionTimer: number | null = null;
   private draftSlotTimer: number | null = null;
   private introTimer: number | null = null;
   private aboutTutorialTimer: number | null = null;
+  private aboutTutorialResumeTimer: number | null = null;
   private aboutTutorialPageIndex = 0;
   private introAnimationFrame: number | null = null;
   private countdownAnimationFrame: number | null = null;
@@ -1336,6 +1339,7 @@ export class DuelProductFoundation {
     queueMicrotask(() => this.ensureTypoCommandPreview());
   };
   private readonly visibilityRecovery = () => this.reconcileAfterVisibilityRecovery();
+  private readonly typoInitialized = () => this.reconcileTypoDetection();
   private pendingRestoredMatchId: string | null;
   private readonly suppressExternalConclusionForMatchIds = new Set<string>();
   private pendingInviteToken: string | null = new URLSearchParams(window.location.search).get('scd-invite');
@@ -1413,11 +1417,13 @@ export class DuelProductFoundation {
     this.tooltips.start();
     document.addEventListener('keydown', this.draftKeydown, true);
     document.addEventListener('visibilitychange', this.visibilityRecovery, true);
+    document.addEventListener('skribblInitialized', this.typoInitialized, true);
     document.addEventListener('input', this.typoCommandPreviewInput, true);
     document.addEventListener('pointerdown', this.soundUnlock, true);
     document.addEventListener('keydown', this.soundUnlock, true);
     window.addEventListener('keydown', this.duelChatKeydown, true);
     window.addEventListener('focus', this.visibilityRecovery, false);
+    this.startTypoDetectionPolling();
     this.unsubscribers.push(this.gatewayClient.subscribe(state => {
       const previous = this.gatewayState;
       const previousDrawProposalId = previous.match?.state.drawProposal?.proposalId ?? null;
@@ -1541,7 +1547,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.63.0',
+      version: '0.64.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1640,6 +1646,7 @@ export class DuelProductFoundation {
     this.abortLocalMatch(reason);
     for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
     if (this.mountGuard !== null) window.clearInterval(this.mountGuard);
+    this.stopTypoDetectionPolling();
     if (this.draftSlotTimer !== null) window.clearInterval(this.draftSlotTimer);
     this.mountGuard = null;
     this.draftSlotTimer = null;
@@ -1648,6 +1655,7 @@ export class DuelProductFoundation {
     this.tooltips.stop();
     document.removeEventListener('keydown', this.draftKeydown, true);
     document.removeEventListener('visibilitychange', this.visibilityRecovery, true);
+    document.removeEventListener('skribblInitialized', this.typoInitialized, true);
     document.removeEventListener('input', this.typoCommandPreviewInput, true);
     document.removeEventListener('pointerdown', this.soundUnlock, true);
     document.removeEventListener('keydown', this.soundUnlock, true);
@@ -1696,7 +1704,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.63.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.64.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -3425,11 +3433,6 @@ export class DuelProductFoundation {
     const connected = this.gatewayState.status === 'connected';
     const selfAccountId = this.gatewayState.identity?.accountId ?? null;
 
-    if (!typoDetected) {
-      card.appendChild(element('div', 'scd-muted', 'Matchmaking is available only while the Typo loader is active. Enable Typo and reload Skribbl first.'));
-    } else if (!homepage) {
-      card.appendChild(element('div', 'scd-muted', 'Matchmaking requires the visible Skribbl homepage and Telemetry confirming that no lobby is active.'));
-    }
     if (this.matchmakingError) card.appendChild(element('div', 'scd-auth-error', this.matchmakingError));
     const gatewayError = this.visibleGatewayError();
     if (connected && gatewayError && gatewayError !== this.matchmakingError) {
@@ -3554,31 +3557,55 @@ export class DuelProductFoundation {
       return card;
     }
 
-    if (!typoDetected) return card;
+    const homepageUnavailable = 'Matchmaking is only possible on the Skribbl homepage, not inside an active lobby.';
+    const typoUnavailable = 'Enable Typo to use Matchmaking.';
+    const gatewayUnavailable = 'Connect the authenticated Gateway to use Matchmaking.';
+    const queueUnavailable = !typoDetected
+      ? typoUnavailable
+      : !homepage
+        ? homepageUnavailable
+        : !connected
+          ? gatewayUnavailable
+          : null;
+    const inviteUnavailable = !typoDetected
+      ? typoUnavailable
+      : !homepage
+        ? homepageUnavailable
+        : null;
 
     const row = element('div', 'scd-queue-row');
     const casual = element('button', 'scd-queue-button scd-queue-casual', 'Casual 3×3') as HTMLButtonElement;
     const ranked = element('button', 'scd-queue-button scd-queue-ranked', 'Ranked 5×5') as HTMLButtonElement;
     const inviteButton = element('button', 'scd-queue-button scd-invite-button') as HTMLButtonElement;
+    casual.type = 'button';
+    ranked.type = 'button';
     inviteButton.type = 'button';
     const inviteIcon = document.createElement('img');
     inviteIcon.src = '/img/link.svg';
     inviteIcon.alt = '';
     inviteButton.append(inviteIcon, element('span', '', 'Invite'));
-    casual.disabled = !homepage || !connected;
-    ranked.disabled = !homepage || !connected;
-    inviteButton.disabled = !homepage;
-    casual.addEventListener('click', () => this.beginMatchmaking('casual'));
-    ranked.addEventListener('click', () => this.beginMatchmaking('ranked'));
-    inviteButton.addEventListener('click', () => void this.beginInviteCreation());
-    this.tooltips.register(casual, 'Reset old match state and enter the server Casual queue');
-    this.tooltips.register(ranked, 'Reset old match state and enter the server Ranked queue');
-    this.tooltips.register(inviteButton, 'Create a single-use link for a real authenticated opponent');
+    for (const [button, unavailable] of [
+      [casual, queueUnavailable],
+      [ranked, queueUnavailable],
+      [inviteButton, inviteUnavailable]
+    ] as const) {
+      button.setAttribute('aria-disabled', String(unavailable !== null));
+      button.classList.toggle('scd-unavailable-action', unavailable !== null);
+    }
+    casual.addEventListener('click', () => {
+      if (queueUnavailable === null) this.beginMatchmaking('casual');
+    });
+    ranked.addEventListener('click', () => {
+      if (queueUnavailable === null) this.beginMatchmaking('ranked');
+    });
+    inviteButton.addEventListener('click', () => {
+      if (inviteUnavailable === null) void this.beginInviteCreation();
+    });
+    this.tooltips.register(casual, queueUnavailable ?? 'Reset old match state and enter the server Casual queue');
+    this.tooltips.register(ranked, queueUnavailable ?? 'Reset old match state and enter the server Ranked queue');
+    this.tooltips.register(inviteButton, inviteUnavailable ?? 'Create a single-use link for a real authenticated opponent');
     row.append(casual, ranked, inviteButton);
     card.appendChild(row);
-    if (!connected) {
-      card.appendChild(element('div', 'scd-muted', 'Connect the authenticated Gateway before entering matchmaking.'));
-    }
     return card;
   }
 
@@ -4741,26 +4768,20 @@ export class DuelProductFoundation {
     if (!this.panelBody) return;
     const layout = element('div', 'scd-about-layout');
     const copy = element('div', 'scd-about-copy');
-    const rules = element('div', 'scd-card');
-    rules.append(
-      element('strong', '', 'Duel formats'),
-      element('p', 'scd-muted', 'Casual uses a 3×3 board; the first player to claim five challenges wins. Ranked uses a 5×5 board and requires thirteen claims.'),
-      element('p', 'scd-muted', 'Both players draft the board from two choices at a time. The Gateway selects the final parity field and starts one synchronized ten-second countdown.')
-    );
     const connection = element('div', 'scd-card');
     connection.append(
       element('strong', '', `Authentication v${AUTH_CLIENT_VERSION} · Gateway Contract v${GATEWAY_CONTRACT_VERSION}`),
       element('p', 'scd-muted', this.authState.status === 'signed-in'
         ? `Signed in as ${this.authState.profile?.displayName ?? 'Discord user'}. The access token is supplied only to the authenticated Socket.IO handshake.`
         : 'Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway.'),
-      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}. The Gateway owns matchmaking, draft, countdown, claims, immediate Forfeit and explicitly accepted Draw proposals.`)
+      element('p', 'scd-muted', `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`)
     );
     const freeze = element('div', 'scd-card');
     freeze.append(
       element('strong', '', 'What match freeze means'),
       element('p', 'scd-muted', 'The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw.')
     );
-    copy.append(rules, connection, freeze);
+    copy.append(connection, freeze);
 
     const tutorial = element('section', 'scd-card scd-about-tutorial');
     tutorial.setAttribute('aria-label', 'How Skribbl Duels works tutorial');
@@ -4818,7 +4839,11 @@ export class DuelProductFoundation {
       if (restartTimer) startAutoAdvance();
     };
     const startAutoAdvance = (): void => {
-      this.stopAboutTutorial();
+      if (this.aboutTutorialTimer !== null) window.clearInterval(this.aboutTutorialTimer);
+      if (this.aboutTutorialResumeTimer !== null) {
+        window.clearTimeout(this.aboutTutorialResumeTimer);
+        this.aboutTutorialResumeTimer = null;
+      }
       this.aboutTutorialTimer = window.setInterval(() => {
         if (!tutorial.isConnected) {
           this.stopAboutTutorial();
@@ -4826,6 +4851,15 @@ export class DuelProductFoundation {
         }
         selectPage(this.aboutTutorialPageIndex + 1, false);
       }, 3_500);
+    };
+    const pauseAutoAdvanceAfterWheel = (): void => {
+      if (this.aboutTutorialTimer !== null) window.clearInterval(this.aboutTutorialTimer);
+      this.aboutTutorialTimer = null;
+      if (this.aboutTutorialResumeTimer !== null) window.clearTimeout(this.aboutTutorialResumeTimer);
+      this.aboutTutorialResumeTimer = window.setTimeout(() => {
+        this.aboutTutorialResumeTimer = null;
+        if (tutorial.isConnected) startAutoAdvance();
+      }, 10_000);
     };
     dotNodes.forEach((dot, index) => {
       dot.addEventListener('click', () => selectPage(index, true));
@@ -4835,10 +4869,11 @@ export class DuelProductFoundation {
       if (Math.abs(event.deltaY) < 4) return;
       event.preventDefault();
       event.stopPropagation();
+      pauseAutoAdvanceAfterWheel();
       const now = performance.now();
       if (now - lastWheelAt < 250) return;
       lastWheelAt = now;
-      selectPage(this.aboutTutorialPageIndex + Math.sign(event.deltaY), true);
+      selectPage(this.aboutTutorialPageIndex + Math.sign(event.deltaY), false);
     }, { passive: false });
     selectPage(this.aboutTutorialPageIndex, false);
     startAutoAdvance();
@@ -4861,7 +4896,9 @@ export class DuelProductFoundation {
 
   private stopAboutTutorial(): void {
     if (this.aboutTutorialTimer !== null) window.clearInterval(this.aboutTutorialTimer);
+    if (this.aboutTutorialResumeTimer !== null) window.clearTimeout(this.aboutTutorialResumeTimer);
     this.aboutTutorialTimer = null;
+    this.aboutTutorialResumeTimer = null;
   }
 
   private checkbox(labelText: string, checked: boolean, onChange: (checked: boolean) => void): HTMLLabelElement {
@@ -4956,7 +4993,11 @@ export class DuelProductFoundation {
   }
 
   private isTypoDetected(): boolean {
-    return isTypoRuntimeDetected(document.body?.dataset);
+    const body = document.body;
+    return isTypoRuntimeDetected(
+      body?.dataset,
+      body?.getAttribute('typo-skribbl-loaded')
+    );
   }
 
   private isMatchmakingAvailable(): boolean {
@@ -4965,15 +5006,31 @@ export class DuelProductFoundation {
 
   private matchmakingUnavailableMessage(): string {
     return this.isTypoDetected()
-      ? 'Leave the active Skribbl lobby and return to the confirmed homepage first.'
-      : 'Enable Typo and reload Skribbl before using matchmaking.';
+      ? 'Matchmaking is only possible on the Skribbl homepage, not inside an active lobby.'
+      : 'Enable Typo to use Matchmaking.';
+  }
+
+  private startTypoDetectionPolling(): void {
+    if (this.typoDetectionTimer !== null || this.typoDetected) return;
+    this.typoDetectionTimer = window.setInterval(() => this.reconcileTypoDetection(), 500);
+  }
+
+  private stopTypoDetectionPolling(): void {
+    if (this.typoDetectionTimer !== null) window.clearInterval(this.typoDetectionTimer);
+    this.typoDetectionTimer = null;
   }
 
   private reconcileTypoDetection(): void {
     const detected = this.isTypoDetected();
-    if (detected === this.typoDetected) return;
+    if (detected === this.typoDetected) {
+      if (detected) this.stopTypoDetectionPolling();
+      else this.startTypoDetectionPolling();
+      return;
+    }
     this.typoDetected = detected;
     this.inviteTypoNoticeShown = false;
+    if (detected) this.stopTypoDetectionPolling();
+    else this.startTypoDetectionPolling();
     if (this.settings.panelOpen) this.renderPanel();
     if (detected) {
       this.handleInviteAuthenticationState();
@@ -4984,7 +5041,7 @@ export class DuelProductFoundation {
   private beginMatchmaking(format: 'casual' | 'ranked'): string {
     this.matchmakingError = null;
     if (!this.isTypoDetected()) {
-      this.matchmakingError = 'Matchmaking requires the active Typo loader. Enable Typo and reload Skribbl first.';
+      this.matchmakingError = 'Enable Typo to use Matchmaking. Skribbl Duels will detect it automatically.';
       this.renderPanel();
       throw new Error(this.matchmakingError);
     }
@@ -5009,7 +5066,7 @@ export class DuelProductFoundation {
   private async beginInviteCreation(): Promise<void> {
     this.matchmakingError = null;
     if (!this.isTypoDetected()) {
-      this.showSimpleToast('Typo required', 'Enable Typo and reload Skribbl before creating a Duel invite.');
+      this.showSimpleToast('Typo required', 'Enable Typo to create a Duel invite. Skribbl Duels will detect it automatically.');
       return;
     }
     if (!this.isHomepageVisible()) {
@@ -5078,7 +5135,7 @@ export class DuelProductFoundation {
         && !this.isTypoDetected()) {
       if (!this.inviteTypoNoticeShown) {
         this.inviteTypoNoticeShown = true;
-        this.showSimpleToast('Typo required', 'Enable Typo and reload Skribbl before accepting this Duel invite.', 6_000);
+        this.showSimpleToast('Typo required', 'Enable Typo to accept this Duel invite. Skribbl Duels will detect it automatically.', 6_000);
       }
       return;
     }
@@ -5102,7 +5159,7 @@ export class DuelProductFoundation {
     if (!this.isTypoDetected()) {
       if (!this.inviteTypoNoticeShown) {
         this.inviteTypoNoticeShown = true;
-        this.showSimpleToast('Typo required', 'Enable Typo and reload Skribbl before accepting this Duel invite.', 6_000);
+        this.showSimpleToast('Typo required', 'Enable Typo to accept this Duel invite. Skribbl Duels will detect it automatically.', 6_000);
       }
       return;
     }

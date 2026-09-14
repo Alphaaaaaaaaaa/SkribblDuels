@@ -137,7 +137,11 @@ export function calculateRankedRating(
   if (input.outcome !== 'draw' && playerADelta === 0) {
     playerADelta = input.outcome === 'player-a-win' ? 1 : -1;
   }
-  const playerBDelta = -playerADelta;
+  // Preserve both the zero-sum invariant and the rating floor. At the
+  // absolute floor a decisive result can therefore move zero points rather
+  // than minting a point that the losing account did not own.
+  playerADelta = Math.max(-playerARating, Math.min(playerBRating, playerADelta));
+  const playerBDelta = playerADelta === 0 ? 0 : -playerADelta;
 
   return {
     rulesVersion: RANKED_RATING_RULES_VERSION,

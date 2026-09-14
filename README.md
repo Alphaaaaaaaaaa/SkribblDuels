@@ -1,9 +1,34 @@
-# Skribbl Duels v0.63.0
+# Skribbl Duels v0.64.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.64.0
+
+- Fixes Typo detection against Typo's actual persistent underscore markers,
+  `data-typo_loader` and `data-typo_loaded`, while also accepting the patched
+  runtime's `typo-skribbl-loaded` marker and `skribblInitialized` event.
+  Skribbl Duels retries every 500 ms until Typo is available.
+- Keeps Matchmaking actions visible when unavailable and explains the exact
+  blocker in a tooltip: missing Typo, an active Skribbl lobby or an unavailable
+  authenticated Gateway.
+- Updates the five-page tutorial copy and layout, caps the tutorial at 450 px
+  and pauses automatic progression until ten seconds after the last mouse-wheel
+  interaction.
+- Removes the duplicate Duel-formats card and redundant Gateway-ownership copy
+  from About and Help.
+- Adds a deterministic, testable Ranked Elo v1 foundation and documents
+  placements, season resets, Draw/Forfeit/disconnect handling, rated Rematches,
+  repeated-opponent limits, exactly-once persistence, history and privacy.
+  Rating writes are deliberately not enabled until the durable transaction and
+  the P0 Claim-reconnect matrix are implemented.
+- Records the proposed Advancements, Skribbl Coins, Pets, Mini-Games and Chain
+  Reaction backlog with explicit authority and anti-farming boundaries.
+
+v0.64.0 requires no database migration or new Railway variable. Gateway Contract
+v11 remains compatible; the Ranked module is a non-persistent foundation.
 
 ## v0.63.0
 

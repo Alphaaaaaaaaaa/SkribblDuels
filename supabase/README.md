@@ -38,6 +38,13 @@ control migration and before deploying Contract v11. It adds the constrained
 0–27 `profiles.name_color_index`, replaces the profile-update RPC with its
 six-argument version and keeps arbitrary CSS or markup out of profile data.
 
+For v0.65.0, apply `202609160001_create_skribbl_coin_ledger.sql` after the
+profile-color migration and before deploying Contract v12. It adds the
+Gateway-private append-only Coin ledger, row-locked idempotent mutation RPC,
+Daily Skribble words and per-language Daily runs. Also configure the Gateway's
+server-only `SKRIBBLE_DAILY_SECRET`; `/readyz` reports progression unhealthy if
+the migration is missing.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

@@ -13,7 +13,7 @@
       "same-server-round",
       "first-attempt"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 6,
     "durationMs": 112139,

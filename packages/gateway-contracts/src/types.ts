@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 11 as const;
+export const GATEWAY_CONTRACT_VERSION = 12 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export interface GatewaySocketAuth {
@@ -155,6 +155,26 @@ export interface GatewayPingMessage {
   sentAt: number;
 }
 
+export interface GatewaySkribbleOpenMessage {
+  type: 'SKRIBBLE_OPEN';
+  requestId: string;
+  languageId: number;
+  mode: 'daily' | 'practice';
+}
+
+export interface GatewaySkribbleGuessMessage {
+  type: 'SKRIBBLE_GUESS';
+  requestId: string;
+  sessionId: string;
+  guess: string;
+}
+
+export interface GatewaySkribbleCelebrationReplayMessage {
+  type: 'SKRIBBLE_CELEBRATION_REPLAY';
+  requestId: string;
+  dateKey: string;
+}
+
 export type GatewayClientMessage =
   | GatewayHelloMessage
   | GatewayMatchmakingJoinMessage
@@ -172,6 +192,9 @@ export type GatewayClientMessage =
   | GatewayDrawProposeMessage
   | GatewayDrawRespondMessage
   | GatewayDrawWithdrawMessage
+  | GatewaySkribbleOpenMessage
+  | GatewaySkribbleGuessMessage
+  | GatewaySkribbleCelebrationReplayMessage
   | GatewayPingMessage;
 
 export interface GatewayWelcomeMessage {
@@ -389,6 +412,68 @@ export interface GatewayPongMessage {
   serverTime: number;
 }
 
+export type GatewaySkribbleMark = 'correct' | 'semicorrect' | 'incorrect';
+
+export interface GatewaySkribbleAttempt {
+  guess: string;
+  marks: readonly GatewaySkribbleMark[];
+  submittedAt: number;
+}
+
+export interface GatewaySkribbleState {
+  sessionId: string;
+  mode: 'daily' | 'practice';
+  dateKey: string;
+  nextDailyAt: number;
+  languageId: number;
+  languageName: string;
+  availability: 'ready' | 'unsupported';
+  unavailableReason: string | null;
+  status: 'playing' | 'solved' | 'lost';
+  maxAttempts: 10;
+  minimumLength: 2;
+  maximumLength: 32;
+  attempts: readonly GatewaySkribbleAttempt[];
+  canEarn: boolean;
+  rewarded: boolean;
+  rewardAmount: number;
+}
+
+export interface GatewaySkribbleStateMessage {
+  type: 'SKRIBBLE_STATE';
+  requestId: string;
+  state: GatewaySkribbleState;
+}
+
+export interface GatewaySkribbleGuessResultMessage {
+  type: 'SKRIBBLE_GUESS_RESULT';
+  requestId: string;
+  accepted: boolean;
+  reason: 'accepted' | 'word-not-found' | 'invalid-length' | 'session-ended' | 'session-not-found';
+  state: GatewaySkribbleState;
+}
+
+export interface GatewayCoinTransactionSummary {
+  transactionId: string;
+  idempotencyKey: string;
+  amount: number;
+  sourceSinkType: string;
+  sourceEntityId: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  rulesVersion: number;
+  occurredAt: number;
+  reversalOfTransactionId: string | null;
+}
+
+export interface GatewayCoinBalanceMessage {
+  type: 'COIN_BALANCE';
+  requestId: string | null;
+  balance: number;
+  revision: number;
+  transaction: GatewayCoinTransactionSummary | null;
+}
+
 export interface GatewayErrorMessage {
   type: 'ERROR';
   code: string;
@@ -407,5 +492,8 @@ export type GatewayServerMessage =
   | GatewayClaimResolutionMessage
   | GatewayDuelChatMessage
   | GatewayTelemetryAckMessage
+  | GatewaySkribbleStateMessage
+  | GatewaySkribbleGuessResultMessage
+  | GatewayCoinBalanceMessage
   | GatewayPongMessage
   | GatewayErrorMessage;

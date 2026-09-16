@@ -9,6 +9,8 @@ export interface SoundAudioLike {
   currentTime: number;
   play(): Promise<unknown> | void;
   pause?(): void;
+  load?(): void;
+  preload?: string;
 }
 
 export type SoundAudioFactory = (source: string) => SoundAudioLike;
@@ -38,6 +40,8 @@ export class SoundEffectPlayer {
   private playbackRejections = 0;
   private lastSoundId: SoundEffectId | null = null;
   private lastError: string | null = null;
+  private initialized = false;
+  private readonly preloadedAudio: SoundAudioLike[] = [];
 
   public constructor(
     private readonly assets: Readonly<Partial<Record<SoundEffectId, string>>> = EMBEDDED_SOUND_ASSETS,
@@ -49,12 +53,30 @@ export class SoundEffectPlayer {
     this.volume = Math.min(100, Math.max(0, normalized)) / 100;
   }
 
+  /** Create and explicitly preload every embedded SFX before socket events need it. */
+  public initialize(): void {
+    if (this.initialized) return;
+    this.initialized = true;
+    for (const source of Object.values(this.assets)) {
+      if (!source) continue;
+      try {
+        const audio = this.createAudio(source);
+        audio.preload = 'auto';
+        audio.load?.();
+        this.preloadedAudio.push(audio);
+      } catch (error) {
+        this.lastError = this.errorMessage(error);
+      }
+    }
+  }
+
   /**
    * Chrome may reject media started before the page has received a trusted
    * gesture. The product calls this from a capture-phase pointer/key handler,
    * silently priming one embedded media element for later socket/timer SFX.
    */
   public unlock(): Promise<boolean> {
+    this.initialize();
     if (this.unlocked) return Promise.resolve(true);
     if (this.unlockPromise) return this.unlockPromise;
     this.unlockAttempted = true;

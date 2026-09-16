@@ -48,6 +48,7 @@
 | v0.62 UI and profile hardening | Complete | Immediate saved-color refresh, isolated private chat focus, stable Profile detail rerenders, queue loader and match-found modal cleanup |
 | v0.63 Typo gate and About/UI metrics | Complete | Typo-only matchmaking, five-page About tutorial, unified `res/` assets, modal scroll containment, WPM reset and lower-is-better P90 Guess Time |
 | v0.64 Typo recovery and Ranked foundation | Complete | Persistent underscore/runtime-marker detection with retry, unavailable-action tooltips, tutorial inactivity handling and deterministic Elo v1 rules/tests |
+| v0.65 Coin/Daily progression pilot | Foundation complete | Contract v12, append-only idempotent Coin ledger, authoritative Daily Skribble, one bounded reward and one cosmetic sink |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
@@ -112,7 +113,20 @@
 - Prevent repeated-opponent farming and certify every active Challenge in live
   two-client runs.
 
-### 6. Product and release completion
+### 6. Progression ecosystem pilot — foundation delivered in v0.65.0
+
+- The append-only Coin ledger, row-locked idempotency, reversals, first
+  account reward per UTC day and restart reconciliation are implemented.
+- Daily Skribble is the first server-validated earn source; Practice is
+  unrewarded and a one-Coin celebration replay is the first cosmetic sink.
+- Next progression work is intentionally downstream of the P0 Claim-reconnect
+  matrix: formal Achievement contracts, private inventory/history, then one
+  minimal Pet loop. Arcade Reel remains deferred until economy/odds rules and
+  youth-safety review are approved.
+- Missing Skribble logo/tile GIFs can be added through the reserved asset
+  registry without code changes.
+
+### 7. Product and release completion
 
 - Finish full German/English translation for Hub, queue facts, Draft, board,
   validation, errors and Challenge descriptions.
@@ -152,4 +166,6 @@ worked examples are in `docs/ranked-progression-v0.64.0.md`; the proposed
 Advancements, Mini-Games, Skribbl Coins, Pets and Chain Reaction direction is in
 `docs/progression-ecosystem-backlog-v0.64.0.md`. The v0.62 UI behavior and
 deployment boundary are recorded in `docs/ui-polish-v0.62.0.md`; the current
-prioritized work remains in `docs/post-v0.62.0-roadmap.md`.
+prioritized work remains in `docs/post-v0.62.0-roadmap.md`. The authoritative
+Coin/Daily vertical slice and v0.65 deployment order are recorded in
+`docs/skribbl-coins-skribble-v0.65.0.md`.

@@ -1153,6 +1153,8 @@ export class LocalPlayerStatsService {
     const clean = payload.trustedInput
       && !payload.pasteDetected
       && !payload.autofillDetected
+      && Number.isInteger(payload.typedCharacterCount)
+      && payload.typedCharacterCount >= payload.characterCount
       && payload.durationMs >= MIN_VALID_TYPING_MS
       && payload.durationMs <= MAX_VALID_TYPING_MS
       && wpm !== null

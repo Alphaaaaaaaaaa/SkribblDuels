@@ -37,7 +37,8 @@ const config: GatewayServerConfig = {
   redisUrl: null,
   instanceId: 'gateway-auth-test',
   observabilityToken: 'ops-test-token',
-  authorityLeaseMs: 30_000
+  authorityLeaseMs: 30_000,
+  skribbleDailySecret: 'test-skribble-daily-secret-32-characters'
 };
 
 const gateway = createGatewayServer({

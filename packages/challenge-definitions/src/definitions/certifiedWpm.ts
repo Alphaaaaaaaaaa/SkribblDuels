@@ -135,6 +135,8 @@ function measurementFrom(
     && !duplicateAttempt
     && messageKey.length > 0
     && payload.characterCount === typingCharacterCount(payload.message)
+    && Number.isInteger(payload.typedCharacterCount)
+    && payload.typedCharacterCount >= payload.characterCount
     && Number.isInteger(payload.correctionCount)
     && payload.correctionCount >= 0
     && payload.trustedInput === true
@@ -223,7 +225,7 @@ export function createCertifiedWpmChallengeDefinition(
 ): ChallengeDefinition<CertifiedWpmState, CertifiedWpmParameters> {
   return {
     id: config.id,
-    version: 1,
+    version: 2,
     metadata: {
       category: 'guessing',
       localization: localization(

@@ -13,7 +13,7 @@
       "drunk-vision",
       "blind-guess"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 11,
     "durationMs": 2210,

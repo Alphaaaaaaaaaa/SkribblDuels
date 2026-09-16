@@ -4,9 +4,9 @@ import type {
 } from '@skribbl-duels/challenge-engine';
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const PRODUCT_CORE_VERSION = '0.6.3' as const;
+export const PRODUCT_CORE_VERSION = '0.6.4' as const;
 export const MATCH_STATE_CONTRACT_VERSION = 3 as const;
-export const UI_SETTINGS_VERSION = 6 as const;
+export const UI_SETTINGS_VERSION = 7 as const;
 
 export type DuelFormat = 'casual' | 'ranked';
 export type DuelPlayerSide = 'self' | 'opponent';
@@ -209,6 +209,7 @@ export interface LauncherUiSettings {
   x: number;
   y: number;
   size: number;
+  visibility: 'always' | 'active-match';
 }
 
 export type WpmChatDisplayMode =

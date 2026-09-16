@@ -94,6 +94,7 @@ import {
 } from './homepageMatchmakingEligibility';
 import { SkribblChatStatDisplay } from './chatStatDisplay';
 import { isTypoRuntimeDetected } from './typoRuntimeDetection';
+import { SkribbleFeatureUi } from './skribbleUi';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -915,6 +916,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-about-page { display:none;grid-area:1/1;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;text-align:center; }
 .scd-about-page.active { display:flex; }
 .scd-about-page-visual { width:min(100%,300px);aspect-ratio:5/4;image-rendering:pixelated;animation:scd-about-image-introduce .3s ease-in-out 1; }
+.scd-about-tutorial .scd-icon:hover,.scd-about-tutorial button:not(:disabled):hover .scd-icon,.scd-about-page-visual:hover { transform:none; }
 .scd-about-page-title { font-size:1.08em; }
 .scd-about-page-description { width:100%;min-height:3.2em; }
 .scd-about-navigation { width:100%;height:25px; }
@@ -1011,6 +1013,12 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
 .scd-duel-toast .typo-toast-confirm .scd-button { min-width:7rem; }
+.scd-lobby-match-toast { min-width:min(32rem,calc(100vw - 2rem));display:grid;grid-template-columns:minmax(0,1fr) 64px;grid-template-areas:'title clock' 'message clock';align-items:center; }
+.scd-lobby-match-toast h3 { grid-area:title;margin:0; }
+.scd-lobby-match-toast > span:not(.close-toast) { grid-area:message; }
+.scd-lobby-ready-clock { grid-area:clock;pointer-events:none;width:64px;height:64px;background-image:url('/img/clock.gif');background-size:contain;background-position:center;background-repeat:no-repeat;color:#000;font-size:20px;line-height:3.6;font-weight:bolder;display:flex;justify-content:center;filter:drop-shadow(0 0 2px rgba(0,0,0,.15));animation-duration:.3s;animation-timing-function:ease-in-out;animation-iteration-count:1; }
+@keyframes scd-clock-rot-right { 0%,100% { transform:rotate(0); } 5% { transform:scale(1.15) rotate(25deg); } }
+@keyframes scd-clock-rot-left { 0%,100% { transform:rotate(0); } 5% { transform:scale(1.15) rotate(-25deg); } }
 .scd-toast-profile { display:flex;align-items:center;gap:.55rem;min-width:0; }
 .scd-toast-profile strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-toast-avatar { position:relative;width:32px !important;height:32px !important;border-radius:50%;display:grid;place-items:center;flex:none;font-size:16px;font-weight:900; }
@@ -1293,6 +1301,7 @@ export class DuelProductFoundation {
   private readonly soundEffects: SoundEffectPlayer;
   private readonly authClient = new SupabaseDiscordAuthClient();
   private readonly gatewayClient: SocketIoGatewayClient;
+  private readonly skribbleUi: SkribbleFeatureUi;
   private authState: AuthSnapshot;
   private gatewayState: GatewayConnectionSnapshot;
   private readonly unsubscribers: Array<() => void> = [];
@@ -1303,6 +1312,11 @@ export class DuelProductFoundation {
   private readySubmissionTimer: number | null = null;
   private cancellationSubmissionMatchId: string | null = null;
   private cancellationSubmissionTimer: number | null = null;
+  private lobbyMatchReadyTimer: number | null = null;
+  private lobbyMatchReadyMatchId: string | null = null;
+  private lobbyMatchReadyDeadline = 0;
+  private lobbyMatchReadyLastSecond: number | null = null;
+  private lobbyMatchReadyToast: HTMLElement | null = null;
   private readyDeadlineRecoveryAt = 0;
   private draftSubmissionKey: string | null = null;
   private lastConclusionMessageMatchId: string | null = null;
@@ -1407,6 +1421,13 @@ export class DuelProductFoundation {
       this.gatewayClient.queueTelemetryEnvelope(envelope);
     });
     this.gatewayState = this.gatewayClient.getState();
+    this.skribbleUi = new SkribbleFeatureUi({
+      runtimeId: options.runtimeId,
+      gateway: this.gatewayClient,
+      getGatewayState: () => this.gatewayState,
+      showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
+      onModalVisibilityChanged: () => this.syncPageScrollLock()
+    });
   }
 
   public start(): ProductPublicApi {
@@ -1415,6 +1436,8 @@ export class DuelProductFoundation {
     this.chatAdapter.start();
     this.chatStatDisplay.start();
     this.tooltips.start();
+    this.soundEffects.initialize();
+    this.skribbleUi.start();
     document.addEventListener('keydown', this.draftKeydown, true);
     document.addEventListener('visibilitychange', this.visibilityRecovery, true);
     document.addEventListener('skribblInitialized', this.typoInitialized, true);
@@ -1450,12 +1473,14 @@ export class DuelProductFoundation {
           || previous.invite?.status === 'waiting'
           || this.pendingInviteToken !== null
           || this.inviteAcceptanceSubmitted);
+      this.gatewayState = state;
+      this.skribbleUi.update(state);
       if (playerFound) {
         this.soundEffects.play('matchFound');
         this.closeProductModalsForMatchFound();
+        if (!this.isHomepageVisible()) this.beginLobbyMatchReadyCountdown(state.match!.matchId);
       }
       if (matchChanged) this.matchActionError = null;
-      this.gatewayState = state;
       if (drawProposalAppeared) this.lastVisibleDrawProposalId = nextDrawProposalId;
       if (state.error && state.error !== previous.error && this.pendingDuelChatMessages.size > 0) {
         const failed = this.pendingDuelChatMessages.entries().next().value as [string, string] | undefined;
@@ -1547,7 +1572,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.64.0',
+      version: '0.65.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1662,6 +1687,7 @@ export class DuelProductFoundation {
     window.removeEventListener('keydown', this.duelChatKeydown, true);
     window.removeEventListener('focus', this.visibilityRecovery, false);
     this.gatewayClient.stop();
+    this.skribbleUi.stop();
     this.authClient.stop();
     this.launcher?.remove();
     this.panel?.remove();
@@ -1684,6 +1710,7 @@ export class DuelProductFoundation {
     this.stopAboutTutorial();
     this.clearReadySubmission();
     this.clearCancellationSubmission();
+    this.clearLobbyMatchReadyCountdown();
     this.stopIntroAnimation();
     this.stopCountdownAnimation();
     this.homeButton = null;
@@ -1704,7 +1731,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.64.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.65.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1817,6 +1844,7 @@ export class DuelProductFoundation {
     this.panelAccount.addEventListener('click', () => this.openDuelProfile());
     const title = element('div', 'scd-modal-title', 'Skribbl Duels');
     const actions = element('div', 'scd-modal-actions');
+    actions.appendChild(this.skribbleUi.createCoinPill());
     const settings = element('button', 'scd-icon-button') as HTMLButtonElement;
     settings.type = 'button';
     settings.appendChild(this.createIconAsset('res/challenge-icons/settings.gif', '⚙', 'Settings'));
@@ -2140,12 +2168,27 @@ export class DuelProductFoundation {
         ? 'block'
         : 'none';
     }
-    if (this.stage) this.stage.style.display = stagePhase ? 'block' : 'none';
+    if (this.stage) {
+      // Keep the live Skribbl lobby interactive during the short hand-off
+      // window. The Ready stage appears as soon as homepage authority returns.
+      this.stage.style.display = stagePhase && !this.lobbyMatchReadyMatchId ? 'block' : 'none';
+    }
     if (this.board) {
       const hasMatchBoard = this.matchState.phase !== 'idle' && this.matchState.fields.length > 0;
       this.board.style.display = this.settings.board.visible && hasMatchBoard && !stagePhase
         ? 'block'
         : 'none';
+    }
+    if (this.launcher) {
+      const phase = this.gatewayState.match?.state.phase;
+      const activeMatch = phase === 'ready-check'
+        || phase === 'draft'
+        || phase === 'countdown'
+        || phase === 'running'
+        || this.matchState.phase === 'running';
+      this.launcher.style.display = this.settings.launcher.visibility === 'active-match' && !activeMatch
+        ? 'none'
+        : 'grid';
     }
     this.syncPageScrollLock();
   }
@@ -2159,7 +2202,8 @@ export class DuelProductFoundation {
       || isVisible(this.intro)
       || isVisible(this.profileColorPicker)
       || isVisible(this.duelProfileModal)
-      || isVisible(this.profileDetailModal);
+      || isVisible(this.profileDetailModal)
+      || this.skribbleUi.isModalOpen();
     for (const node of [document.documentElement, document.body]) {
       if (!node) continue;
       if (locked) {
@@ -4585,6 +4629,23 @@ export class DuelProductFoundation {
     launcherModeLabel.appendChild(launcherMode);
     quickAccess.appendChild(launcherModeLabel);
 
+    const launcherVisibilityLabel = element('label', 'scd-label');
+    const launcherVisibility = element('input') as HTMLInputElement;
+    launcherVisibility.type = 'checkbox';
+    launcherVisibility.checked = this.settings.launcher.visibility === 'active-match';
+    launcherVisibility.addEventListener('change', () => this.settingsStore.updateLauncher({
+      visibility: launcherVisibility.checked ? 'active-match' : 'always'
+    }));
+    launcherVisibilityLabel.append(
+      element('span', '', 'Only show during an active match'),
+      launcherVisibility
+    );
+    this.tooltips.register(
+      launcherVisibilityLabel,
+      'Hide the Quick Access button until a Duel Ready check, Draft, Countdown or running Match exists'
+    );
+    quickAccess.appendChild(launcherVisibilityLabel);
+
     const launcherAnchorLabel = element('label', 'scd-label');
     launcherAnchorLabel.appendChild(element('span', '', 'Anchor'));
     const launcherAnchor = element('select') as HTMLSelectElement;
@@ -5929,6 +5990,95 @@ export class DuelProductFoundation {
       this.renderStage();
       this.gatewayClient.reconnect();
     }
+    this.tickLobbyMatchReadyCountdown();
+  }
+
+  private beginLobbyMatchReadyCountdown(matchId: string): void {
+    if (this.lobbyMatchReadyMatchId === matchId) return;
+    this.clearLobbyMatchReadyCountdown();
+    this.lobbyMatchReadyMatchId = matchId;
+    this.lobbyMatchReadyDeadline = Date.now() + 10_000;
+    this.lobbyMatchReadyLastSecond = null;
+
+    let container = document.querySelector<HTMLElement>('.typo-toast-container');
+    if (!container) {
+      container = element('div', 'typo-toast-container');
+      container.dataset.scdRuntimeId = this.options.runtimeId;
+      (document.body ?? document.documentElement).prepend(container);
+    }
+    const toast = element('div', 'typo-toast scd-duel-toast scd-lobby-match-toast');
+    toast.dataset.scdRuntimeId = this.options.runtimeId;
+    toast.dataset.scdLobbyMatchId = matchId;
+    const clock = element('div', 'scd-lobby-ready-clock');
+    clock.setAttribute('role', 'timer');
+    clock.setAttribute('aria-label', 'Seconds left to leave the current lobby');
+    clock.appendChild(element('div', 'text', '10'));
+    toast.append(
+      element('h3', '', 'Match found'),
+      element('span', '', 'Leave your current lobby to start the match.'),
+      clock
+    );
+    container.appendChild(toast);
+    this.lobbyMatchReadyToast = toast;
+    this.tickLobbyMatchReadyCountdown();
+    this.lobbyMatchReadyTimer = window.setInterval(() => this.tickLobbyMatchReadyCountdown(), 200);
+    this.renderVisibility();
+  }
+
+  private tickLobbyMatchReadyCountdown(): void {
+    const matchId = this.lobbyMatchReadyMatchId;
+    if (!matchId) return;
+    const match = this.gatewayState.match;
+    if (!match || match.matchId !== matchId || match.state.phase !== 'ready-check') {
+      this.clearLobbyMatchReadyCountdown();
+      return;
+    }
+    if (this.homepageMatchmakingAuthority === 'home' && this.isHomepageDomVisible()) {
+      this.clearLobbyMatchReadyCountdown();
+      return;
+    }
+    const remaining = Math.max(0, Math.ceil((this.lobbyMatchReadyDeadline - Date.now()) / 1_000));
+    const clock = this.lobbyMatchReadyToast?.querySelector<HTMLElement>('.scd-lobby-ready-clock');
+    const textNode = clock?.querySelector<HTMLElement>('.text');
+    if (textNode) textNode.textContent = String(remaining);
+    if (remaining !== this.lobbyMatchReadyLastSecond) {
+      this.lobbyMatchReadyLastSecond = remaining;
+      if (clock) {
+        clock.style.animationName = 'none';
+        void clock.offsetWidth;
+        clock.style.animationName = remaining % 2 === 0
+          ? 'scd-clock-rot-left'
+          : 'scd-clock-rot-right';
+      }
+      if (remaining > 0 && remaining <= 5) this.soundEffects.play('countdownTick');
+    }
+    if (remaining > 0) return;
+    this.clearLobbyMatchReadyCountdown();
+    try {
+      this.cancelReadyCheck(matchId);
+      this.showSimpleToast(
+        'Match cancelled',
+        'You remained inside the active Skribbl lobby for the full 10-second Ready window.',
+        6_000
+      );
+    } catch (error) {
+      this.showSimpleToast(
+        'Match cancellation failed',
+        error instanceof Error ? error.message : String(error),
+        7_000
+      );
+    }
+  }
+
+  private clearLobbyMatchReadyCountdown(): void {
+    if (this.lobbyMatchReadyTimer !== null) window.clearInterval(this.lobbyMatchReadyTimer);
+    this.lobbyMatchReadyTimer = null;
+    this.lobbyMatchReadyMatchId = null;
+    this.lobbyMatchReadyDeadline = 0;
+    this.lobbyMatchReadyLastSecond = null;
+    this.lobbyMatchReadyToast?.remove();
+    this.lobbyMatchReadyToast = null;
+    this.renderVisibility();
   }
 
   private updateBoardScore(): void {
@@ -5991,10 +6141,40 @@ export class DuelProductFoundation {
 
   private observeDuelTelemetry(event: TelemetryEvent): void {
     this.lastTelemetryEvent = structuredClone(event);
+    const previousHomepageAuthority = this.homepageMatchmakingAuthority;
     this.homepageMatchmakingAuthority = reduceHomepageMatchmakingAuthority(
       this.homepageMatchmakingAuthority,
       event
     );
+    if (this.lobbyMatchReadyMatchId
+        && this.homepageMatchmakingAuthority === 'home'
+        && this.isHomepageDomVisible()) {
+      this.clearLobbyMatchReadyCountdown();
+    }
+    if (previousHomepageAuthority !== 'lobby'
+        && this.homepageMatchmakingAuthority === 'lobby') {
+      const readyMatch = this.gatewayState.match?.state.phase === 'ready-check'
+        ? this.gatewayState.match
+        : null;
+      if (readyMatch) {
+        this.beginLobbyMatchReadyCountdown(readyMatch.matchId);
+      } else if (this.gatewayState.queue !== null && this.gatewayState.match === null) {
+        try {
+          this.cancelMatchmaking();
+          this.showSimpleToast(
+            'Queue cancelled',
+            'You joined a Skribbl lobby, so Homepage matchmaking was cancelled.',
+            5_000
+          );
+        } catch {
+          this.showSimpleToast(
+            'Queue cancellation failed',
+            'You joined a lobby, but the Gateway did not accept the Queue cancellation. Reconnect before queuing again.',
+            7_000
+          );
+        }
+      }
+    }
     const state = this.matchStore.getState();
     if (this.awaitingTelemetryResumeCursor
         && state.phase === 'running'
@@ -6154,6 +6334,7 @@ export class DuelProductFoundation {
   }
 
   private closeProductModalsForMatchFound(): void {
+    this.skribbleUi.closeForMatchFound();
     this.stopAboutTutorial();
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = null;

@@ -203,6 +203,63 @@ function telemetryEnvelope(value: unknown, matchId: string, sequence: number): b
     && isTelemetryEvent(envelope.event));
 }
 
+function dateKey(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/u.test(value);
+}
+
+function skribbleAttempt(value: unknown): boolean {
+  const attempt = record(value);
+  return Boolean(attempt
+    && nonEmptyCodePointString(attempt.guess, 32)
+    && Array.isArray(attempt.marks)
+    && attempt.marks.length === Array.from(attempt.guess as string).length
+    && attempt.marks.every(mark => mark === 'correct' || mark === 'semicorrect' || mark === 'incorrect')
+    && finiteNumber(attempt.submittedAt));
+}
+
+function skribbleState(value: unknown): boolean {
+  const state = record(value);
+  return Boolean(state
+    && nonEmptyString(state.sessionId)
+    && (state.mode === 'daily' || state.mode === 'practice')
+    && dateKey(state.dateKey)
+    && finiteNumber(state.nextDailyAt)
+    && nonNegativeInteger(state.languageId)
+    && Number(state.languageId) <= 27
+    && nonEmptyString(state.languageName, 64)
+    && (state.availability === 'ready' || state.availability === 'unsupported')
+    && (state.unavailableReason === null || nonEmptyString(state.unavailableReason, 512))
+    && (state.status === 'playing' || state.status === 'solved' || state.status === 'lost')
+    && state.maxAttempts === 10
+    && state.minimumLength === 2
+    && state.maximumLength === 32
+    && Array.isArray(state.attempts)
+    && state.attempts.length <= 10
+    && state.attempts.every(skribbleAttempt)
+    && typeof state.canEarn === 'boolean'
+    && typeof state.rewarded === 'boolean'
+    && nonNegativeInteger(state.rewardAmount)
+    && Number(state.rewardAmount) <= 25);
+}
+
+function coinTransaction(value: unknown): boolean {
+  const transaction = record(value);
+  return Boolean(transaction
+    && nonEmptyString(transaction.transactionId)
+    && nonEmptyString(transaction.idempotencyKey)
+    && Number.isSafeInteger(transaction.amount)
+    && Number(transaction.amount) !== 0
+    && nonEmptyString(transaction.sourceSinkType, 64)
+    && nonEmptyString(transaction.sourceEntityId, 256)
+    && nonNegativeInteger(transaction.balanceBefore)
+    && nonNegativeInteger(transaction.balanceAfter)
+    && nonNegativeInteger(transaction.rulesVersion)
+    && Number(transaction.rulesVersion) > 0
+    && Number(transaction.balanceAfter) === Number(transaction.balanceBefore) + Number(transaction.amount)
+    && finiteNumber(transaction.occurredAt)
+    && (transaction.reversalOfTransactionId === null || nonEmptyString(transaction.reversalOfTransactionId)));
+}
+
 function matchmakingState(value: unknown): boolean {
   const state = record(value);
   if (!state
@@ -416,6 +473,17 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
       return nonEmptyString(message.matchId)
         && nonEmptyString(message.proposalId)
         && nonEmptyString(message.actionId);
+    case 'SKRIBBLE_OPEN':
+      return nonEmptyString(message.requestId)
+        && nonNegativeInteger(message.languageId)
+        && Number(message.languageId) <= 27
+        && (message.mode === 'daily' || message.mode === 'practice');
+    case 'SKRIBBLE_GUESS':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.sessionId)
+        && nonEmptyCodePointString(message.guess, 32);
+    case 'SKRIBBLE_CELEBRATION_REPLAY':
+      return nonEmptyString(message.requestId) && dateKey(message.dateKey);
     case 'PING':
       return finiteNumber(message.sentAt);
     default:
@@ -500,6 +568,22 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
     case 'TELEMETRY_ACK':
       return nonEmptyString(message.matchId)
         && nonNegativeInteger(message.lastSequence);
+    case 'SKRIBBLE_STATE':
+      return nonEmptyString(message.requestId) && skribbleState(message.state);
+    case 'SKRIBBLE_GUESS_RESULT':
+      return nonEmptyString(message.requestId)
+        && typeof message.accepted === 'boolean'
+        && (message.reason === 'accepted'
+          || message.reason === 'word-not-found'
+          || message.reason === 'invalid-length'
+          || message.reason === 'session-ended'
+          || message.reason === 'session-not-found')
+        && skribbleState(message.state);
+    case 'COIN_BALANCE':
+      return (message.requestId === null || nonEmptyString(message.requestId))
+        && nonNegativeInteger(message.balance)
+        && nonNegativeInteger(message.revision)
+        && (message.transaction === null || coinTransaction(message.transaction));
     case 'PONG':
       return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
     case 'ERROR':

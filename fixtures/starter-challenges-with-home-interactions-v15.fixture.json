@@ -51,7 +51,7 @@
       "winner",
       "word-analysis"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 72,
     "durationMs": 389300,

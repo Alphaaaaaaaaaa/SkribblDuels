@@ -33,6 +33,7 @@ interface AttemptOptions {
   trustedInput?: boolean;
   eligibleGuess?: boolean;
   inputSource?: 'vanilla' | 'typo';
+  typedCharacterCount?: number;
   revealedWord?: string | null;
 }
 
@@ -111,6 +112,7 @@ function attemptEvents(options: AttemptOptions): [
       submittedAt: measurementAt,
       durationMs: options.durationMs,
       characterCount,
+      typedCharacterCount: options.typedCharacterCount ?? characterCount,
       correctionCount: 0,
       pasteDetected: options.pasteDetected ?? false,
       autofillDetected: options.autofillDetected ?? false,
@@ -195,6 +197,13 @@ assert.equal(explorer.getInstance('internet-explorer')?.progress.current, 0, 'Ex
 processAttempt(explorer, { id: 'ie-paste', message: 'sloth', durationMs: 3_100, position: 2, pasteDetected: true });
 processAttempt(explorer, { id: 'ie-autofill', message: 'sloth', durationMs: 3_100, position: 2, autofillDetected: true });
 processAttempt(explorer, { id: 'ie-untrusted', message: 'sloth', durationMs: 3_100, position: 2, trustedInput: false });
+processAttempt(explorer, {
+  id: 'ie-restored-word',
+  message: 'sloth',
+  durationMs: 3_100,
+  position: 2,
+  typedCharacterCount: 2
+});
 assert.equal(explorer.getInstance('internet-explorer')?.progress.current, 0, 'Paste, autofill and untrusted input must fail closed.');
 
 const staleExplorer = engineFor(internetExplorerDefinition, 'internet-explorer-stale');

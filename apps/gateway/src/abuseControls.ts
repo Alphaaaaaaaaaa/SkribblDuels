@@ -10,7 +10,8 @@ export type GatewayAbuseScope =
   | 'chat'
   | 'match-action'
   | 'telemetry'
-  | 'claim';
+  | 'claim'
+  | 'progression';
 
 export interface GatewayRateLimitPolicy {
   scope: GatewayAbuseScope;
@@ -122,6 +123,10 @@ export function policyForMessage(message: GatewayClientMessage): GatewayRateLimi
       return { scope: 'telemetry', limit: 40, windowMs: 10_000 };
     case 'CLAIM_CANDIDATE':
       return { scope: 'claim', limit: 30, windowMs: 10_000 };
+    case 'SKRIBBLE_OPEN':
+    case 'SKRIBBLE_GUESS':
+    case 'SKRIBBLE_CELEBRATION_REPLAY':
+      return { scope: 'progression', limit: 60, windowMs: 60_000 };
     default:
       return { scope: 'match-action', limit: 60, windowMs: 10_000 };
   }

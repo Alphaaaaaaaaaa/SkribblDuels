@@ -57,7 +57,7 @@ import { internetExplorerDefinition } from './definitions/internetExplorer';
 import { wpMasterDefinition } from './definitions/wpmaster';
 import { typeRacerDefinition } from './definitions/typeRacer';
 
-export const CHALLENGE_DEFINITIONS_VERSION = '2.17.0' as const;
+export const CHALLENGE_DEFINITIONS_VERSION = '2.18.0' as const;
 
 export const starterChallengeDefinitions: readonly AnyChallengeDefinition[] = [
   quickscopeDefinition,

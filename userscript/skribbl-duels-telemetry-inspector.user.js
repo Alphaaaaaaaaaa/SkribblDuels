@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.64.0
+// @version      0.65.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -1360,7 +1360,7 @@ function merge() {
 	var sources = args;
 	return !sources.length ? EMPTY : sources.length === 1 ? innerFrom(sources[0]) : mergeAll(concurrent)(from(sources, scheduler));
 }
-var TELEMETRY_CONTRACT_VERSION = "1.0.0";
+var TELEMETRY_CONTRACT_VERSION = "1.1.0";
 var TELEMETRY_EVENT_CATEGORIES = {
 	PROTOCOL_ANOMALY: "system",
 	LOBBY_HYDRATED: "lobby",
@@ -4346,11 +4346,12 @@ var CORE_SUPPORTED_TELEMETRY_EVENTS = [
 function countTypingCharacters(value) {
 	return Array.from(value.trim().normalize("NFKC")).length;
 }
-function createTextInputAttempt(value, occurredAt, monotonicMs, trustedInput) {
+function createTextInputAttempt(value, occurredAt, monotonicMs, trustedInput, typedCharacterCount = trustedInput ? countTypingCharacters(value) : 0) {
 	return {
 		startedAt: occurredAt,
 		startedAtMonotonicMs: monotonicMs,
 		lastValue: value,
+		typedCharacterCount,
 		correctionCount: 0,
 		pasteDetected: false,
 		autofillDetected: false,
@@ -4358,16 +4359,28 @@ function createTextInputAttempt(value, occurredAt, monotonicMs, trustedInput) {
 		trustedInput
 	};
 }
-function updateTextInputAttempt(state, value, inputType, trustedInput) {
+function updateTextInputAttempt(state, value, inputType, trustedInput, insertedCharacterCount = 0) {
 	const deletion = inputType.startsWith("delete") || value.length < state.lastValue.length;
 	return {
 		...state,
 		lastValue: value,
+		typedCharacterCount: state.typedCharacterCount + (trustedInput ? Math.max(0, insertedCharacterCount) : 0),
 		correctionCount: state.correctionCount + (deletion ? 1 : 0),
 		pasteDetected: state.pasteDetected || inputType === "insertFromPaste",
 		autofillDetected: state.autofillDetected || inputType === "insertReplacementText" || inputType === "insertFromDrop",
 		trustedInput: state.trustedInput && trustedInput
 	};
+}
+function countInsertedTypingCharacters(beforeValue, afterValue, selectionStart, selectionEnd, inputType, inputData) {
+	if (!inputType.startsWith("insert")) return 0;
+	if (inputData !== null) return Array.from(inputData.normalize("NFKC")).length;
+	const start = selectionStart ?? beforeValue.length;
+	const end = selectionEnd ?? start;
+	const prefix = beforeValue.slice(0, start);
+	const suffix = beforeValue.slice(end);
+	if (!afterValue.startsWith(prefix) || !afterValue.endsWith(suffix)) return 0;
+	const insertedEnd = Math.max(prefix.length, afterValue.length - suffix.length);
+	return Array.from(afterValue.slice(prefix.length, insertedEnd).normalize("NFKC")).length;
 }
 function shouldResetTextInputAttemptBeforeInput(value, selectionStart, selectionEnd, inputType) {
 	return value.length > 0 && inputType.startsWith("delete") && selectionStart === 0 && selectionEnd === value.length;
@@ -4379,6 +4392,7 @@ function completeTextInputAttempt(state, message, submittedAt, submittedAtMonoto
 		submittedAt,
 		durationMs: Math.max(0, Math.round(submittedAtMonotonicMs - state.startedAtMonotonicMs)),
 		characterCount: countTypingCharacters(message),
+		typedCharacterCount: state.typedCharacterCount,
 		correctionCount: state.correctionCount,
 		pasteDetected: state.pasteDetected,
 		autofillDetected: state.autofillDetected,
@@ -4395,6 +4409,7 @@ var TextInputTelemetryAdapter = class {
 	telemetryStore;
 	lobbyStore;
 	attempts = /* @__PURE__ */ new WeakMap();
+	beforeInputSnapshots = /* @__PURE__ */ new WeakMap();
 	resetBeforeNextInput = /* @__PURE__ */ new WeakSet();
 	started = false;
 	composingInput = null;
@@ -4433,20 +4448,30 @@ var TextInputTelemetryAdapter = class {
 	onBeforeInput = (event) => {
 		const input = this.chatInput(event.target);
 		if (!input || !(event instanceof InputEvent)) return;
+		this.beforeInputSnapshots.set(input, {
+			value: input.value,
+			selectionStart: input.selectionStart,
+			selectionEnd: input.selectionEnd,
+			inputType: event.inputType,
+			trusted: event.isTrusted
+		});
 		if (shouldResetTextInputAttemptBeforeInput(input.value, input.selectionStart, input.selectionEnd, event.inputType)) this.resetBeforeNextInput.add(input);
 	};
 	onInput = (event) => {
 		const input = this.chatInput(event.target);
 		if (!input) return;
 		const value = input.value;
+		const before = this.beforeInputSnapshots.get(input);
+		this.beforeInputSnapshots.delete(input);
 		if (value.length === 0) {
 			this.attempts.delete(input);
 			this.resetBeforeNextInput.delete(input);
 			return;
 		}
 		const inputType = event instanceof InputEvent ? event.inputType : "";
+		const insertedCharacterCount = before && before.trusted && event.isTrusted ? countInsertedTypingCharacters(before.value, value, before.selectionStart, before.selectionEnd, before.inputType || inputType, event instanceof InputEvent ? event.data : null) : 0;
 		const existing = this.resetBeforeNextInput.delete(input) ? void 0 : this.attempts.get(input);
-		const next = existing ? updateTextInputAttempt(existing, value, inputType, event.isTrusted) : createTextInputAttempt(value, this.now(), this.monotonicNow(), event.isTrusted);
+		const next = existing ? updateTextInputAttempt(existing, value, inputType, event.isTrusted, insertedCharacterCount) : createTextInputAttempt(value, this.now(), this.monotonicNow(), event.isTrusted, insertedCharacterCount);
 		if (inputType === "insertFromPaste") next.pasteDetected = true;
 		if (this.composingInput === input || event instanceof InputEvent && event.isComposing) next.compositionUsed = true;
 		this.attempts.set(input, next);
@@ -4485,7 +4510,7 @@ var TextInputTelemetryAdapter = class {
 		const message = input.value.trim();
 		const occurredAt = this.now();
 		const monotonicMs = this.monotonicNow();
-		const state = this.attempts.get(input) ?? createTextInputAttempt(input.value, occurredAt, monotonicMs, event.isTrusted);
+		const state = this.attempts.get(input) ?? createTextInputAttempt(input.value, occurredAt, monotonicMs, event.isTrusted, 0);
 		this.attempts.delete(input);
 		if (!message || message.startsWith("/")) return;
 		if (this.lastEmission?.message === message && occurredAt - this.lastEmission.occurredAt <= 100) return;
@@ -5227,7 +5252,7 @@ var LocalPlayerStatsService = class {
 	observeMeasurement(event) {
 		const payload = event.payload;
 		const wpm = calculateLocalTypingWpm(payload.characterCount, payload.durationMs);
-		const clean = payload.trustedInput && !payload.pasteDetected && !payload.autofillDetected && payload.durationMs >= MIN_VALID_TYPING_MS && payload.durationMs <= MAX_VALID_TYPING_MS && wpm !== null && wpm <= MAX_VALID_WPM;
+		const clean = payload.trustedInput && !payload.pasteDetected && !payload.autofillDetected && Number.isInteger(payload.typedCharacterCount) && payload.typedCharacterCount >= payload.characterCount && payload.durationMs >= MIN_VALID_TYPING_MS && payload.durationMs <= MAX_VALID_TYPING_MS && wpm !== null && wpm <= MAX_VALID_WPM;
 		this.summary.submittedMessages += 1;
 		this.summary.corrections += payload.correctionCount;
 		if (payload.pasteDetected) this.summary.pasteSubmissions += 1;
@@ -7133,7 +7158,7 @@ function validateTelemetryFixture(value) {
 	}
 	const metadata = candidate.metadata;
 	if (metadata) {
-		if (metadata.contractVersion !== "1.0.0") issues.push(`Fixture contract ${String(metadata.contractVersion)} does not match ${TELEMETRY_CONTRACT_VERSION}.`);
+		if (metadata.contractVersion !== "1.1.0") issues.push(`Fixture contract ${String(metadata.contractVersion)} does not match ${TELEMETRY_CONTRACT_VERSION}.`);
 		if (metadata.schemaVersion !== 1) issues.push(`Fixture schema ${String(metadata.schemaVersion)} does not match 1.`);
 		if (typeof metadata.fixtureId !== "string" || metadata.fixtureId.length === 0) issues.push("metadata.fixtureId must be a non-empty string.");
 		if (typeof metadata.name !== "string" || metadata.name.length === 0) issues.push("metadata.name must be a non-empty string.");
@@ -14190,7 +14215,7 @@ function measurementFrom(event, state) {
 	const duplicateAttempt = state.pendingMeasurements.some((item) => item.attemptId === payload.attemptId) || state.pendingSubmission?.attemptId === payload.attemptId || state.resolvedAttemptIds.includes(payload.attemptId) || state.qualifyingAttemptIds.includes(payload.attemptId);
 	const submittedClockDelta = Math.abs(payload.submittedAt - event.occurredAt);
 	const durationClockDelta = Math.abs(payload.submittedAt - payload.startedAt - payload.durationMs);
-	const certified = event.actor?.isSelf === true && event.actor.playerId !== null && event.actor.playerId === event.context.meId && event.source.origin === "dom-adapter" && event.confidence === "confirmed" && event.context.lobbySessionId !== null && event.context.roundSessionId !== null && event.context.gameStateId === 4 && event.context.meId !== null && event.context.drawerId !== event.context.meId && payload.eligibleGuess === true && payload.attemptId.trim().length > 0 && payload.attemptId.length <= 160 && !duplicateAttempt && messageKey.length > 0 && payload.characterCount === typingCharacterCount(payload.message) && Number.isInteger(payload.correctionCount) && payload.correctionCount >= 0 && payload.trustedInput === true && payload.pasteDetected === false && payload.autofillDetected === false && payload.durationMs >= MIN_CERTIFIED_TYPING_MS && payload.durationMs <= MAX_CERTIFIED_TYPING_MS && submittedClockDelta <= 1e3 && durationClockDelta <= 1e3 && wpm !== null && wpm <= MAX_CERTIFIED_WPM;
+	const certified = event.actor?.isSelf === true && event.actor.playerId !== null && event.actor.playerId === event.context.meId && event.source.origin === "dom-adapter" && event.confidence === "confirmed" && event.context.lobbySessionId !== null && event.context.roundSessionId !== null && event.context.gameStateId === 4 && event.context.meId !== null && event.context.drawerId !== event.context.meId && payload.eligibleGuess === true && payload.attemptId.trim().length > 0 && payload.attemptId.length <= 160 && !duplicateAttempt && messageKey.length > 0 && payload.characterCount === typingCharacterCount(payload.message) && Number.isInteger(payload.typedCharacterCount) && payload.typedCharacterCount >= payload.characterCount && Number.isInteger(payload.correctionCount) && payload.correctionCount >= 0 && payload.trustedInput === true && payload.pasteDetected === false && payload.autofillDetected === false && payload.durationMs >= MIN_CERTIFIED_TYPING_MS && payload.durationMs <= MAX_CERTIFIED_TYPING_MS && submittedClockDelta <= 1e3 && durationClockDelta <= 1e3 && wpm !== null && wpm <= MAX_CERTIFIED_WPM;
 	return {
 		attemptId: payload.attemptId,
 		eventId: event.eventId,
@@ -14243,7 +14268,7 @@ function thresholdMatches(wpm, comparison, threshold) {
 function createCertifiedWpmChallengeDefinition(config, defaultParameters) {
 	return {
 		id: config.id,
-		version: 1,
+		version: 2,
 		metadata: {
 			category: "guessing",
 			localization: localization(config.name, config.descriptionEn, config.name, config.descriptionDe),
@@ -14399,7 +14424,7 @@ var typeRacerDefinition = createCertifiedWpmChallengeDefinition({
 	thresholdWpm: 250,
 	guesses: 1
 });
-var CHALLENGE_DEFINITIONS_VERSION = "2.17.0";
+var CHALLENGE_DEFINITIONS_VERSION = "2.18.0";
 var starterChallengeDefinitions = [
 	quickscopeDefinition,
 	bulletSkribblIoDefinition,
@@ -14836,7 +14861,7 @@ var DebugPanel = class {
 		].join("\n");
 	}
 };
-var PRODUCT_CORE_VERSION = "0.6.3";
+var PRODUCT_CORE_VERSION = "0.6.4";
 var WORD_LIST_IDS = /* @__PURE__ */ new Set([
 	"mogged",
 	"smol-words",
@@ -15615,7 +15640,7 @@ var MatchTelemetryGateway = class {
 	}
 };
 var DEFAULT_PRODUCT_UI_SETTINGS = {
-	version: 6,
+	version: 7,
 	board: {
 		visible: true,
 		mode: "anchor",
@@ -15634,7 +15659,8 @@ var DEFAULT_PRODUCT_UI_SETTINGS = {
 		anchor: "center-right",
 		x: 12,
 		y: 120,
-		size: 60
+		size: 60,
+		visibility: "always"
 	},
 	panelOpen: false,
 	panelTab: "duel",
@@ -15686,7 +15712,7 @@ function normalizeProductUiSettings(value) {
 		"bottom-right"
 	]);
 	return {
-		version: 6,
+		version: 7,
 		board: {
 			visible: typeof boardInput.visible === "boolean" ? boardInput.visible : DEFAULT_PRODUCT_UI_SETTINGS.board.visible,
 			mode: boardInput.mode === "custom" ? "custom" : "anchor",
@@ -15705,7 +15731,8 @@ function normalizeProductUiSettings(value) {
 			anchor: validAnchors.has(String(launcherInput.anchor)) ? launcherInput.anchor : DEFAULT_PRODUCT_UI_SETTINGS.launcher.anchor,
 			x: Number.isFinite(launcherInput.x) ? Number(launcherInput.x) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.x,
 			y: Number.isFinite(launcherInput.y) ? Number(launcherInput.y) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.y,
-			size: clamp(Number(launcherInput.size) || DEFAULT_PRODUCT_UI_SETTINGS.launcher.size, 36, 120)
+			size: clamp(Number(launcherInput.size) || DEFAULT_PRODUCT_UI_SETTINGS.launcher.size, 36, 120),
+			visibility: launcherInput.visibility === "active-match" ? "active-match" : "always"
 		},
 		panelOpen: typeof input.panelOpen === "boolean" ? input.panelOpen : DEFAULT_PRODUCT_UI_SETTINGS.panelOpen,
 		panelTab: validTabs.has(String(input.panelTab)) ? input.panelTab : DEFAULT_PRODUCT_UI_SETTINGS.panelTab,
@@ -15865,6 +15892,21 @@ function authoritativeClaim(value) {
 	const claim = record(value);
 	return Boolean(claim && nonEmptyString(claim.claimId) && nonEmptyString(claim.candidateId) && nonEmptyString(claim.challengeId) && nonNegativeInteger(claim.definitionVersion) && nonEmptyString(claim.ownerAccountId) && finiteNumber(claim.occurredAt) && nonNegativeInteger(claim.revision));
 }
+function dateKey(value) {
+	return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value);
+}
+function skribbleAttempt(value) {
+	const attempt = record(value);
+	return Boolean(attempt && nonEmptyCodePointString(attempt.guess, 32) && Array.isArray(attempt.marks) && attempt.marks.length === Array.from(attempt.guess).length && attempt.marks.every((mark) => mark === "correct" || mark === "semicorrect" || mark === "incorrect") && finiteNumber(attempt.submittedAt));
+}
+function skribbleState(value) {
+	const state = record(value);
+	return Boolean(state && nonEmptyString(state.sessionId) && (state.mode === "daily" || state.mode === "practice") && dateKey(state.dateKey) && finiteNumber(state.nextDailyAt) && nonNegativeInteger(state.languageId) && Number(state.languageId) <= 27 && nonEmptyString(state.languageName, 64) && (state.availability === "ready" || state.availability === "unsupported") && (state.unavailableReason === null || nonEmptyString(state.unavailableReason, 512)) && (state.status === "playing" || state.status === "solved" || state.status === "lost") && state.maxAttempts === 10 && state.minimumLength === 2 && state.maximumLength === 32 && Array.isArray(state.attempts) && state.attempts.length <= 10 && state.attempts.every(skribbleAttempt) && typeof state.canEarn === "boolean" && typeof state.rewarded === "boolean" && nonNegativeInteger(state.rewardAmount) && Number(state.rewardAmount) <= 25);
+}
+function coinTransaction(value) {
+	const transaction = record(value);
+	return Boolean(transaction && nonEmptyString(transaction.transactionId) && nonEmptyString(transaction.idempotencyKey) && Number.isSafeInteger(transaction.amount) && Number(transaction.amount) !== 0 && nonEmptyString(transaction.sourceSinkType, 64) && nonEmptyString(transaction.sourceEntityId, 256) && nonNegativeInteger(transaction.balanceBefore) && nonNegativeInteger(transaction.balanceAfter) && nonNegativeInteger(transaction.rulesVersion) && Number(transaction.rulesVersion) > 0 && Number(transaction.balanceAfter) === Number(transaction.balanceBefore) + Number(transaction.amount) && finiteNumber(transaction.occurredAt) && (transaction.reversalOfTransactionId === null || nonEmptyString(transaction.reversalOfTransactionId)));
+}
 function matchmakingState(value) {
 	const state = record(value);
 	if (!state || state.format !== "casual" && state.format !== "ranked" || state.phase !== "ready-check" && state.phase !== "draft" && state.phase !== "countdown" && state.phase !== "running" && state.phase !== "finished" && state.phase !== "cancelled" || !Array.isArray(state.participants) || state.participants.length !== 2 || !state.participants.every(matchmakingParticipant) || state.readyDeadlineAt !== null && !finiteNumber(state.readyDeadlineAt) || state.countdownEndsAt !== null && !finiteNumber(state.countdownEndsAt) || state.startedAt !== null && !finiteNumber(state.startedAt) || !nonEmptyString(state.startingAccountId) || !finiteNumber(state.createdAt) || !Array.isArray(state.claims) || !state.claims.every(authoritativeClaim) || !stringArray(state.rematchReadyAccountIds, 2) || !stringArray(state.departedAccountIds, 2) || state.drawProposal !== null && !drawProposal(state.drawProposal) || state.conclusion !== null && !matchConclusion(state.conclusion)) return false;
@@ -15899,7 +15941,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 11 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 12 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -15909,6 +15951,9 @@ function isGatewayServerMessage(value) {
 		case "CLAIM_RESOLUTION": return nonEmptyString(message.matchId) && nonEmptyString(message.candidateId) && nonEmptyString(message.challengeId) && nonNegativeInteger(message.definitionVersion) && nonEmptyString(message.ownerAccountId) && typeof message.accepted === "boolean" && (message.claimId === null || nonEmptyString(message.claimId)) && (message.reason === null || nonEmptyString(message.reason)) && nonNegativeInteger(message.revision) && finiteNumber(message.occurredAt);
 		case "DUEL_CHAT_MESSAGE": return nonEmptyString(message.matchId) && nonEmptyString(message.messageId) && nonEmptyString(message.clientMessageId) && nonEmptyString(message.authorAccountId) && nonEmptyString(message.authorDisplayName, 128) && nonEmptyCodePointString(message.message, 300) && finiteNumber(message.occurredAt);
 		case "TELEMETRY_ACK": return nonEmptyString(message.matchId) && nonNegativeInteger(message.lastSequence);
+		case "SKRIBBLE_STATE": return nonEmptyString(message.requestId) && skribbleState(message.state);
+		case "SKRIBBLE_GUESS_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "word-not-found" || message.reason === "invalid-length" || message.reason === "session-ended" || message.reason === "session-not-found") && skribbleState(message.state);
+		case "COIN_BALANCE": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.balance) && nonNegativeInteger(message.revision) && (message.transaction === null || coinTransaction(message.transaction));
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
 		default: return false;
@@ -15962,7 +16007,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.64.0";
+var GATEWAY_CLIENT_VERSION = "0.65.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -19210,6 +19255,9 @@ function initialSnapshot(endpoint) {
 		duelChatMessages: [],
 		lastClaimResolution: null,
 		telemetryAck: null,
+		coins: null,
+		skribble: null,
+		lastSkribbleGuess: null,
 		error: null
 	};
 }
@@ -19465,6 +19513,35 @@ var SocketIoGatewayClient = class {
 		});
 		return actionId;
 	}
+	openSkribble(languageId, mode = "daily") {
+		const requestId = this.createRequestId("skribble-open");
+		this.emit({
+			type: "SKRIBBLE_OPEN",
+			requestId,
+			languageId,
+			mode
+		});
+		return requestId;
+	}
+	submitSkribbleGuess(sessionId, guess) {
+		const requestId = this.createRequestId("skribble-guess");
+		this.emit({
+			type: "SKRIBBLE_GUESS",
+			requestId,
+			sessionId,
+			guess
+		});
+		return requestId;
+	}
+	replaySkribbleCelebration(dateKey) {
+		const requestId = this.createRequestId("skribble-celebration");
+		this.emit({
+			type: "SKRIBBLE_CELEBRATION_REPLAY",
+			requestId,
+			dateKey
+		});
+		return requestId;
+	}
 	queueTelemetryEnvelope(envelope) {
 		if (this.state.match?.matchId !== envelope.matchId) return;
 		if (this.telemetryQueue.some((item) => item.sequence === envelope.sequence)) return;
@@ -19517,7 +19594,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 11,
+				contractVersion: 12,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -19556,7 +19633,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v11 message.`
+				error: `Gateway sent an invalid Contract v12 message.`
 			});
 			return;
 		}
@@ -19580,6 +19657,9 @@ var SocketIoGatewayClient = class {
 				duelChatMessages: resumed ? this.state.duelChatMessages : [],
 				lastClaimResolution: resumed ? this.state.lastClaimResolution : null,
 				telemetryAck: resumed ? this.state.telemetryAck : null,
+				coins: this.state.coins,
+				skribble: this.state.skribble,
+				lastSkribbleGuess: this.state.lastSkribbleGuess,
 				error: null
 			});
 			this.flushTelemetry();
@@ -19612,6 +19692,36 @@ var SocketIoGatewayClient = class {
 				queue: value.queued ? structuredClone(value) : null,
 				match: value.queued ? null : this.state.match,
 				lastMatchEvent: value.queued ? null : this.state.lastMatchEvent,
+				error: null
+			});
+			return;
+		}
+		if (value.type === "COIN_BALANCE") {
+			this.update({
+				...this.state,
+				coins: structuredClone(value),
+				error: null
+			});
+			return;
+		}
+		if (value.type === "SKRIBBLE_STATE") {
+			this.update({
+				...this.state,
+				skribble: structuredClone(value),
+				lastSkribbleGuess: null,
+				error: null
+			});
+			return;
+		}
+		if (value.type === "SKRIBBLE_GUESS_RESULT") {
+			this.update({
+				...this.state,
+				skribble: {
+					type: "SKRIBBLE_STATE",
+					requestId: value.requestId,
+					state: structuredClone(value.state)
+				},
+				lastSkribbleGuess: structuredClone(value),
 				error: null
 			});
 			return;
@@ -19702,7 +19812,7 @@ var SocketIoGatewayClient = class {
 		}
 	}
 	emit(message) {
-		if (this.state.status !== "connected" || !this.socket?.connected) throw new Error("The authenticated Gateway must be connected before matchmaking.");
+		if (this.state.status !== "connected" || !this.socket?.connected) throw new Error("The authenticated Gateway must be connected before sending this action.");
 		this.socket.emit(GATEWAY_SOCKET_EVENT, message);
 	}
 	flushTelemetry() {
@@ -40869,6 +40979,8 @@ var SoundEffectPlayer = class {
 	playbackRejections = 0;
 	lastSoundId = null;
 	lastError = null;
+	initialized = false;
+	preloadedAudio = [];
 	constructor(assets = EMBEDDED_SOUND_ASSETS, createAudio = (source) => new Audio(source)) {
 		this.assets = assets;
 		this.createAudio = createAudio;
@@ -40877,12 +40989,29 @@ var SoundEffectPlayer = class {
 		const normalized = Number.isFinite(percent) ? Math.round(percent) : 82;
 		this.volume = Math.min(100, Math.max(0, normalized)) / 100;
 	}
+	/** Create and explicitly preload every embedded SFX before socket events need it. */
+	initialize() {
+		if (this.initialized) return;
+		this.initialized = true;
+		for (const source of Object.values(this.assets)) {
+			if (!source) continue;
+			try {
+				const audio = this.createAudio(source);
+				audio.preload = "auto";
+				audio.load?.();
+				this.preloadedAudio.push(audio);
+			} catch (error) {
+				this.lastError = this.errorMessage(error);
+			}
+		}
+	}
 	/**
 	* Chrome may reject media started before the page has received a trusted
 	* gesture. The product calls this from a capture-phase pointer/key handler,
 	* silently priming one embedded media element for later socket/timer SFX.
 	*/
 	unlock() {
+		this.initialize();
 		if (this.unlocked) return Promise.resolve(true);
 		if (this.unlockPromise) return this.unlockPromise;
 		this.unlockAttempted = true;
@@ -41730,7 +41859,7 @@ function isSelfEvent(event) {
 function measuredDisplayWpm(event) {
 	const payload = event.payload;
 	const wpm = calculateLocalTypingWpm(payload.characterCount, payload.durationMs);
-	return isSelfEvent(event) && event.source.origin === "dom-adapter" && event.confidence === "confirmed" && payload.trustedInput && !payload.pasteDetected && !payload.autofillDetected && payload.characterCount === countTypingCharacters(payload.message) && payload.durationMs >= MIN_DISPLAY_TYPING_MS && payload.durationMs <= MAX_DISPLAY_TYPING_MS && wpm !== null && wpm <= MAX_DISPLAY_WPM && wpm !== null ? Math.round(wpm) : null;
+	return isSelfEvent(event) && event.source.origin === "dom-adapter" && event.confidence === "confirmed" && payload.trustedInput && !payload.pasteDetected && !payload.autofillDetected && payload.characterCount === countTypingCharacters(payload.message) && Number.isInteger(payload.typedCharacterCount) && payload.typedCharacterCount >= payload.characterCount && payload.durationMs >= MIN_DISPLAY_TYPING_MS && payload.durationMs <= MAX_DISPLAY_TYPING_MS && wpm !== null && wpm <= MAX_DISPLAY_WPM && wpm !== null ? Math.round(wpm) : null;
 }
 function normalizedChatText(value) {
 	return value.replace(/[\u200B-\u200D\uFEFF]/gu, "").replace(/\s+/gu, " ").trim();
@@ -42054,6 +42183,622 @@ var SkribblChatStatDisplay = class {
 function isTypoRuntimeDetected(dataset, typoSkribblLoaded = null) {
 	return dataset?.typo_loader === "true" || dataset?.typo_loaded === "true" || dataset?.typoLoader === "true" || dataset?.typoLoaded === "true" || typoSkribblLoaded === "true";
 }
+var EMBEDDED_PROGRESSION_ASSETS = {
+	"coin": "data:image/gif;base64,R0lGODlhKAAoAJEAAPuyNth7FwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAKAAoAAAC65yPqcvtD6OcUtiLLXW5+3144jd5wImmZ1dh6SigGeTKsPVez2VjwR9Y1QCYBk94+akAv6GOcSRagMtpoFZURJNKle96fCKw1qA308RJNWP1upvrpGPrtppb3VrvbINeYBZHBsgnYGcDh4REN1V4+Ca4iOYYUhg46AGG9DjVwxjGRenHd8mDCSQ64NIp6fYF9ml4CBrzB4hKV8cJuLZWyzW3mAAa7AsM26Nl2ggDBJsrttvsHOW7sDri/Jyre+16TD20CWULk9fnzW2csWTNId7ePkPDHn+WFXGjL1uyLwIyyh86gAQLGjxosAAAIfkEBRQAAwAsAAAAACgAKAAAAvGcj6nL7Q+jnFHYizFluXu7Dd/oTR2Apmr6VdcKeGv3YDN5g87LZsEvQ2k4FpUvkAJmeoIGL3b5wX7KIrS5sF0FUqOFGuANE88oMvetCnUIrRnmUV8VZW53bcWE82yDO43GpIRHZgV1h1fHxYd1UIf4shTFWCjQc7aV6EPZZviVqKm3R9hpuQZ6ukXF6ehpKlkkOjhX2hMaa6Y25ueKhMsHtvfax8s4enUVLEZcjCesqczYWHvbAaZIZLr1sfpEm+WaG234DR4uu+Q1ba69HcS0TucNr6XuMg8Dt7vzkT9CQSIgMwgCS4RgR+OgwoUMIRQAADs=",
+	"skribbleLogo": "data:image/gif;base64,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",
+	"emptyTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///9mgZu7Dmv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADk0i63P4wykmrJSDrzTftYChxxGCe6KlBYOqq2bMJ2vuuzUxntoszGoGQ10v9FhnhEFA0xnIA5a6JOiqSSiJ1YMVEs8yt6Qn8LsVjgAN7RpOR5qlbDZVqt+9r/E7NB8FoXHRwZjVzdWBhYn5fJFRejDshkySElJcelmxSnJ1LZZueomBlBKOnkm+Yq0esmBewsbIKCQAh+QQJFAAEACwAAAAAIAAgAAADmEi63P4wykmrVSDrzfXsYChxxGCeqEl4T5e+6Aq0mpDB+JA5m2ADOdiuUfPdgqkhY+f7IZMzIqD5Az5NykWG6rzqossp9XjNysRN8tO85aqRbHTaWgZjZlSZ9ysl5N9BcVxddVKDgDmCY4g4inN0gSx3ciGVG2FilpVGdiGDn26dHaCknJhtpaRZRamLHVKasXaTsiIXtw4JADs=",
+	"correctTile": "data:image/gif;base64,R0lGODlhIAAgALMAAAAAAP///wsQBxchD5nlUEtpLxsnDwoOBQ4UBv///wAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAJACwCAAMAHAAbAAAEkjDJKYG9OGNKMfpgKFpc4iVEqq4qQk4WCCBs3b7mjBQubdcuQEVX4H1+wBexeESygpVd0eh8KqVMXzUFNWGpW64rOgWHCWNvuXlOz9basPvLlgvV0/p2Dj9zhTF9fmNLRnF7gHQzfmiJWT0oVQkyah8eIpiWGZmcnUExH2Wio6KfoaSoo58Jqa2Gpp6xGrO0tRIRACH5BAkUAAkALAEAAwAcABwAAASpMMlJgb04Xzrx+WAYbtz1JUSqrmlyWBWAzAdrry7QyUiB1LfgS2KZFXzAoG2YKB6RyhtTlnj+oktds2c1JLGEKdf6xYqfxys4NeShoeuwTvaGr9tjcly+rT4TandzCH5HgGVReHWBYIpvjGaDj5CJkmgIAIhSHxd5M5kioQcGBp9OPggDM6usrUY+na11s48Zq7S4abF5ubOYp72XroOuxa0aRBrKyzASEQA7",
+	"semicorrectTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///wICAP/PZ/qJAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwCAAMAHAAbAAADdVi6Cv4wQsakvbTEMrr/3lNJYBk6C0Q8pilqD7E6bfnGMl2DNyDngB0PBfvNhJ+eUYccKH/MJtGxDDY7Ux/Ues1Wr1hAQwsEO8XFrRmFK4PZVCBXKo7L13XtBgmDzy6AgYKDEkaGh4aFiIuHE4yPf4SSk5IKCQAh+QQJFAAFACwBAAMAHAAcAAADe1i6DP4wPrakvbTEMrr/neY0EWh+YvUQzukOo+gQLPCe8Uq3N5gDBVqt5wOKhDUbsfNDDpcw4wzJW450wirxCnA+rcApVQlOIUXQqFmIhnK92t7bGb/Ns/XXfZc3WcYXgRF8gn9Jhl6JeIiKioyNjhCQiRiFlhMylxgKCQA7",
+	"incorrectTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///4B3nZutt////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwCAAMAHAAbAAADdUi6Cv4wQsakvZREMrr/3lNJYBk6CyQ8pilqj7A6bfnGMl2DNyDngB0PBfvNhJ+eUYccKH/MJtGxDDY7Ux/Ues1Wr1hAQwsEO8XFrRmFK4PZVCBXKo7L13XtBgmDzy6AgYKDEkaGh4aFiIuHE4yPf4SSk5IKCQAh+QQJFAAEACwBAAMAHAAcAAADe0i6DP4wPrakvZREMrr/neY0EWh+YvUIzukOo+gILPCe8Uq3N5gDBFqt5wOKhDUbsfNDDpcw4wzJW450wirxCnA+rcApVQlOIUXQqFmIhnK92t7bGb/Ns/XXfZc3WcYXgRF8gn9Jhl6JeIiKioyNjhCQiRiFlhMylxgKCQA7"
+};
+function element$1(tag, className = "", text = "") {
+	const node = document.createElement(tag);
+	node.className = className;
+	if (text) node.textContent = text;
+	return node;
+}
+function asset(id) {
+	return EMBEDDED_PROGRESSION_ASSETS[id] ?? null;
+}
+function languageId() {
+	try {
+		const value = Number(localStorage.getItem("lang") ?? "0");
+		return Number.isInteger(value) && value >= 0 && value <= 27 ? value : 0;
+	} catch {
+		return 0;
+	}
+}
+function codePoints(value) {
+	return Array.from(value.normalize("NFKC"));
+}
+function shareText(state) {
+	const grid = state.attempts.map((attempt) => attempt.marks.map((mark) => mark === "correct" ? "\uD83D\uDFE9" : mark === "semicorrect" ? "\uD83D\uDFE8" : "\u2B1B").join("")).join("\n");
+	const result = state.status === "solved" ? `Solved in ${state.attempts.length} of ${state.maxAttempts} tries.` : `Out of ${state.maxAttempts} tries.`;
+	return `Skribble\nLanguage: ${state.languageName}\n\n${result}\n\n${grid}`;
+}
+var SkribbleFeatureUi = class {
+	options;
+	launcher = null;
+	modal = null;
+	gatewayState;
+	draft = "";
+	inputFocused = false;
+	pendingGuess = false;
+	helpOpen = false;
+	invalidMessage = null;
+	lastGuessRequestId = null;
+	lastTransactionId = null;
+	celebratedSessions = /* @__PURE__ */ new Set();
+	lostSessions = /* @__PURE__ */ new Set();
+	coinNodes = /* @__PURE__ */ new Set();
+	visualCoinBalance = 0;
+	coinAnimationGeneration = 0;
+	coinAnimationFinalBalance = null;
+	coinAnimationTimers = /* @__PURE__ */ new Set();
+	mountTimer = null;
+	countdownTimer = null;
+	resize = () => {
+		if (this.modal) this.renderModal();
+	};
+	constructor(options) {
+		this.options = options;
+		this.gatewayState = options.getGatewayState();
+		this.visualCoinBalance = this.gatewayState.coins?.balance ?? 0;
+	}
+	start() {
+		this.ensureStyles();
+		this.ensureMounted();
+		this.mountTimer = window.setInterval(() => this.ensureMounted(), 700);
+		this.countdownTimer = window.setInterval(() => this.updateCountdown(), 1e3);
+		window.addEventListener("resize", this.resize, false);
+	}
+	stop() {
+		if (this.mountTimer !== null) window.clearInterval(this.mountTimer);
+		if (this.countdownTimer !== null) window.clearInterval(this.countdownTimer);
+		this.mountTimer = null;
+		this.countdownTimer = null;
+		window.removeEventListener("resize", this.resize, false);
+		this.finishCoinAnimation();
+		this.close();
+		this.launcher?.remove();
+		this.launcher = null;
+		this.coinNodes.clear();
+	}
+	update(state) {
+		const previous = this.gatewayState;
+		this.gatewayState = state;
+		const result = state.lastSkribbleGuess;
+		if (result && result.requestId !== this.lastGuessRequestId) {
+			this.lastGuessRequestId = result.requestId;
+			this.pendingGuess = false;
+			if (result.accepted) {
+				this.draft = "";
+				this.invalidMessage = null;
+			} else this.invalidMessage = result.reason === "word-not-found" ? `Word not found inside provided ${result.state.languageName} wordlist.` : result.reason === "invalid-length" ? "Skribble words must contain between 2 and 32 characters." : result.reason === "session-not-found" ? "This Skribble session expired. Start a fresh round." : "This Skribble round has already ended.";
+		}
+		const transaction = state.coins?.transaction;
+		if (transaction && transaction.transactionId !== this.lastTransactionId) {
+			this.lastTransactionId = transaction.transactionId;
+			if (transaction.sourceSinkType === "skribble-daily-solve" && transaction.amount > 0) this.animateCoinReward(transaction.amount, transaction.balanceBefore, transaction.balanceAfter);
+			else this.visualCoinBalance = transaction.balanceAfter;
+		} else if (!this.coinAnimationFinalBalance && state.coins?.balance !== previous.coins?.balance) this.visualCoinBalance = state.coins?.balance ?? 0;
+		this.refreshCoinNodes();
+		if (this.modal) this.renderModal();
+		const skribble = state.skribble?.state;
+		if (skribble?.status === "solved" && !this.celebratedSessions.has(skribble.sessionId)) {
+			this.celebratedSessions.add(skribble.sessionId);
+			requestAnimationFrame(() => this.animateSolvedRow());
+		}
+		if (skribble?.status === "lost" && !this.lostSessions.has(skribble.sessionId)) {
+			this.lostSessions.add(skribble.sessionId);
+			requestAnimationFrame(() => this.animateLoss());
+		}
+	}
+	createCoinPill(compact = true) {
+		const pill = element$1("button", `scd-coin-pill${compact ? " compact" : ""}`);
+		pill.type = "button";
+		pill.setAttribute("aria-label", "Open Skribble and view Skribbl Coin balance");
+		const image = element$1("img");
+		image.alt = "";
+		image.src = asset("coin") ?? "";
+		if (!image.src) image.style.display = "none";
+		pill.append(image, element$1("span", "scd-coin-balance", String(this.visualCoinBalance)));
+		pill.addEventListener("click", () => this.open());
+		this.coinNodes.add(pill);
+		return pill;
+	}
+	isModalOpen() {
+		return this.modal !== null;
+	}
+	closeForMatchFound() {
+		this.close();
+	}
+	ensureMounted() {
+		if (!this.launcher) {
+			const launcher = element$1("button", "scd-skribble-launcher");
+			launcher.id = "skribbl-duels-skribble-launcher";
+			launcher.type = "button";
+			launcher.dataset.scdRuntimeId = this.options.runtimeId;
+			launcher.setAttribute("aria-label", "Open Skribble");
+			const logo = asset("skribbleLogo");
+			if (logo) {
+				const image = element$1("img");
+				image.src = logo;
+				image.alt = "Skribble";
+				launcher.appendChild(image);
+			} else launcher.appendChild(element$1("span", "scd-skribble-logo-fallback", "SKRIBBLE"));
+			launcher.addEventListener("click", () => this.open());
+			this.launcher = launcher;
+		}
+		if (!this.launcher.isConnected) (document.body ?? document.documentElement).appendChild(this.launcher);
+		const home = document.querySelector("#home");
+		const visible = window.location.pathname === "/" && Boolean(home && getComputedStyle(home).display !== "none" && home.getClientRects().length > 0);
+		this.launcher.style.display = visible ? "grid" : "none";
+	}
+	open() {
+		if (this.modal) return;
+		const overlay = element$1("div", "scd-skribble-overlay");
+		overlay.id = "skribbl-duels-skribble";
+		overlay.dataset.scdRuntimeId = this.options.runtimeId;
+		overlay.addEventListener("click", (event) => {
+			if (event.target === overlay) this.close();
+		});
+		this.modal = overlay;
+		(document.body ?? document.documentElement).appendChild(overlay);
+		document.documentElement.dataset.scdSkribbleScrollLock = this.options.runtimeId;
+		if (document.body) document.body.dataset.scdSkribbleScrollLock = this.options.runtimeId;
+		this.options.onModalVisibilityChanged();
+		this.renderModal();
+		if (this.gatewayState.status !== "connected") return;
+		try {
+			this.options.gateway.openSkribble(languageId(), "daily");
+		} catch (error) {
+			this.options.showToast("Skribble unavailable", error instanceof Error ? error.message : String(error), 6e3);
+		}
+	}
+	close() {
+		this.finishCoinAnimation();
+		this.modal?.remove();
+		this.modal = null;
+		this.draft = "";
+		this.inputFocused = false;
+		this.pendingGuess = false;
+		this.helpOpen = false;
+		this.invalidMessage = null;
+		for (const node of [document.documentElement, document.body]) if (node?.dataset.scdSkribbleScrollLock === this.options.runtimeId) delete node.dataset.scdSkribbleScrollLock;
+		this.options.onModalVisibilityChanged();
+	}
+	renderModal() {
+		const overlay = this.modal;
+		if (!overlay) return;
+		const previousInputFocused = this.inputFocused;
+		overlay.replaceChildren();
+		const shell = element$1("div", "scd-skribble-modal");
+		const header = element$1("div", "scd-skribble-header");
+		header.appendChild(this.createCoinPill(false));
+		const logo = asset("skribbleLogo");
+		const title = element$1("div", "scd-skribble-title");
+		if (logo) {
+			const image = element$1("img");
+			image.src = logo;
+			image.alt = "Skribble";
+			title.appendChild(image);
+		} else title.textContent = "SKRIBBLE";
+		const actions = element$1("div", "scd-skribble-actions");
+		const help = element$1("button", "scd-skribble-icon-button", "?");
+		help.type = "button";
+		help.setAttribute("aria-label", "Skribble help");
+		help.addEventListener("click", () => {
+			this.helpOpen = !this.helpOpen;
+			this.renderModal();
+		});
+		const close = element$1("button", "scd-skribble-icon-button", "\u00D7");
+		close.type = "button";
+		close.setAttribute("aria-label", "Close Skribble");
+		close.addEventListener("click", () => this.close());
+		actions.append(help, close);
+		header.append(title, actions);
+		const content = element$1("div", "scd-skribble-content");
+		const state = this.gatewayState.skribble?.state ?? null;
+		if (this.helpOpen) content.appendChild(this.helpCard());
+		if (this.gatewayState.status !== "connected") content.append(element$1("strong", "", "Connect Skribbl Duels first"), element$1("p", "scd-skribble-muted", "Sign in with Discord and connect the authenticated Gateway in the Skribbl Duels Hub before starting the Daily Word."));
+		else if (!state) content.append(element$1("div", "scd-skribble-loading"), element$1("div", "scd-skribble-muted", "Loading the authoritative Daily Word\u2026"));
+		else if (state.availability === "unsupported") content.append(element$1("strong", "", `${state.languageName} is not available`), element$1("p", "scd-skribble-warning", state.unavailableReason ?? "This official word list could not be fetched."));
+		else {
+			content.appendChild(element$1("div", "scd-skribble-mode", `${state.mode === "daily" ? "Daily Word" : "Practice"} \u00B7 ${state.languageName} \u00B7 ${state.attempts.length}/${state.maxAttempts}`));
+			const board = element$1("div", "scd-skribble-board");
+			const inputWidth = state.status === "playing" ? Math.min(state.maximumLength, Math.max(2, codePoints(this.draft).length + 1)) : 0;
+			const widestRow = Math.max(2, inputWidth, state.status === "lost" ? codePoints("You lost!").length : 0, ...state.attempts.map((attempt) => codePoints(attempt.guess).length));
+			const availableWidth = Math.max(180, Math.min(944, window.innerWidth - 60));
+			const tileSize = Math.max(4, Math.min(32, (availableWidth - (widestRow - 1) * 2) / widestRow));
+			board.style.setProperty("--scd-board-tile-size", `${tileSize}px`);
+			state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(attempt, index, state.attempts.length, state.status === "solved" && index === state.attempts.length - 1)));
+			if (state.status === "playing") board.appendChild(this.inputRow(state));
+			if (state.status === "lost") board.appendChild(this.lossMessageRow());
+			content.appendChild(board);
+			if (this.invalidMessage) content.appendChild(element$1("div", "scd-skribble-warning", this.invalidMessage));
+			if (state.mode === "practice") content.appendChild(element$1("div", "scd-skribble-muted", "Practice rounds never award Skribbl Coins."));
+			if (state.status !== "playing") content.appendChild(this.ending(state));
+		}
+		shell.append(header, content);
+		overlay.appendChild(shell);
+		if (previousInputFocused && state?.status === "playing") queueMicrotask(() => {
+			const input = overlay.querySelector(".scd-skribble-native-input");
+			input?.focus();
+			input?.setSelectionRange(input.value.length, input.value.length);
+		});
+		this.refreshCoinNodes();
+	}
+	helpCard() {
+		const card = element$1("section", "scd-skribble-help");
+		card.append(element$1("strong", "", "How Skribble works"), element$1("p", "", "Guess a word from the official word list for your selected Skribbl language. Words may contain spaces, hyphens and every Unicode character used by that language."), element$1("p", "", "Green means correct letter and position. Yellow means the character exists elsewhere. Gray means it is not available in the remaining answer."), element$1("p", "", "You have ten attempts and no clues. The Gateway checks every guess without sending the answer to the browser in advance."), element$1("p", "", "Only the first Daily solve on an account each UTC day awards Coins. Practice is always unrewarded."));
+		return card;
+	}
+	attemptRow(attempt, index, total, won) {
+		const row = element$1("div", `scd-skribble-row${won ? " won" : ""}`);
+		const characters = codePoints(attempt.guess);
+		row.style.setProperty("--scd-row-tile-count", String(Math.max(1, characters.length)));
+		row.style.opacity = String(Math.max(.1, 1 - (total - index - 1) * .1));
+		row.addEventListener("mouseenter", () => {
+			row.style.opacity = "1";
+		});
+		row.addEventListener("mouseleave", () => {
+			row.style.opacity = String(Math.max(.1, 1 - (total - index - 1) * .1));
+		});
+		characters.forEach((character, characterIndex) => {
+			const mark = attempt.marks[characterIndex] ?? "incorrect";
+			const tile = this.tile(character, mark === "semicorrect" ? "semicorrectTile" : `${mark}Tile`);
+			tile.style.animationDelay = `${characterIndex * 90}ms`;
+			if (index === total - 1) tile.classList.add("reveal");
+			row.appendChild(tile);
+		});
+		return row;
+	}
+	inputRow(state) {
+		const row = element$1("div", `scd-skribble-row scd-skribble-input-row${this.invalidMessage ? " invalid" : ""}`);
+		const characters = codePoints(this.draft).slice(0, state.maximumLength);
+		const slots = Math.min(state.maximumLength, Math.max(2, characters.length + 1));
+		row.style.setProperty("--scd-row-tile-count", String(slots));
+		characters.forEach((character, index) => {
+			const tile = this.tile(character, "emptyTile");
+			if (this.inputFocused && index === characters.length - 1) tile.classList.add("active");
+			row.appendChild(tile);
+		});
+		if (characters.length === 0) {
+			const current = this.tile("", "emptyTile");
+			if (this.inputFocused) current.classList.add("active");
+			row.appendChild(current);
+		}
+		if (characters.length < state.maximumLength) {
+			const indicator = this.tile("", "emptyTile");
+			indicator.classList.add("indicator");
+			row.appendChild(indicator);
+		}
+		const input = element$1("input", "scd-skribble-native-input");
+		input.type = "text";
+		input.value = this.draft;
+		input.autocomplete = "off";
+		input.spellcheck = false;
+		input.setAttribute("aria-label", "Skribble guess");
+		input.addEventListener("focus", () => {
+			this.inputFocused = true;
+			const editableTiles = row.querySelectorAll(".scd-skribble-tile:not(.indicator)");
+			editableTiles.item(editableTiles.length - 1)?.classList.add("active");
+		});
+		input.addEventListener("blur", () => {
+			this.inputFocused = false;
+			row.querySelectorAll(".active").forEach((node) => node.classList.remove("active"));
+		});
+		input.addEventListener("input", () => {
+			this.draft = codePoints(input.value).slice(0, state.maximumLength).join("");
+			this.invalidMessage = null;
+			this.inputFocused = true;
+			this.renderModal();
+		});
+		input.addEventListener("keydown", (event) => {
+			if (event.key !== "Enter") return;
+			event.preventDefault();
+			if (event.shiftKey || this.pendingGuess) return;
+			const length = codePoints(this.draft.trim()).length;
+			if (length < state.minimumLength || length > state.maximumLength) {
+				this.invalidMessage = `Enter between ${state.minimumLength} and ${state.maximumLength} characters.`;
+				this.renderModal();
+				return;
+			}
+			this.pendingGuess = true;
+			try {
+				this.options.gateway.submitSkribbleGuess(state.sessionId, this.draft);
+			} catch (error) {
+				this.pendingGuess = false;
+				this.options.showToast("Guess not sent", error instanceof Error ? error.message : String(error));
+			}
+		});
+		row.appendChild(input);
+		row.addEventListener("click", () => input.focus());
+		queueMicrotask(() => input.focus());
+		return row;
+	}
+	tile(character, assetId) {
+		const tile = element$1("span", `scd-skribble-tile ${assetId}`);
+		const source = asset(assetId);
+		if (source) tile.style.backgroundImage = `url(${JSON.stringify(source)})`;
+		tile.appendChild(element$1("span", "scd-skribble-character", character));
+		return tile;
+	}
+	ending(state) {
+		const end = element$1("div", "scd-skribble-ending");
+		end.appendChild(element$1("strong", state.status === "solved" ? "scd-skribble-success" : "scd-skribble-warning", state.status === "solved" ? state.rewarded ? `Solved! +${state.rewardAmount} Skribbl Coins` : "Solved! Today\u2019s account reward was already claimed." : "Try again tomorrow. You can keep playing in unranked Practice."));
+		const countdown = element$1("div", "scd-skribble-countdown");
+		countdown.dataset.nextDailyAt = String(state.nextDailyAt);
+		end.appendChild(countdown);
+		const actions = element$1("div", "scd-skribble-ending-actions");
+		const practice = element$1("button", "scd-skribble-practice", "Practice");
+		practice.type = "button";
+		practice.addEventListener("click", () => {
+			this.draft = "";
+			this.invalidMessage = null;
+			this.options.gateway.openSkribble(state.languageId, "practice");
+		});
+		const share = element$1("button", "scd-skribble-secondary", "Copy result");
+		share.type = "button";
+		share.addEventListener("click", () => void this.copyResult(state));
+		actions.append(practice, share);
+		if (state.status === "solved" && state.mode === "daily") {
+			const replay = element$1("button", "scd-skribble-secondary", "Replay celebration \u00B7 1 Coin");
+			replay.type = "button";
+			replay.disabled = (this.gatewayState.coins?.balance ?? 0) < 1;
+			replay.addEventListener("click", () => {
+				try {
+					this.options.gateway.replaySkribbleCelebration(state.dateKey);
+					this.animateSolvedRow();
+				} catch (error) {
+					this.options.showToast("Celebration unavailable", error instanceof Error ? error.message : String(error));
+				}
+			});
+			actions.appendChild(replay);
+		}
+		end.append(actions, element$1("div", "scd-skribble-muted", "Practice rounds and celebration replays never award additional Skribbl Coins."));
+		return end;
+	}
+	lossMessageRow() {
+		const text = codePoints("You lost!");
+		const row = element$1("div", "scd-skribble-row scd-skribble-loss-message");
+		row.style.setProperty("--scd-row-tile-count", String(text.length));
+		text.forEach((character, index) => {
+			const tile = this.tile(character, "emptyTile");
+			tile.style.animationDelay = `${index * 80}ms`;
+			row.appendChild(tile);
+		});
+		return row;
+	}
+	async copyResult(state) {
+		const text = shareText(state);
+		try {
+			await navigator.clipboard.writeText(text);
+			this.options.showToast("Skribble result copied", "The spoiler-free result is ready to share.");
+		} catch {
+			this.options.showToast("Clipboard blocked", text, 8e3);
+		}
+	}
+	updateCountdown() {
+		const node = this.modal?.querySelector(".scd-skribble-countdown");
+		if (!node) return;
+		const deadline = Number(node.dataset.nextDailyAt);
+		const remaining = Math.max(0, deadline - Date.now());
+		const hours = Math.floor(remaining / 36e5);
+		const minutes = Math.floor(remaining % 36e5 / 6e4);
+		const seconds = Math.floor(remaining % 6e4 / 1e3);
+		node.textContent = `Next official Skribble in ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")} UTC`;
+	}
+	animateSolvedRow() {
+		(this.modal?.querySelectorAll(".scd-skribble-row.won .scd-skribble-tile"))?.forEach((tile, index) => {
+			tile.style.animationDelay = `${index * 73 % 310}ms`;
+			tile.classList.remove("jump");
+			tile.offsetWidth;
+			tile.classList.add("jump");
+		});
+	}
+	animateLoss() {
+		const rows = this.modal?.querySelectorAll(".scd-skribble-board .scd-skribble-row:not(.scd-skribble-loss-message)");
+		if (!rows) return;
+		const tiles = [...rows].flatMap((row) => [...row.querySelectorAll(".scd-skribble-tile")]);
+		tiles.sort(() => Math.random() - .5).forEach((tile, index) => {
+			tile.style.animationDelay = `${index * 45}ms`;
+			tile.classList.add("fall");
+		});
+		this.modal?.querySelectorAll(".scd-skribble-loss-message .scd-skribble-tile").forEach((tile, index) => {
+			tile.style.animationDelay = `${tiles.length * 45 + 720 + index * 80}ms`;
+		});
+	}
+	animateCoinReward(amount, balanceBefore, balanceAfter) {
+		this.finishCoinAnimation();
+		this.visualCoinBalance = balanceBefore;
+		this.coinAnimationFinalBalance = balanceAfter;
+		this.refreshCoinNodes();
+		const source = this.modal?.querySelector(".scd-skribble-row.won");
+		const coinSource = asset("coin");
+		if (!source || !coinSource || !this.modal) {
+			this.finishCoinAnimation();
+			return;
+		}
+		const generation = ++this.coinAnimationGeneration;
+		const sourceRect = source.getBoundingClientRect();
+		for (let index = 0; index < amount; index += 1) {
+			const timer = window.setTimeout(() => {
+				this.coinAnimationTimers.delete(timer);
+				if (generation !== this.coinAnimationGeneration || !this.modal) return;
+				const coin = element$1("img", "scd-skribble-coin-particle");
+				coin.src = coinSource;
+				coin.alt = "";
+				coin.style.left = `${sourceRect.left + sourceRect.width / 2 - 10}px`;
+				coin.style.top = `${sourceRect.top + sourceRect.height / 2 - 10}px`;
+				document.body.appendChild(coin);
+				const dx = (Math.random() - .5) * Math.min(360, window.innerWidth * .45);
+				const up = 70 + Math.random() * 150;
+				const down = 35 + Math.random() * 75;
+				coin.animate([
+					{
+						transform: "translate(0,0) scale(.55)",
+						opacity: 0
+					},
+					{
+						transform: `translate(${dx * .55}px,${-up}px) scale(1)`,
+						opacity: 1,
+						offset: .55
+					},
+					{
+						transform: `translate(${dx}px,${down}px) scale(.86)`,
+						opacity: 1,
+						offset: .88
+					},
+					{
+						transform: `translate(${dx}px,${down - 13}px) scale(.86)`,
+						opacity: 1
+					},
+					{
+						transform: `translate(${dx}px,${down}px) scale(.86)`,
+						opacity: 1
+					}
+				], {
+					duration: 700 + Math.random() * 500,
+					easing: "cubic-bezier(.2,.7,.25,1)",
+					fill: "forwards"
+				}).finished.then(() => new Promise((resolve) => {
+					const rest = window.setTimeout(() => {
+						this.coinAnimationTimers.delete(rest);
+						resolve();
+					}, 500);
+					this.coinAnimationTimers.add(rest);
+				})).then(() => {
+					if (generation !== this.coinAnimationGeneration) {
+						coin.remove();
+						return;
+					}
+					const target = [...this.coinNodes].find((node) => node.isConnected)?.getBoundingClientRect();
+					if (!target) {
+						coin.remove();
+						return;
+					}
+					const current = coin.getBoundingClientRect();
+					coin.animate([{
+						transform: "translate(0,0) scale(1)",
+						opacity: 1
+					}, {
+						transform: `translate(${target.left + target.width / 2 - current.left}px,${target.top + target.height / 2 - current.top}px) scale(.2)`,
+						opacity: 0
+					}], {
+						duration: 420,
+						easing: "cubic-bezier(.55,0,.85,.45)",
+						fill: "forwards"
+					}).finished.then(() => {
+						coin.remove();
+						if (generation !== this.coinAnimationGeneration) return;
+						this.visualCoinBalance = Math.min(balanceAfter, this.visualCoinBalance + 1);
+						this.refreshCoinNodes();
+						if (this.visualCoinBalance >= balanceAfter) this.finishCoinAnimation();
+					});
+				}).catch(() => coin.remove());
+			}, index * 65);
+			this.coinAnimationTimers.add(timer);
+		}
+	}
+	finishCoinAnimation() {
+		this.coinAnimationGeneration += 1;
+		for (const timer of this.coinAnimationTimers) window.clearTimeout(timer);
+		this.coinAnimationTimers.clear();
+		document.querySelectorAll(".scd-skribble-coin-particle").forEach((node) => node.remove());
+		if (this.coinAnimationFinalBalance !== null) this.visualCoinBalance = this.coinAnimationFinalBalance;
+		else this.visualCoinBalance = this.gatewayState.coins?.balance ?? this.visualCoinBalance;
+		this.coinAnimationFinalBalance = null;
+		this.refreshCoinNodes();
+	}
+	refreshCoinNodes() {
+		for (const node of [...this.coinNodes]) {
+			if (!node.isConnected && node !== this.modal) {
+				this.coinNodes.delete(node);
+				continue;
+			}
+			const value = node.querySelector(".scd-coin-balance");
+			if (value) value.textContent = String(this.visualCoinBalance);
+		}
+	}
+	ensureStyles() {
+		if (document.getElementById("skribbl-duels-skribble-styles")) return;
+		const style = document.createElement("style");
+		style.id = "skribbl-duels-skribble-styles";
+		style.textContent = `
+html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overflow:hidden !important;overscroll-behavior:none !important; }
+.scd-skribble-launcher { position:fixed;right:18px;top:25vh;z-index:2147483643;display:grid;place-items:center;min-width:96px;min-height:54px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out; }
+.scd-skribble-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08); }
+.scd-skribble-launcher img { display:block;max-width:150px;max-height:76px;object-fit:contain; }
+.scd-skribble-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
+.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-skribble-fade .2s ease-out; }
+.scd-skribble-modal { width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25); }
+.scd-skribble-header { min-height:68px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(140px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:8px 12px; }
+.scd-skribble-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
+.scd-skribble-title img { display:block;max-width:min(260px,38vw);max-height:60px;object-fit:contain; }
+.scd-skribble-actions { justify-self:end;display:flex;gap:6px; }
+.scd-skribble-icon-button { width:42px;height:42px;border:0;padding:0;background:transparent;color:#fff;font:900 32px/1 Arial;cursor:pointer;text-shadow:2px 2px 0 #0004; }
+.scd-coin-pill { min-width:96px;max-width:160px;height:48px;justify-self:start;display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:4px 10px 4px 4px;background:var(--SCD_ACCENT,var(--COLOR_PANEL_BUTTON,#2a51d1));color:#fff;font:800 16px/1 Arial;cursor:pointer;text-shadow:2px 2px 0 #0004; }
+.scd-coin-pill.compact { min-width:0;width:auto;height:38px;padding:3px 8px 3px 3px; }
+.scd-coin-pill:hover { background:var(--SCD_ACCENT_HOVER,var(--COLOR_PANEL_BUTTON_HOVER,#1e44be)); }
+.scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated; }
+.scd-coin-pill.compact img { width:32px;height:32px; }
+.scd-skribble-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 18px 18px;text-align:center; }
+.scd-skribble-mode { font-weight:800;opacity:.86; }
+.scd-skribble-board { width:100%;display:flex;flex-direction:column;align-items:center;gap:6px; }
+.scd-skribble-row { --scd-row-tile-count:2;width:100%;display:grid;grid-template-columns:repeat(var(--scd-row-tile-count),var(--scd-board-tile-size,32px));gap:2px;justify-content:center;transition:opacity .16s ease-in-out; }
+.scd-skribble-tile { position:relative;width:var(--scd-board-tile-size,32px);aspect-ratio:1/1;justify-self:center;display:grid;place-items:center;border-radius:3px;background-color:#d8b773;background-position:center;background-size:100% 100%;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .16s ease-in-out,opacity .16s ease-in-out,transform .16s ease-in-out; }
+.scd-skribble-tile.correctTile { background-color:#69bd45; }
+.scd-skribble-tile.semicorrectTile { background-color:#e4aa32; }
+.scd-skribble-tile.incorrectTile { background-color:#68717e; }
+.scd-skribble-character { position:relative;transform:translate(4px,-2px);max-width:100%;overflow:hidden;color:#111;font:900 clamp(5px,calc(var(--scd-board-tile-size,32px) * .5),16px)/1 Arial,sans-serif;text-shadow:1px 1px 0 #fff5; }
+.scd-skribble-tile.indicator { opacity:.6; }
+.scd-skribble-tile.active::after { content:'';position:absolute;left:calc(50% + 5px);top:20%;width:2px;height:58%;background:#111;animation:scd-skribble-cursor .75s steps(1) infinite; }
+.scd-skribble-native-input { position:fixed !important;left:-10000px !important;top:auto !important;width:1px !important;height:1px !important;opacity:0 !important;pointer-events:none !important; }
+.scd-skribble-input-row { cursor:text; }
+.scd-skribble-input-row.invalid .scd-skribble-tile { filter:brightness(75%) contrast(200%) saturate(300%) hue-rotate(310deg) drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-skribble-tile.reveal { opacity:0;animation:scd-skribble-reveal .28s ease-out forwards; }
+.scd-skribble-tile.jump { animation:scd-skribble-jump .72s cubic-bezier(.2,.8,.3,1) 2; }
+.scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards; }
+.scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
+.scd-skribble-help { width:min(680px,100%);padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
+.scd-skribble-help p { margin:.55em 0 0; }
+.scd-skribble-warning { color:var(--COLOR_CHAT_TEXT_LEAVE,#ff8c66);font-weight:700; }
+.scd-skribble-success { color:var(--COLOR_CHAT_TEXT_GUESSED,#6fd66a); }
+.scd-skribble-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
+.scd-skribble-ending { width:min(720px,100%);display:flex;flex-direction:column;gap:10px;align-items:center; }
+.scd-skribble-ending-actions { width:100%;display:flex;justify-content:center;gap:8px;flex-wrap:wrap; }
+.scd-skribble-practice,.scd-skribble-secondary { min-height:40px;border:0;border-radius:var(--BORDER_RADIUS,7px);padding:7px 14px;color:#fff;font:800 15px/1.1 Arial;cursor:pointer;text-shadow:2px 2px 0 #0003; }
+.scd-skribble-practice { background:#2c8de7; }
+.scd-skribble-practice:hover { background:#1671c5; }
+.scd-skribble-secondary { background:var(--COLOR_PANEL_BUTTON,#2a51d1); }
+.scd-skribble-secondary:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
+.scd-skribble-secondary:disabled { opacity:.45;cursor:not-allowed; }
+.scd-skribble-loading { width:64px;height:64px;background:url('/img/load.gif') center/contain no-repeat;animation:scd-skribble-spin .8s ease-in-out infinite; }
+.scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:20px;height:20px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
+.scd-skribble-overlay::-webkit-scrollbar,.scd-skribble-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
+.scd-skribble-overlay::-webkit-scrollbar-thumb,.scd-skribble-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
+@keyframes scd-skribble-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes scd-skribble-spin { from { transform:rotate(0); } to { transform:rotate(360deg); } }
+@keyframes scd-skribble-cursor { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
+@keyframes scd-skribble-reveal { from { opacity:0;transform:rotateY(90deg); } to { opacity:1;transform:rotateY(0); } }
+@keyframes scd-skribble-jump { 0%,100% { transform:translateY(0) rotate(0); } 38% { transform:translateY(-20px) rotate(-5deg); } 72% { transform:translateY(2px) rotate(4deg); } }
+@keyframes scd-skribble-fall { from { opacity:1;transform:translateY(0) rotate(0); } to { opacity:0;transform:translateY(240px) rotate(38deg); } }
+@keyframes scd-skribble-loss-bounce { 0% { opacity:0;transform:translateY(-130px); } 72% { opacity:1;transform:translateY(8px); } 88% { transform:translateY(-5px); } 100% { opacity:1;transform:translateY(0); } }
+@media (max-width:620px) {
+  .scd-skribble-header { grid-template-columns:auto 1fr auto; }
+  .scd-skribble-title { font-size:1.2em; }
+  .scd-skribble-launcher { right:8px;top:22vh;transform:scale(.8);transform-origin:right center; }
+  .scd-coin-pill { min-width:0; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .scd-skribble-overlay,.scd-skribble-loading,.scd-skribble-tile,.scd-skribble-coin-particle { animation:none !important; }
+}
+`;
+		(document.head ?? document.documentElement).appendChild(style);
+	}
+};
 var DUEL_PROFILE_UI_STORAGE_KEY = "skribblDuelsProfileUiV1";
 var DUEL_PROFILE_STATUS_MAX_LENGTH = 80;
 var ABOUT_TUTORIAL_PAGES = [
@@ -42654,6 +43399,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-about-page { display:none;grid-area:1/1;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;text-align:center; }
 .scd-about-page.active { display:flex; }
 .scd-about-page-visual { width:min(100%,300px);aspect-ratio:5/4;image-rendering:pixelated;animation:scd-about-image-introduce .3s ease-in-out 1; }
+.scd-about-tutorial .scd-icon:hover,.scd-about-tutorial button:not(:disabled):hover .scd-icon,.scd-about-page-visual:hover { transform:none; }
 .scd-about-page-title { font-size:1.08em; }
 .scd-about-page-description { width:100%;min-height:3.2em; }
 .scd-about-navigation { width:100%;height:25px; }
@@ -42750,6 +43496,12 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-duel-toast .close-toast { position:absolute;right:.5rem;top:0;font-weight:900;opacity:.7;cursor:pointer;font-size:2rem; }
 .scd-duel-toast .typo-toast-confirm { width:100%;display:flex;flex-direction:row;gap:1rem; }
 .scd-duel-toast .typo-toast-confirm .scd-button { min-width:7rem; }
+.scd-lobby-match-toast { min-width:min(32rem,calc(100vw - 2rem));display:grid;grid-template-columns:minmax(0,1fr) 64px;grid-template-areas:'title clock' 'message clock';align-items:center; }
+.scd-lobby-match-toast h3 { grid-area:title;margin:0; }
+.scd-lobby-match-toast > span:not(.close-toast) { grid-area:message; }
+.scd-lobby-ready-clock { grid-area:clock;pointer-events:none;width:64px;height:64px;background-image:url('/img/clock.gif');background-size:contain;background-position:center;background-repeat:no-repeat;color:#000;font-size:20px;line-height:3.6;font-weight:bolder;display:flex;justify-content:center;filter:drop-shadow(0 0 2px rgba(0,0,0,.15));animation-duration:.3s;animation-timing-function:ease-in-out;animation-iteration-count:1; }
+@keyframes scd-clock-rot-right { 0%,100% { transform:rotate(0); } 5% { transform:scale(1.15) rotate(25deg); } }
+@keyframes scd-clock-rot-left { 0%,100% { transform:rotate(0); } 5% { transform:scale(1.15) rotate(-25deg); } }
 .scd-toast-profile { display:flex;align-items:center;gap:.55rem;min-width:0; }
 .scd-toast-profile strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .scd-toast-avatar { position:relative;width:32px !important;height:32px !important;border-radius:50%;display:grid;place-items:center;flex:none;font-size:16px;font-weight:900; }
@@ -43020,6 +43772,7 @@ var DuelProductFoundation = class {
 	soundEffects;
 	authClient = new SupabaseDiscordAuthClient();
 	gatewayClient;
+	skribbleUi;
 	authState;
 	gatewayState;
 	unsubscribers = [];
@@ -43030,6 +43783,11 @@ var DuelProductFoundation = class {
 	readySubmissionTimer = null;
 	cancellationSubmissionMatchId = null;
 	cancellationSubmissionTimer = null;
+	lobbyMatchReadyTimer = null;
+	lobbyMatchReadyMatchId = null;
+	lobbyMatchReadyDeadline = 0;
+	lobbyMatchReadyLastSecond = null;
+	lobbyMatchReadyToast = null;
 	readyDeadlineRecoveryAt = 0;
 	draftSubmissionKey = null;
 	lastConclusionMessageMatchId = null;
@@ -43119,6 +43877,13 @@ var DuelProductFoundation = class {
 			this.gatewayClient.queueTelemetryEnvelope(envelope);
 		});
 		this.gatewayState = this.gatewayClient.getState();
+		this.skribbleUi = new SkribbleFeatureUi({
+			runtimeId: options.runtimeId,
+			gateway: this.gatewayClient,
+			getGatewayState: () => this.gatewayState,
+			showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
+			onModalVisibilityChanged: () => this.syncPageScrollLock()
+		});
 	}
 	start() {
 		this.installRuntimeIsolationStyle();
@@ -43126,6 +43891,8 @@ var DuelProductFoundation = class {
 		this.chatAdapter.start();
 		this.chatStatDisplay.start();
 		this.tooltips.start();
+		this.soundEffects.initialize();
+		this.skribbleUi.start();
 		document.addEventListener("keydown", this.draftKeydown, true);
 		document.addEventListener("visibilitychange", this.visibilityRecovery, true);
 		document.addEventListener("skribblInitialized", this.typoInitialized, true);
@@ -43143,12 +43910,15 @@ var DuelProductFoundation = class {
 			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
 			const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
 			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName || previous.identity?.nameColorIndex !== state.identity?.nameColorIndex;
-			if (state.match !== null && previous.match?.matchId !== state.match.matchId && (previous.queue !== null || previous.invite?.status === "waiting" || this.pendingInviteToken !== null || this.inviteAcceptanceSubmitted)) {
+			const playerFound = state.match !== null && previous.match?.matchId !== state.match.matchId && (previous.queue !== null || previous.invite?.status === "waiting" || this.pendingInviteToken !== null || this.inviteAcceptanceSubmitted);
+			this.gatewayState = state;
+			this.skribbleUi.update(state);
+			if (playerFound) {
 				this.soundEffects.play("matchFound");
 				this.closeProductModalsForMatchFound();
+				if (!this.isHomepageVisible()) this.beginLobbyMatchReadyCountdown(state.match.matchId);
 			}
 			if (matchChanged) this.matchActionError = null;
-			this.gatewayState = state;
 			if (drawProposalAppeared) this.lastVisibleDrawProposalId = nextDrawProposalId;
 			if (state.error && state.error !== previous.error && this.pendingDuelChatMessages.size > 0) {
 				const failed = this.pendingDuelChatMessages.entries().next().value;
@@ -43232,9 +44002,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.64.0",
+			version: "0.65.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 11,
+			gatewayContractVersion: 12,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -43337,6 +44107,7 @@ var DuelProductFoundation = class {
 		window.removeEventListener("keydown", this.duelChatKeydown, true);
 		window.removeEventListener("focus", this.visibilityRecovery, false);
 		this.gatewayClient.stop();
+		this.skribbleUi.stop();
 		this.authClient.stop();
 		this.launcher?.remove();
 		this.panel?.remove();
@@ -43359,6 +44130,7 @@ var DuelProductFoundation = class {
 		this.stopAboutTutorial();
 		this.clearReadySubmission();
 		this.clearCancellationSubmission();
+		this.clearLobbyMatchReadyCountdown();
 		this.stopIntroAnimation();
 		this.stopCountdownAnimation();
 		this.homeButton = null;
@@ -43379,7 +44151,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.64.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.65.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -43506,6 +44278,7 @@ var DuelProductFoundation = class {
 		this.panelAccount.addEventListener("click", () => this.openDuelProfile());
 		const title = element("div", "scd-modal-title", "Skribbl Duels");
 		const actions = element("div", "scd-modal-actions");
+		actions.appendChild(this.skribbleUi.createCoinPill());
 		const settings = element("button", "scd-icon-button");
 		settings.type = "button";
 		settings.appendChild(this.createIconAsset("res/challenge-icons/settings.gif", "\u2699", "Settings"));
@@ -43777,16 +44550,21 @@ var DuelProductFoundation = class {
 	renderVisibility() {
 		const stagePhase = this.currentStagePhase();
 		if (this.panel) this.panel.style.display = this.settings.panelOpen && !stagePhase && !this.profileColorPicker && !this.duelProfileModal ? "block" : "none";
-		if (this.stage) this.stage.style.display = stagePhase ? "block" : "none";
+		if (this.stage) this.stage.style.display = stagePhase && !this.lobbyMatchReadyMatchId ? "block" : "none";
 		if (this.board) {
 			const hasMatchBoard = this.matchState.phase !== "idle" && this.matchState.fields.length > 0;
 			this.board.style.display = this.settings.board.visible && hasMatchBoard && !stagePhase ? "block" : "none";
+		}
+		if (this.launcher) {
+			const phase = this.gatewayState.match?.state.phase;
+			const activeMatch = phase === "ready-check" || phase === "draft" || phase === "countdown" || phase === "running" || this.matchState.phase === "running";
+			this.launcher.style.display = this.settings.launcher.visibility === "active-match" && !activeMatch ? "none" : "grid";
 		}
 		this.syncPageScrollLock();
 	}
 	syncPageScrollLock() {
 		const isVisible = (node) => Boolean(node?.isConnected && node.style.display !== "none");
-		const locked = isVisible(this.panel) || isVisible(this.stage) || isVisible(this.intro) || isVisible(this.profileColorPicker) || isVisible(this.duelProfileModal) || isVisible(this.profileDetailModal);
+		const locked = isVisible(this.panel) || isVisible(this.stage) || isVisible(this.intro) || isVisible(this.profileColorPicker) || isVisible(this.duelProfileModal) || isVisible(this.profileDetailModal) || this.skribbleUi.isModalOpen();
 		for (const node of [document.documentElement, document.body]) {
 			if (!node) continue;
 			if (locked) node.dataset.scdScrollLockRuntime = this.options.runtimeId;
@@ -45661,6 +46439,14 @@ var DuelProductFoundation = class {
 		});
 		launcherModeLabel.appendChild(launcherMode);
 		quickAccess.appendChild(launcherModeLabel);
+		const launcherVisibilityLabel = element("label", "scd-label");
+		const launcherVisibility = element("input");
+		launcherVisibility.type = "checkbox";
+		launcherVisibility.checked = this.settings.launcher.visibility === "active-match";
+		launcherVisibility.addEventListener("change", () => this.settingsStore.updateLauncher({ visibility: launcherVisibility.checked ? "active-match" : "always" }));
+		launcherVisibilityLabel.append(element("span", "", "Only show during an active match"), launcherVisibility);
+		this.tooltips.register(launcherVisibilityLabel, "Hide the Quick Access button until a Duel Ready check, Draft, Countdown or running Match exists");
+		quickAccess.appendChild(launcherVisibilityLabel);
 		const launcherAnchorLabel = element("label", "scd-label");
 		launcherAnchorLabel.appendChild(element("span", "", "Anchor"));
 		const launcherAnchor = element("select");
@@ -45792,7 +46578,7 @@ var DuelProductFoundation = class {
 		const layout = element("div", "scd-about-layout");
 		const copy = element("div", "scd-about-copy");
 		const connection = element("div", "scd-card");
-		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v11`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
+		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v12`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		copy.append(connection, freeze);
@@ -46673,6 +47459,77 @@ var DuelProductFoundation = class {
 			this.renderStage();
 			this.gatewayClient.reconnect();
 		}
+		this.tickLobbyMatchReadyCountdown();
+	}
+	beginLobbyMatchReadyCountdown(matchId) {
+		if (this.lobbyMatchReadyMatchId === matchId) return;
+		this.clearLobbyMatchReadyCountdown();
+		this.lobbyMatchReadyMatchId = matchId;
+		this.lobbyMatchReadyDeadline = Date.now() + 1e4;
+		this.lobbyMatchReadyLastSecond = null;
+		let container = document.querySelector(".typo-toast-container");
+		if (!container) {
+			container = element("div", "typo-toast-container");
+			container.dataset.scdRuntimeId = this.options.runtimeId;
+			(document.body ?? document.documentElement).prepend(container);
+		}
+		const toast = element("div", "typo-toast scd-duel-toast scd-lobby-match-toast");
+		toast.dataset.scdRuntimeId = this.options.runtimeId;
+		toast.dataset.scdLobbyMatchId = matchId;
+		const clock = element("div", "scd-lobby-ready-clock");
+		clock.setAttribute("role", "timer");
+		clock.setAttribute("aria-label", "Seconds left to leave the current lobby");
+		clock.appendChild(element("div", "text", "10"));
+		toast.append(element("h3", "", "Match found"), element("span", "", "Leave your current lobby to start the match."), clock);
+		container.appendChild(toast);
+		this.lobbyMatchReadyToast = toast;
+		this.tickLobbyMatchReadyCountdown();
+		this.lobbyMatchReadyTimer = window.setInterval(() => this.tickLobbyMatchReadyCountdown(), 200);
+		this.renderVisibility();
+	}
+	tickLobbyMatchReadyCountdown() {
+		const matchId = this.lobbyMatchReadyMatchId;
+		if (!matchId) return;
+		const match = this.gatewayState.match;
+		if (!match || match.matchId !== matchId || match.state.phase !== "ready-check") {
+			this.clearLobbyMatchReadyCountdown();
+			return;
+		}
+		if (this.homepageMatchmakingAuthority === "home" && this.isHomepageDomVisible()) {
+			this.clearLobbyMatchReadyCountdown();
+			return;
+		}
+		const remaining = Math.max(0, Math.ceil((this.lobbyMatchReadyDeadline - Date.now()) / 1e3));
+		const clock = this.lobbyMatchReadyToast?.querySelector(".scd-lobby-ready-clock");
+		const textNode = clock?.querySelector(".text");
+		if (textNode) textNode.textContent = String(remaining);
+		if (remaining !== this.lobbyMatchReadyLastSecond) {
+			this.lobbyMatchReadyLastSecond = remaining;
+			if (clock) {
+				clock.style.animationName = "none";
+				clock.offsetWidth;
+				clock.style.animationName = remaining % 2 === 0 ? "scd-clock-rot-left" : "scd-clock-rot-right";
+			}
+			if (remaining > 0 && remaining <= 5) this.soundEffects.play("countdownTick");
+		}
+		if (remaining > 0) return;
+		this.clearLobbyMatchReadyCountdown();
+		try {
+			this.cancelReadyCheck(matchId);
+			this.showSimpleToast("Match cancelled", "You remained inside the active Skribbl lobby for the full 10-second Ready window.", 6e3);
+		} catch (error) {
+			this.showSimpleToast("Match cancellation failed", error instanceof Error ? error.message : String(error), 7e3);
+		}
+	}
+	clearLobbyMatchReadyCountdown() {
+		if (this.lobbyMatchReadyTimer !== null) window.clearInterval(this.lobbyMatchReadyTimer);
+		this.lobbyMatchReadyTimer = null;
+		this.lobbyMatchReadyMatchId = null;
+		this.lobbyMatchReadyDeadline = 0;
+		this.lobbyMatchReadyLastSecond = null;
+		this.lobbyMatchReadyToast?.remove();
+		this.lobbyMatchReadyToast = null;
+		this.renderVisibility();
 	}
 	updateBoardScore() {
 		const score = this.board?.querySelector("[data-role=\"score\"]");
@@ -46713,7 +47570,19 @@ var DuelProductFoundation = class {
 	}
 	observeDuelTelemetry(event) {
 		this.lastTelemetryEvent = structuredClone(event);
+		const previousHomepageAuthority = this.homepageMatchmakingAuthority;
 		this.homepageMatchmakingAuthority = reduceHomepageMatchmakingAuthority(this.homepageMatchmakingAuthority, event);
+		if (this.lobbyMatchReadyMatchId && this.homepageMatchmakingAuthority === "home" && this.isHomepageDomVisible()) this.clearLobbyMatchReadyCountdown();
+		if (previousHomepageAuthority !== "lobby" && this.homepageMatchmakingAuthority === "lobby") {
+			const readyMatch = this.gatewayState.match?.state.phase === "ready-check" ? this.gatewayState.match : null;
+			if (readyMatch) this.beginLobbyMatchReadyCountdown(readyMatch.matchId);
+			else if (this.gatewayState.queue !== null && this.gatewayState.match === null) try {
+				this.cancelMatchmaking();
+				this.showSimpleToast("Queue cancelled", "You joined a Skribbl lobby, so Homepage matchmaking was cancelled.", 5e3);
+			} catch {
+				this.showSimpleToast("Queue cancellation failed", "You joined a lobby, but the Gateway did not accept the Queue cancellation. Reconnect before queuing again.", 7e3);
+			}
+		}
 		const state = this.matchStore.getState();
 		if (this.awaitingTelemetryResumeCursor && state.phase === "running" && state.matchId !== null) {
 			this.deferredTelemetryEvents.push(structuredClone(event));
@@ -46858,6 +47727,7 @@ var DuelProductFoundation = class {
 		this.settingsStore.update({ panelOpen: false });
 	}
 	closeProductModalsForMatchFound() {
+		this.skribbleUi.closeForMatchFound();
 		this.stopAboutTutorial();
 		if (this.introTimer !== null) window.clearTimeout(this.introTimer);
 		this.introTimer = null;
@@ -47087,7 +47957,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.64.0";
+var BUILD_VERSION = "0.65.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

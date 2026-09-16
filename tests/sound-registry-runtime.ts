@@ -13,6 +13,21 @@ assert.equal(registry.sounds.queueJoin, 'res/sound-effects/join-queue.ogg');
 assert.equal(registry.sounds.queueLeave, 'res/sound-effects/leave-queue.ogg');
 assert.equal(registry.sounds.countdownTick, 'res/sound-effects/countdown.ogg');
 
+let eagerLoads = 0;
+const eager = new SoundEffectPlayer({ countdownTick: 'data:audio/ogg;base64,AA==' }, () => ({
+  volume: 1,
+  currentTime: 0,
+  preload: 'none',
+  play() {},
+  load() {
+    eagerLoads += 1;
+    assert.equal(this.preload, 'auto');
+  }
+}));
+eager.initialize();
+eager.initialize();
+assert.equal(eagerLoads, 1, 'Embedded sounds must initialize eagerly and only once.');
+
 let plays = 0;
 let observedVolume = -1;
 const player = new SoundEffectPlayer({ matchChatPing: 'data:audio/ogg;base64,AA==' }, () => ({

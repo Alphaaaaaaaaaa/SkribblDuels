@@ -22,6 +22,7 @@ export interface GatewayServerConfig {
   instanceId: string;
   observabilityToken: string | null;
   authorityLeaseMs: number;
+  skribbleDailySecret: string;
 }
 
 function requiredValue(env: NodeJS.ProcessEnv, name: string): string {
@@ -84,6 +85,14 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
   const instanceId = env.RAILWAY_REPLICA_ID?.trim()
     || env.GATEWAY_INSTANCE_ID?.trim()
     || `local-${process.pid}`;
+  const skribbleDailySecret = env.SKRIBBLE_DAILY_SECRET?.trim()
+    || (nodeEnv === 'production' ? '' : 'local-skribble-daily-secret-change-me');
+  if (!skribbleDailySecret) {
+    throw new Error('Missing Gateway environment variable: SKRIBBLE_DAILY_SECRET.');
+  }
+  if (nodeEnv === 'production' && skribbleDailySecret.length < 32) {
+    throw new Error('SKRIBBLE_DAILY_SECRET must contain at least 32 characters.');
+  }
 
   return {
     nodeEnv,
@@ -108,6 +117,7 @@ export function readGatewayServerConfig(env: NodeJS.ProcessEnv = process.env): G
     redisUrl: redisUrlValue ? validRedisUrl(redisUrlValue, 'REDIS_URL') : null,
     instanceId,
     observabilityToken,
-    authorityLeaseMs: 30_000
+    authorityLeaseMs: 30_000,
+    skribbleDailySecret
   };
 }

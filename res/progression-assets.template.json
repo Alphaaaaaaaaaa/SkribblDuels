@@ -1,0 +1,8 @@
+{
+  "coin": "res/skribbl-coin.gif",
+  "skribbleLogo": "res/skribble.gif",
+  "emptyTile": "res/empty.gif",
+  "correctTile": "res/correct.gif",
+  "semicorrectTile": "res/semicorrect.gif",
+  "incorrectTile": "res/incorrect.gif"
+}

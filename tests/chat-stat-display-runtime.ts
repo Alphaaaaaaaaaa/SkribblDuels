@@ -68,6 +68,7 @@ function measurement(
       submittedAt: occurredAt,
       durationMs,
       characterCount: Array.from(message.trim().normalize('NFKC')).length,
+      typedCharacterCount: Array.from(message.trim().normalize('NFKC')).length,
       correctionCount: 0,
       pasteDetected,
       autofillDetected: false,

@@ -122,6 +122,10 @@ The concrete Achievement ladders, evidence classifications, currency-ledger
 rules, Pet/Mini-Game boundaries and the proposed Chain Reaction definition are
 captured in `docs/progression-ecosystem-backlog-v0.64.0.md`.
 
+> v0.65.0 implements the server Coin ledger plus Daily Skribble vertical slice
+> ahead of the remaining design work. This does not lower the priority of the
+> P0 Claim-reconnect failure matrix or authorize further economy features.
+
 1. Specify `Advancements` as a separate, versioned progression system. Decide
    which are local, account-wide or server-certified and which Telemetry Event
    evidence they may consume; do not reuse competitive Challenge Claims as an
@@ -130,9 +134,11 @@ captured in `docs/progression-ecosystem-backlog-v0.64.0.md`.
    discovery/start, eligibility, command budget, result evidence, reward,
    cooldown and abuse limits. Mini-Games that draw must use the shared semantic
    canvas/native draw-action boundary rather than printer-event heuristics.
-3. Define an authoritative in-game-currency ledger with explicit earn sources,
-   sinks, transaction idempotency, anti-farming limits and rollback/audit rules.
-   Competitive outcomes must not become pay-to-win.
+3. **Foundation delivered in v0.65.0:** authoritative append-only currency
+   ledger, one daily bounded earn source, one cosmetic sink, transaction
+   idempotency and reversal audit. Future earn/sink types still require an
+   explicit anti-farming review. Competitive outcomes must not become
+   pay-to-win.
 4. Define Pets as cosmetic/progression content connected to explicit
    Advancement or currency rules: ownership, selection, animation/state,
    visibility, persistence and future content versioning all remain modular.
@@ -150,10 +156,10 @@ privacy and anti-cheat boundaries before any irreversible database migration.
 
 ## First session after the break
 
-Start by reproducing the local-only Claim regression and implementing the P0
-recovery matrix. Then finish the v0.62 artwork/UI audit. If both are clean, build
-the P1 certification harness before promoting another Challenge or starting
-rating UI; that harness is the highest-leverage dependency for Ranked safety
-and the later automated browser suite. Run the P4 ecosystem as a parallel
-design track only; do not let it delay correctness work or trigger schema
-changes before its open product choices are approved.
+After the v0.65 Coin/Daily release, return to reproducing the local-only Claim
+regression and implement the P0 recovery matrix. Then finish the artwork/UI
+audit and build the P1 certification harness before promoting another
+Challenge or starting rating writes; that harness is the highest-leverage
+dependency for Ranked safety and the later automated browser suite. Keep
+Achievements/Pets/Arcade work as a design track until those correctness gates
+pass and its authority/privacy choices are approved.

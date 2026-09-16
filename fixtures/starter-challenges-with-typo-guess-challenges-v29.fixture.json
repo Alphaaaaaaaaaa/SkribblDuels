@@ -119,7 +119,7 @@
       "challenge-disable-detection",
       "v29"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 181,
     "durationMs": 492650,

@@ -11,7 +11,7 @@
       "starter",
       "public-lobby"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 6,
     "durationMs": 91000,

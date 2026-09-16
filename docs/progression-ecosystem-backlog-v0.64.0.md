@@ -4,6 +4,12 @@ This document records the proposed Achievements, Skribbl Coins, Mini-Games,
 Pets and Chain Reaction ideas without coupling them to Ranked rating. Ranked
 rating must never be purchasable or influenced by this ecosystem.
 
+> v0.65.0 status: the append-only Coin ledger and authoritative Daily Word
+> pilot are implemented with one 10–25 Coin daily reward and a one-Coin
+> cosmetic celebration-replay sink. Achievement rewards, inventories, Pets and
+> Arcade Reel remain backlog items. See
+> `docs/skribbl-coins-skribble-v0.65.0.md`.
+
 ## Achievement architecture
 
 Achievements are durable, versioned progression records rather than Duel board
@@ -125,8 +131,9 @@ certified.
 1. Finish the Ranked rating transaction/history foundation.
 2. Create the generic Achievement definition/progress contract with local
    badges only.
-3. Add the server Coin ledger and one harmless earn/sink pair.
-4. Pilot Daily Word.
+3. Add the server Coin ledger and one harmless earn/sink pair. **Delivered in
+   v0.65.0.**
+4. Pilot Daily Word. **Delivered in v0.65.0.**
 5. Add one Pet with a minimal state loop.
 6. Consider Arcade Reel only after age-appropriate economy/odds rules are
    approved.

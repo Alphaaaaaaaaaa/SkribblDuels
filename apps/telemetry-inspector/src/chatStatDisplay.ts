@@ -102,6 +102,8 @@ function measuredDisplayWpm(event: TelemetryEventOf<'TEXT_INPUT_MEASURED'>): num
     && !payload.pasteDetected
     && !payload.autofillDetected
     && payload.characterCount === countTypingCharacters(payload.message)
+    && Number.isInteger(payload.typedCharacterCount)
+    && payload.typedCharacterCount >= payload.characterCount
     && payload.durationMs >= MIN_DISPLAY_TYPING_MS
     && payload.durationMs <= MAX_DISPLAY_TYPING_MS
     && wpm !== null

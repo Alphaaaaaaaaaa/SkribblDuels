@@ -58,6 +58,9 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     duelChatMessages: [],
     lastClaimResolution: null,
     telemetryAck: null,
+    coins: null,
+    skribble: null,
+    lastSkribbleGuess: null,
     error: null
   };
 }
@@ -296,6 +299,24 @@ export class SocketIoGatewayClient {
     return actionId;
   }
 
+  public openSkribble(languageId: number, mode: 'daily' | 'practice' = 'daily'): string {
+    const requestId = this.createRequestId('skribble-open');
+    this.emit({ type: 'SKRIBBLE_OPEN', requestId, languageId, mode });
+    return requestId;
+  }
+
+  public submitSkribbleGuess(sessionId: string, guess: string): string {
+    const requestId = this.createRequestId('skribble-guess');
+    this.emit({ type: 'SKRIBBLE_GUESS', requestId, sessionId, guess });
+    return requestId;
+  }
+
+  public replaySkribbleCelebration(dateKey: string): string {
+    const requestId = this.createRequestId('skribble-celebration');
+    this.emit({ type: 'SKRIBBLE_CELEBRATION_REPLAY', requestId, dateKey });
+    return requestId;
+  }
+
   public queueTelemetryEnvelope(envelope: GatewayTelemetryEnvelope): void {
     if (this.state.match?.matchId !== envelope.matchId) return;
     if (this.telemetryQueue.some(item => item.sequence === envelope.sequence)) return;
@@ -424,6 +445,9 @@ export class SocketIoGatewayClient {
         duelChatMessages: resumed ? this.state.duelChatMessages : [],
         lastClaimResolution: resumed ? this.state.lastClaimResolution : null,
         telemetryAck: resumed ? this.state.telemetryAck : null,
+        coins: this.state.coins,
+        skribble: this.state.skribble,
+        lastSkribbleGuess: this.state.lastSkribbleGuess,
         error: null
       });
       // A navigation (most notably /credits for Bloodline) can interrupt the
@@ -462,6 +486,28 @@ export class SocketIoGatewayClient {
         queue: value.queued ? structuredClone(value) : null,
         match: value.queued ? null : this.state.match,
         lastMatchEvent: value.queued ? null : this.state.lastMatchEvent,
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'COIN_BALANCE') {
+      this.update({ ...this.state, coins: structuredClone(value), error: null });
+      return;
+    }
+    if (value.type === 'SKRIBBLE_STATE') {
+      this.update({
+        ...this.state,
+        skribble: structuredClone(value),
+        lastSkribbleGuess: null,
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'SKRIBBLE_GUESS_RESULT') {
+      this.update({
+        ...this.state,
+        skribble: { type: 'SKRIBBLE_STATE', requestId: value.requestId, state: structuredClone(value.state) },
+        lastSkribbleGuess: structuredClone(value),
         error: null
       });
       return;
@@ -562,7 +608,7 @@ export class SocketIoGatewayClient {
 
   private emit(message: GatewayClientMessage): void {
     if (this.state.status !== 'connected' || !this.socket?.connected) {
-      throw new Error('The authenticated Gateway must be connected before matchmaking.');
+      throw new Error('The authenticated Gateway must be connected before sending this action.');
     }
     this.socket.emit(GATEWAY_SOCKET_EVENT, message);
   }

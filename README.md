@@ -1,9 +1,47 @@
-# Skribbl Duels v0.64.0
+# Skribbl Duels v0.65.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v11, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v12, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.65.0
+
+- Introduces the authoritative Skribbl Coin foundation as an append-only
+  account ledger. Every entry has a transaction/idempotency key, signed amount,
+  source or sink, source entity, before/after balance, rules version, timestamp
+  and optional reversal link. Concurrent retries are serialized per account;
+  destructive ledger edits are rejected.
+- Adds Daily Skribble as the first safe earn source. The Gateway selects and
+  persists one language-scoped word per UTC day from every fetchable official
+  word list, validates all guesses server-side and never sends the answer in
+  advance. Players receive ten attempts; only the first solve per account/day
+  awards a deterministic 10–25 Coins. Practice remains free and unrewarded.
+- Adds the first harmless sink: replaying an earned Daily Skribble celebration
+  costs one Coin. Ledger and Daily-run recovery tests cover retries and the
+  restart window between the Coin commit and Daily-run linkage.
+- Adds the homepage-only Skribble launcher, responsive one-line Unicode tiles,
+  sequential Wordle-style feedback, invalid-word treatment, Help, UTC reset
+  countdown, spoiler-free sharing, Practice, win/loss motion and collectible
+  Coin animation. The supplied Coin, logo and five tile GIFs are embedded;
+  explicit CSS/text fallbacks remain available if an asset is removed later.
+- Adds a Quick Access setting that hides the launcher until a Ready check,
+  Draft, Countdown or running Duel exists. Tutorial artwork no longer scales
+  on hover.
+- Cancels Homepage queueing when a Skribbl lobby is joined. If a Ready check
+  wins that race or comes from an Invite while a lobby is active, the Duel
+  stage stays out of the way and a ten-second clock asks the player to leave;
+  the last five seconds use the embedded countdown sound before the Ready
+  check is cancelled safely.
+- Preloads embedded sounds on product startup and hardens WPM certification
+  with trusted inserted-character counts. Restored/recent-word text that was
+  not actually typed cannot inherit an artificial high WPM measurement.
+
+v0.65.0 requires Gateway Contract v12, migration
+`202609160001_create_skribbl_coin_ledger.sql` and a new server-only Railway
+variable `SKRIBBLE_DAILY_SECRET` of at least 32 characters. Apply the migration,
+set the secret and deploy the Gateway before distributing the userscript. See
+`docs/skribbl-coins-skribble-v0.65.0.md` for the exact release order.
 
 ## v0.64.0
 

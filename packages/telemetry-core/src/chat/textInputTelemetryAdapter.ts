@@ -6,6 +6,7 @@ export interface TextInputAttemptState {
   startedAt: number;
   startedAtMonotonicMs: number;
   lastValue: string;
+  typedCharacterCount: number;
   correctionCount: number;
   pasteDetected: boolean;
   autofillDetected: boolean;
@@ -19,6 +20,7 @@ export interface TextInputMeasurement {
   submittedAt: number;
   durationMs: number;
   characterCount: number;
+  typedCharacterCount: number;
   correctionCount: number;
   pasteDetected: boolean;
   autofillDetected: boolean;
@@ -34,12 +36,14 @@ export function createTextInputAttempt(
   value: string,
   occurredAt: number,
   monotonicMs: number,
-  trustedInput: boolean
+  trustedInput: boolean,
+  typedCharacterCount = trustedInput ? countTypingCharacters(value) : 0
 ): TextInputAttemptState {
   return {
     startedAt: occurredAt,
     startedAtMonotonicMs: monotonicMs,
     lastValue: value,
+    typedCharacterCount,
     correctionCount: 0,
     pasteDetected: false,
     autofillDetected: false,
@@ -52,12 +56,15 @@ export function updateTextInputAttempt(
   state: TextInputAttemptState,
   value: string,
   inputType: string,
-  trustedInput: boolean
+  trustedInput: boolean,
+  insertedCharacterCount = 0
 ): TextInputAttemptState {
   const deletion = inputType.startsWith('delete') || value.length < state.lastValue.length;
   return {
     ...state,
     lastValue: value,
+    typedCharacterCount: state.typedCharacterCount
+      + (trustedInput ? Math.max(0, insertedCharacterCount) : 0),
     correctionCount: state.correctionCount + (deletion ? 1 : 0),
     pasteDetected: state.pasteDetected || inputType === 'insertFromPaste',
     autofillDetected: state.autofillDetected
@@ -65,6 +72,25 @@ export function updateTextInputAttempt(
       || inputType === 'insertFromDrop',
     trustedInput: state.trustedInput && trustedInput
   };
+}
+
+export function countInsertedTypingCharacters(
+  beforeValue: string,
+  afterValue: string,
+  selectionStart: number | null,
+  selectionEnd: number | null,
+  inputType: string,
+  inputData: string | null
+): number {
+  if (!inputType.startsWith('insert')) return 0;
+  if (inputData !== null) return Array.from(inputData.normalize('NFKC')).length;
+  const start = selectionStart ?? beforeValue.length;
+  const end = selectionEnd ?? start;
+  const prefix = beforeValue.slice(0, start);
+  const suffix = beforeValue.slice(end);
+  if (!afterValue.startsWith(prefix) || !afterValue.endsWith(suffix)) return 0;
+  const insertedEnd = Math.max(prefix.length, afterValue.length - suffix.length);
+  return Array.from(afterValue.slice(prefix.length, insertedEnd).normalize('NFKC')).length;
 }
 
 export function shouldResetTextInputAttemptBeforeInput(
@@ -92,6 +118,7 @@ export function completeTextInputAttempt(
     submittedAt,
     durationMs: Math.max(0, Math.round(submittedAtMonotonicMs - state.startedAtMonotonicMs)),
     characterCount: countTypingCharacters(message),
+    typedCharacterCount: state.typedCharacterCount,
     correctionCount: state.correctionCount,
     pasteDetected: state.pasteDetected,
     autofillDetected: state.autofillDetected,
@@ -113,6 +140,13 @@ export interface TextInputTelemetryAdapterOptions {
  */
 export class TextInputTelemetryAdapter {
   private readonly attempts = new WeakMap<HTMLInputElement, TextInputAttemptState>();
+  private readonly beforeInputSnapshots = new WeakMap<HTMLInputElement, {
+    value: string;
+    selectionStart: number | null;
+    selectionEnd: number | null;
+    inputType: string;
+    trusted: boolean;
+  }>();
   private readonly resetBeforeNextInput = new WeakSet<HTMLInputElement>();
   private started = false;
   private composingInput: HTMLInputElement | null = null;
@@ -157,6 +191,13 @@ export class TextInputTelemetryAdapter {
   private readonly onBeforeInput = (event: Event): void => {
     const input = this.chatInput(event.target);
     if (!input || !(event instanceof InputEvent)) return;
+    this.beforeInputSnapshots.set(input, {
+      value: input.value,
+      selectionStart: input.selectionStart,
+      selectionEnd: input.selectionEnd,
+      inputType: event.inputType,
+      trusted: event.isTrusted
+    });
     if (shouldResetTextInputAttemptBeforeInput(
       input.value,
       input.selectionStart,
@@ -171,17 +212,35 @@ export class TextInputTelemetryAdapter {
     const input = this.chatInput(event.target);
     if (!input) return;
     const value = input.value;
+    const before = this.beforeInputSnapshots.get(input);
+    this.beforeInputSnapshots.delete(input);
     if (value.length === 0) {
       this.attempts.delete(input);
       this.resetBeforeNextInput.delete(input);
       return;
     }
     const inputType = event instanceof InputEvent ? event.inputType : '';
+    const insertedCharacterCount = before && before.trusted && event.isTrusted
+      ? countInsertedTypingCharacters(
+          before.value,
+          value,
+          before.selectionStart,
+          before.selectionEnd,
+          before.inputType || inputType,
+          event instanceof InputEvent ? event.data : null
+        )
+      : 0;
     const resetAttempt = this.resetBeforeNextInput.delete(input);
     const existing = resetAttempt ? undefined : this.attempts.get(input);
     const next = existing
-      ? updateTextInputAttempt(existing, value, inputType, event.isTrusted)
-      : createTextInputAttempt(value, this.now(), this.monotonicNow(), event.isTrusted);
+      ? updateTextInputAttempt(existing, value, inputType, event.isTrusted, insertedCharacterCount)
+      : createTextInputAttempt(
+          value,
+          this.now(),
+          this.monotonicNow(),
+          event.isTrusted,
+          insertedCharacterCount
+        );
     if (inputType === 'insertFromPaste') next.pasteDetected = true;
     if (this.composingInput === input || (event instanceof InputEvent && event.isComposing)) {
       next.compositionUsed = true;
@@ -229,7 +288,7 @@ export class TextInputTelemetryAdapter {
     const occurredAt = this.now();
     const monotonicMs = this.monotonicNow();
     const state = this.attempts.get(input)
-      ?? createTextInputAttempt(input.value, occurredAt, monotonicMs, event.isTrusted);
+      ?? createTextInputAttempt(input.value, occurredAt, monotonicMs, event.isTrusted, 0);
     this.attempts.delete(input);
     if (!message || message.startsWith('/')) return;
     // Typo mirrors its command/chat value into Skribbl's native input. Suppress

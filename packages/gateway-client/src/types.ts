@@ -1,4 +1,5 @@
 import type {
+  GatewayCoinBalanceMessage,
   GatewayClientCapability,
   GatewayClientIdentity,
   GatewayClaimResolutionMessage,
@@ -7,10 +8,12 @@ import type {
   GatewayMatchEventMessage,
   GatewayMatchSnapshotMessage,
   GatewayQueueStatusMessage,
+  GatewaySkribbleGuessResultMessage,
+  GatewaySkribbleStateMessage,
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.64.0' as const;
+export const GATEWAY_CLIENT_VERSION = '0.65.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'
@@ -33,6 +36,9 @@ export interface GatewayConnectionSnapshot {
   duelChatMessages: readonly GatewayDuelChatMessage[];
   lastClaimResolution: GatewayClaimResolutionMessage | null;
   telemetryAck: GatewayTelemetryAckMessage | null;
+  coins: GatewayCoinBalanceMessage | null;
+  skribble: GatewaySkribbleStateMessage | null;
+  lastSkribbleGuess: GatewaySkribbleGuessResultMessage | null;
   error: string | null;
 }
 

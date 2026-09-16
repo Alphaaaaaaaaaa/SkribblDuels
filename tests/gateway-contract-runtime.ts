@@ -13,7 +13,7 @@ const hello = {
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 11);
+assert.equal(GATEWAY_CONTRACT_VERSION, 12);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -108,6 +108,15 @@ assert.equal(isGatewayClientMessage({
   matchId: 'match-1',
   challengeId: 'blind-guess',
   clientRevision: -1
+}), false);
+assert.equal(isGatewayClientMessage({
+  type: 'SKRIBBLE_OPEN', requestId: 'skr-open-1', languageId: 0, mode: 'daily'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'SKRIBBLE_GUESS', requestId: 'skr-guess-1', sessionId: 'session-1', guess: 'hello world'
+}), true);
+assert.equal(isGatewayClientMessage({
+  type: 'SKRIBBLE_GUESS', requestId: 'skr-guess-2', sessionId: 'session-1', guess: 'x'.repeat(33)
 }), false);
 assert.equal(isGatewayServerMessage({
   type: 'WELCOME',
@@ -230,6 +239,23 @@ assert.equal(isGatewayServerMessage({
   expiresAt: 901_000,
   matchId: null,
   reason: null
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'COIN_BALANCE',
+  requestId: null,
+  balance: 12,
+  revision: 1,
+  transaction: null
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'SKRIBBLE_STATE',
+  requestId: 'skr-open-1',
+  state: {
+    sessionId: 'session-1', mode: 'daily', dateKey: '2026-09-16', nextDailyAt: 1_758_153_600_000,
+    languageId: 0, languageName: 'English', availability: 'ready', unavailableReason: null,
+    status: 'playing', maxAttempts: 10, minimumLength: 2, maximumLength: 32,
+    attempts: [], canEarn: true, rewarded: false, rewardAmount: 0
+  }
 }), true);
 assert.equal(isGatewayServerMessage({ type: 'TELEMETRY_BATCH' }), false);
 

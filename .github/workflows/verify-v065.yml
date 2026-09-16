@@ -1,0 +1,104 @@
+name: Verify and package v0.65.0
+
+on:
+  push:
+    branches:
+      - codex/v0.65-skribble-coins
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v065-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, tests, build and source archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Build userscript and Gateway
+        run: npm run build
+
+      - name: Package tested source
+        shell: bash
+        run: |
+          mkdir -p deliverables
+          git archive --format=zip --output=deliverables/Skribbl-Duels-v0.65.0-source.zip HEAD
+          zip -ur deliverables/Skribbl-Duels-v0.65.0-source.zip dist/gateway dist/telemetry-inspector
+          cp userscript/skribbl-duels-telemetry-inspector.user.js deliverables/Skribbl-Duels-v0.65.0.user.js
+          (
+            cd deliverables
+            sha256sum Skribbl-Duels-v0.65.0-source.zip Skribbl-Duels-v0.65.0.user.js > SHA256SUMS.txt
+            unzip -t Skribbl-Duels-v0.65.0-source.zip
+          )
+
+      - name: Upload tested release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skribbl-Duels-v0.65.0
+          path: deliverables/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-generated:
+    name: Synchronize tracked generated outputs
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/v0.65-skribble-coins
+          fetch-depth: 0
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Rebuild tracked generated outputs
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit generated outputs when changed
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u
+          git commit -m "Build v0.65.0 generated assets and userscript"
+          git push origin HEAD:codex/v0.65-skribble-coins

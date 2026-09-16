@@ -65,7 +65,7 @@
       "big-word",
       "percentile-word-lengths"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 88,
     "durationMs": 397000,

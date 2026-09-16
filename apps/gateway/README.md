@@ -1,26 +1,28 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v11 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v12 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v12 also owns the append-only Skribbl Coin balance and Daily Skribble validation/reward path.
 
 ## Local server
 
 1. Apply `supabase/migrations/202608190001_create_durable_match_authority.sql`,
    `202608200001_create_duel_invites.sql`,
    `202608210001_create_gateway_abuse_controls.sql`, and finally
-   `202608280001_add_duel_name_colors.sql` in that order.
+   `202608280001_add_duel_name_colors.sql`, and
+   `202609160001_create_skribbl_coin_ledger.sql` in that order.
 2. Copy `.env.example` to `.env` and set the server-only
    `SUPABASE_SERVICE_ROLE_KEY`. Add `REDIS_URL` and `OBSERVABILITY_TOKEN` for
-   the production-equivalent multi-instance path.
+   the production-equivalent multi-instance path. Set a stable, random
+   `SKRIBBLE_DAILY_SECRET` with at least 32 characters; it is server-only.
 3. Run `npm run dev:gateway` from the repository root.
 4. Open `http://localhost:3000/healthz` for liveness and `/readyz` for
-   Supabase, Redis and Match Authority readiness.
+   Supabase, progression-ledger, Redis and Match Authority readiness.
 
 Production requires private Redis. Socket.IO uses its Redis Streams adapter for
 cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v11 resume
+change closes cluster sockets once and reuses the durable Contract v12 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require
@@ -108,6 +110,14 @@ before listening. Every successfully fetched, non-empty official list becomes
 authoritative automatically; a missing source file is reported as unsupported.
 Transport or parse failures remain fail-closed instead of silently enabling
 unverifiable word-list challenges. The startup log lists both sets explicitly.
+
+Daily Skribble selects and persists one word per UTC date and available
+language using the server-only daily secret and official-list hash. Guesses are
+validated against that authoritative list and the answer is never included in
+client messages. The first account solve across all languages in a UTC day is
+credited through the row-locked, idempotent Coin RPC; Practice never credits
+Coins. A one-Coin celebration replay is the initial cosmetic sink. See
+`docs/skribbl-coins-skribble-v0.65.0.md` for the ledger/recovery invariants.
 
 The local health/readiness endpoints do not prove a browser connection because
 `skribbl.io` needs a publicly trusted HTTPS Gateway. Deploy first, then build

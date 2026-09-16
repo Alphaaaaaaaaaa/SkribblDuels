@@ -34,6 +34,7 @@ import type {
 } from './matchPersistence';
 import { GatewayMetrics } from './metrics';
 import type { GatewayRealtimeInfrastructure } from './realtimeInfrastructure';
+import type { GatewayProgressionPersistence } from './progressionPersistence';
 
 interface ClientToServerEvents {
   'gateway:message': (message: unknown) => void;
@@ -56,6 +57,7 @@ export interface CreateGatewayServerOptions {
   config: GatewayServerConfig;
   authenticate: GatewayAccessAuthenticator;
   persistence?: GatewayMatchAuthorityPersistence;
+  progression?: GatewayProgressionPersistence;
   realtime?: GatewayRealtimeInfrastructure;
   rateLimiter?: GatewayRateLimiter;
 }
@@ -162,6 +164,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
   const authority = new GatewayAuthorityController({
     config,
     ...(options.persistence ? { persistence: options.persistence } : {}),
+    ...(options.progression ? { progression: options.progression } : {}),
     metrics,
     sendToAccount(accountId, message) {
       io.to(accountRoom(accountId)).emit(GATEWAY_SOCKET_EVENT, message);
@@ -194,11 +197,22 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         supabaseError = error instanceof Error ? error.message : String(error);
       }
     }
+    let progressionHealthy = true;
+    let progressionError: string | null = null;
+    if (options.progression?.checkHealth) {
+      try {
+        await options.progression.checkHealth();
+      } catch (error) {
+        progressionHealthy = false;
+        progressionError = error instanceof Error ? error.message : String(error);
+      }
+    }
     const adapterHealthy = realtime ? await realtime.ping() : true;
     const realtimeState = realtimeStatus();
     const authorityState = authority.status();
     const ready = !shuttingDown
       && supabaseHealthy
+      && progressionHealthy
       && adapterHealthy
       && realtimeState.healthy
       && authorityState.healthy;
@@ -211,6 +225,11 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         enabled: Boolean(options.persistence),
         healthy: supabaseHealthy,
         error: supabaseError
+      },
+      progression: {
+        enabled: Boolean(options.progression),
+        healthy: progressionHealthy,
+        error: progressionError
       },
       realtime: realtimeState,
       matchAuthority: authorityState
@@ -234,6 +253,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
       if (request.method === 'GET' && request.url === '/readyz') {
         const status = await readiness();
         const supabase = status.supabase as { enabled: boolean; healthy: boolean };
+        const progression = status.progression as { enabled: boolean; healthy: boolean };
         const realtimeState = status.realtime as ReturnType<typeof realtimeStatus>;
         const matchAuthority = status.matchAuthority as ReturnType<typeof authority.status>;
         response.writeHead(status.ready ? 200 : 503, { 'content-type': 'application/json; charset=utf-8' });
@@ -243,6 +263,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
           contractVersion: GATEWAY_CONTRACT_VERSION,
           ready: status.ready,
           supabase: { enabled: supabase.enabled, healthy: supabase.healthy },
+          progression: { enabled: progression.enabled, healthy: progression.healthy },
           realtime: {
             enabled: realtimeState.enabled,
             healthy: realtimeState.healthy,

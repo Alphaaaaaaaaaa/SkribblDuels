@@ -22,8 +22,8 @@ assert.doesNotMatch(source, /element\('strong', '', 'Duel formats'\)/);
 assert.doesNotMatch(source, /The Gateway owns matchmaking, draft, countdown, claims/);
 assert.match(source, /Enable Typo to use Matchmaking/);
 assert.match(source, /Matchmaking is only possible on the Skribbl homepage, not inside an active lobby/);
-assert.equal(GATEWAY_CLIENT_VERSION, '0.64.0');
-assert.match(userscriptSource, /const BUILD_VERSION = '0\.64\.0';/);
-assert.match(source, /version: '0\.64\.0'/);
+assert.equal(GATEWAY_CLIENT_VERSION, '0.65.0');
+assert.match(userscriptSource, /const BUILD_VERSION = '0\.65\.0';/);
+assert.match(source, /version: '0\.65\.0'/);
 
-console.log('v0.64.0 persistent Typo detection, tutorial interaction and version checks passed.');
+console.log('v0.64.0 Typo/tutorial regressions remain intact in v0.65.0.');

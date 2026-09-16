@@ -34,7 +34,7 @@
       "opening-ten-seconds",
       "threshold-inclusive"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 55,
     "durationMs": 365000,

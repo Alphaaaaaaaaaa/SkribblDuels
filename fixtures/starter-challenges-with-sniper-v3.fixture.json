@@ -15,7 +15,7 @@
       "sniper",
       "multi-round"
     ],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 12,
     "durationMs": 119000,

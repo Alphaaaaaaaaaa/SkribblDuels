@@ -27,7 +27,8 @@ const config: GatewayServerConfig = {
   redisUrl: null,
   instanceId: 'connection-takeover-test',
   observabilityToken: null,
-  authorityLeaseMs: 30_000
+  authorityLeaseMs: 30_000,
+  skribbleDailySecret: 'test-skribble-daily-secret-32-characters'
 };
 
 const directMessages = new Map<string, GatewayServerMessage[]>();

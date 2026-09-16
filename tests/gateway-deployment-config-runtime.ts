@@ -20,6 +20,7 @@ const serverConfig = readGatewayServerConfig({
   SUPABASE_SERVICE_ROLE_KEY: 'sb_service_role_test',
   REDIS_URL: 'redis://default:password@redis.railway.internal:6379',
   OBSERVABILITY_TOKEN: 'operations-test-token-32-characters',
+  SKRIBBLE_DAILY_SECRET: 'skribble-daily-test-secret-32-characters',
   RAILWAY_REPLICA_ID: 'replica-test-1',
   MATCHMAKING_SIMULATED_PLAYERS: 'true'
 });
@@ -33,6 +34,7 @@ assert.equal(serverConfig.supabaseServiceRoleKey, 'sb_service_role_test');
 assert.equal(serverConfig.redisUrl, 'redis://default:password@redis.railway.internal:6379');
 assert.equal(serverConfig.observabilityToken, 'operations-test-token-32-characters');
 assert.equal(serverConfig.instanceId, 'replica-test-1');
+assert.equal(serverConfig.skribbleDailySecret, 'skribble-daily-test-secret-32-characters');
 assert.throws(() => readGatewayServerConfig({
   NODE_ENV: 'production',
   PORT: '3000',
@@ -65,7 +67,8 @@ assert.throws(() => readGatewayServerConfig({
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test',
   SUPABASE_SERVICE_ROLE_KEY: 'sb_service_role_test',
   REDIS_URL: 'redis://localhost:6379',
-  OBSERVABILITY_TOKEN: 'too-short'
+  OBSERVABILITY_TOKEN: 'too-short',
+  SKRIBBLE_DAILY_SECRET: 'skribble-daily-test-secret-32-characters'
 }), /at least 32 characters/);
 
 const serverSource = readFileSync('apps/gateway/src/server.ts', 'utf8');
@@ -74,6 +77,8 @@ assert.ok(serverSource.includes("request.url === '/readyz'"));
 assert.ok(serverSource.includes("request.url === '/metrics'"));
 assert.ok(serverSource.includes("request.url === '/diagnostics'"));
 assert.ok(serverSource.includes('RedisGatewayRateLimiter'));
+assert.ok(serverSource.includes('options.progression?.checkHealth'));
+assert.ok(serverSource.includes('progressionHealthy'));
 const realtimeSource = readFileSync('apps/gateway/src/realtimeInfrastructure.ts', 'utf8');
 assert.ok(realtimeSource.includes("createAdapter(this.adapterClient"));
 assert.ok(realtimeSource.includes("streamName: 'skd:v1:socket.io'"));

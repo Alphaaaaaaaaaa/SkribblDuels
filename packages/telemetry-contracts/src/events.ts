@@ -88,6 +88,8 @@ export interface TelemetryPayloadMap {
     submittedAt: number;
     durationMs: number;
     characterCount: number;
+    /** Trusted characters physically inserted during this attempt. */
+    typedCharacterCount: number;
     correctionCount: number;
     pasteDetected: boolean;
     autofillDetected: boolean;

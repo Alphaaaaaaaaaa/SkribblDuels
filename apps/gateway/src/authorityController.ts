@@ -11,6 +11,8 @@ import { GatewayMatchmaker, type MatchmakingPeer, type ReadyDecision } from './m
 import type { GatewayMatchAuthorityPersistence } from './matchPersistence';
 import type { GatewayMetrics } from './metrics';
 import type { GatewayRealtimeCommand } from './realtimeInfrastructure';
+import { GatewayProgressionService } from './progressionService';
+import type { GatewayProgressionPersistence } from './progressionPersistence';
 
 interface AuthorityPeerPayload {
   identity: GatewayClientIdentity;
@@ -39,6 +41,7 @@ interface ActiveAuthorityConnection {
 interface GatewayAuthorityControllerOptions {
   config: GatewayServerConfig;
   persistence?: GatewayMatchAuthorityPersistence;
+  progression?: GatewayProgressionPersistence;
   metrics: GatewayMetrics;
   sendToAccount(accountId: string, message: GatewayServerMessage): void;
   sendToConnection(connectionId: string, message: GatewayServerMessage): void;
@@ -100,8 +103,17 @@ export class GatewayAuthorityController {
   private readonly recordedDisconnectMatches = new Set<string>();
   private activation: Promise<void> = Promise.resolve();
   private authorityError: Error | null = null;
+  private readonly progression: GatewayProgressionService | null;
 
-  public constructor(private readonly options: GatewayAuthorityControllerOptions) {}
+  public constructor(private readonly options: GatewayAuthorityControllerOptions) {
+    this.progression = options.progression
+      ? new GatewayProgressionService({
+          persistence: options.progression,
+          dailySecret: options.config.skribbleDailySecret,
+          send: (accountId, message) => this.sendAccount(accountId, message)
+        })
+      : null;
+  }
 
   public async setActive(active: boolean): Promise<void> {
     this.activation = this.activation.catch(() => {}).then(async () => {
@@ -139,7 +151,7 @@ export class GatewayAuthorityController {
     }
 
     if (commandPayload.kind === 'connect') {
-      this.connect(commandPayload);
+      await this.connect(commandPayload);
       return;
     }
     if (commandPayload.kind === 'disconnect') {
@@ -200,7 +212,7 @@ export class GatewayAuthorityController {
     });
   }
 
-  private connect(command: Extract<GatewayAuthorityPayload, { kind: 'connect' }>): void {
+  private async connect(command: Extract<GatewayAuthorityPayload, { kind: 'connect' }>): Promise<void> {
     const matchmaker = this.matchmaker;
     if (!matchmaker) return;
     const accountId = command.identity.accountId;
@@ -237,6 +249,21 @@ export class GatewayAuthorityController {
     });
     if (resume.status === 'resumed') matchmaker.publishResumeSnapshot(accountId);
     else matchmaker.attachPeer(peer);
+    if (this.progression) {
+      try {
+        await this.progression.connected(accountId);
+      } catch (error) {
+        this.options.log('progression-connect-error', {
+          accountId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        this.options.sendToConnection(command.connectionId, errorMessage(
+          'PROGRESSION_UNAVAILABLE',
+          'Skribbl Coin progression is temporarily unavailable.',
+          true
+        ));
+      }
+    }
   }
 
   private sendAccount(accountId: string, message: GatewayServerMessage): void {
@@ -278,6 +305,42 @@ export class GatewayAuthorityController {
     const matchmaker = this.matchmaker;
     if (!matchmaker) return;
     const accountId = peer.identity.accountId;
+    if (message.type === 'SKRIBBLE_OPEN'
+        || message.type === 'SKRIBBLE_GUESS'
+        || message.type === 'SKRIBBLE_CELEBRATION_REPLAY') {
+      if (!this.progression) {
+        this.options.sendToConnection(
+          this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage('PROGRESSION_UNAVAILABLE', 'Skribbl Coin progression is not configured.', true, message.requestId)
+        );
+        return;
+      }
+      try {
+        await this.progression.handle(accountId, message);
+      } catch (error) {
+        this.options.log('progression-command-error', {
+          accountId,
+          correlationId,
+          commandType: message.type,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        this.options.sendToConnection(
+          this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage(
+            'PROGRESSION_ACTION_REJECTED',
+            error instanceof Error && (
+              error.message === 'Insufficient Skribbl Coins.'
+              || error.message.startsWith('A rewarded Daily Skribble solve is required')
+            )
+              ? error.message
+              : 'The progression action could not be completed. Please try again.',
+            true,
+            message.requestId
+          )
+        );
+      }
+      return;
+    }
     let decision: ReadyDecision | null = null;
     if (message.type === 'MATCHMAKING_JOIN') {
       this.queueJoinedAt.set(accountId, Date.now());

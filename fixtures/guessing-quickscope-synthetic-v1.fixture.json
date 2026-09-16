@@ -7,7 +7,7 @@
     "createdAt": 1700000000000,
     "source": "synthetic",
     "tags": ["guessing", "quickscope", "public-lobby"],
-    "contractVersion": "1.0.0",
+    "contractVersion": "1.1.0",
     "schemaVersion": 1,
     "eventCount": 2,
     "durationMs": 4400,

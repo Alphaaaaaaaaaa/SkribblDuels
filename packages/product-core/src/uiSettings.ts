@@ -23,7 +23,8 @@ export const DEFAULT_PRODUCT_UI_SETTINGS: ProductUiSettings = {
     anchor: 'center-right',
     x: 12,
     y: 120,
-    size: 60
+    size: 60,
+    visibility: 'always'
   },
   panelOpen: false,
   panelTab: 'duel',
@@ -104,7 +105,8 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
         : DEFAULT_PRODUCT_UI_SETTINGS.launcher.anchor,
       x: Number.isFinite(launcherInput.x) ? Number(launcherInput.x) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.x,
       y: Number.isFinite(launcherInput.y) ? Number(launcherInput.y) : DEFAULT_PRODUCT_UI_SETTINGS.launcher.y,
-      size: clamp(Number(launcherInput.size) || DEFAULT_PRODUCT_UI_SETTINGS.launcher.size, 36, 120)
+      size: clamp(Number(launcherInput.size) || DEFAULT_PRODUCT_UI_SETTINGS.launcher.size, 36, 120),
+      visibility: launcherInput.visibility === 'active-match' ? 'active-match' : 'always'
     },
     panelOpen: typeof input.panelOpen === 'boolean'
       ? input.panelOpen

@@ -4,11 +4,15 @@ import { createGatewayServer } from './server';
 import { prepareGatewayOfficialWordLists } from './officialWordListAuthority';
 import { SupabaseGatewayMatchAuthorityPersistence } from './matchPersistence';
 import { GatewayRealtimeInfrastructure } from './realtimeInfrastructure';
+import { SupabaseGatewayProgressionPersistence } from './progressionPersistence';
 
 const config = readGatewayServerConfig();
 const wordListAuthority = await prepareGatewayOfficialWordLists();
 const persistence = config.supabaseServiceRoleKey
   ? new SupabaseGatewayMatchAuthorityPersistence(config.supabaseUrl, config.supabaseServiceRoleKey)
+  : null;
+const progression = config.supabaseServiceRoleKey
+  ? new SupabaseGatewayProgressionPersistence(config.supabaseUrl, config.supabaseServiceRoleKey)
   : null;
 const realtime = config.redisUrl
   ? await GatewayRealtimeInfrastructure.connect(config.redisUrl, config.instanceId, config.authorityLeaseMs)
@@ -17,6 +21,7 @@ const gateway = createGatewayServer({
   config,
   authenticate: createSupabaseGatewayAuthenticator(config),
   ...(persistence ? { persistence } : {}),
+  ...(progression ? { progression } : {}),
   ...(realtime ? { realtime } : {})
 });
 

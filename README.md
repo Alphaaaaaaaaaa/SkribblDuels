@@ -1,9 +1,32 @@
-# Skribbl Duels v0.66.0
+# Skribbl Duels v0.66.1
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v13, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.66.1
+
+- Adds an on-screen, Wordle-style Skribble keyboard with language-specific
+  QWERTY, QWERTZ, AZERTY and Korean layouts. Characters that occur in the
+  loaded official word list—including accents, dots and hyphens—are added
+  automatically; Space, Backspace and Enter have dedicated wide controls.
+  Key feedback preserves the strongest known gray/yellow/green state.
+- Makes Skribble and Slots Gateway waits cover the complete viewport, removes
+  backdrop blur and applies the Skribbl drop shadow consistently to mini-game
+  header logos, Help artwork and Coin icons.
+- Restores the original-size Slots homepage launcher while enlarging the modal
+  title and reel artwork. Reel spacing now protects scaled effect icons from
+  top clipping, Pen uses a square odds-table cell and bulb GIF sources are
+  changed only when their chase state changes so their own frames can play.
+- Adds a single append-only, idempotent 99,999-Coin testing grant for account
+  `c27ea4b9-984e-4efb-bfba-e9f77b28f1f4`. It is a migration-time ledger entry,
+  not a reusable owner privilege, and cannot credit twice when rerun.
+
+v0.66.1 remains compatible with Gateway Contract v13 and adds no Railway
+variable. Apply `202609170002_grant_analphabetism_slot_test_coins.sql` after
+the v0.66.0 migration before distributing the userscript. See
+`docs/skribble-keyboard-slots-polish-v0.66.1.md` for details.
 
 ## v0.66.0
 

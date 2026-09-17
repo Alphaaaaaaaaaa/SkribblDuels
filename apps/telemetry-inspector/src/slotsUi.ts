@@ -350,7 +350,7 @@ export class SkribblSlotsFeatureUi {
     const content = element('div', 'scd-slots-content');
     if (this.helpOpen) content.appendChild(this.helpCard());
     if (!this.visibleState) {
-      content.appendChild(element('div', 'scd-slots-muted', 'Preparing the server-authoritative machine…'));
+      content.appendChild(element('div', 'scd-slots-muted', 'Preparing the machine…'));
     } else {
       const machine = element('div', 'scd-slots-machine');
       const reels = element('div', 'scd-slots-reels');
@@ -399,9 +399,14 @@ export class SkribblSlotsFeatureUi {
       const lit = forceOn === null ? index === this.bulbIndex : forceOn;
       const source = lit ? on : off;
       if (source) {
-        bulb.src = source;
+        const state = lit ? 'on' : 'off';
+        if (bulb.dataset.state !== state || bulb.src !== source) {
+          bulb.dataset.state = state;
+          bulb.src = source;
+        }
         bulb.style.display = 'block';
       } else {
+        delete bulb.dataset.state;
         bulb.removeAttribute('src');
         bulb.style.display = 'block';
         bulb.classList.toggle('fallback-on', lit);
@@ -465,7 +470,7 @@ export class SkribblSlotsFeatureUi {
     });
     this.options.registerTooltip(
       button,
-      free ? `${state.freeSpins} Free Spin${state.freeSpins === 1 ? '' : 's'} available` : 'One authoritative spin costs one Skribbl Coin'
+      free ? `${state.freeSpins} Free Spin${state.freeSpins === 1 ? '' : 's'} available` : 'One spin costs one Skribbl Coin'
     );
     return button;
   }
@@ -527,8 +532,8 @@ export class SkribblSlotsFeatureUi {
     const copy = element('div');
     copy.append(
       element('strong', '', 'How Skribbl Slots works'),
-      element('p', '', 'Each server-authoritative spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice.'),
-      element('p', '', 'Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the append-only Coin ledger.')
+      element('p', '', 'Each spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice.'),
+      element('p', '', 'Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the Coin ledger.')
     );
     intro.appendChild(copy);
     card.appendChild(intro);
@@ -691,9 +696,9 @@ export class SkribblSlotsFeatureUi {
   }
 
   private syncLoadingOverlay(): void {
-    const shell = this.modal?.querySelector<HTMLElement>('.scd-slots-modal');
-    if (!shell) return;
-    shell.querySelector('.scd-progression-load')?.remove();
+    const overlay = this.modal;
+    if (!overlay) return;
+    overlay.querySelector(':scope > .scd-progression-load')?.remove();
     if (!this.pendingAction) return;
     const load = element('div', 'scd-progression-load');
     const container = element('div', 'container');
@@ -701,7 +706,7 @@ export class SkribblSlotsFeatureUi {
     icon.appendChild(element('div', 'graphic'));
     container.appendChild(icon);
     load.appendChild(container);
-    shell.appendChild(load);
+    overlay.appendChild(load);
   }
 
   private ensureStyles(): void {
@@ -710,32 +715,33 @@ export class SkribblSlotsFeatureUi {
     style.id = 'skribbl-duels-slots-styles';
     style.textContent = `
 html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hidden !important;overscroll-behavior:none !important; }
-.scd-slots-launcher { position:fixed;right:18px;top:calc(25vh + 158px);z-index:2147483643;display:grid;place-items:center;width:min(300px,32vw);min-height:80px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out,transform .1s ease-in-out; }
+.scd-slots-launcher { position:fixed;right:18px;top:calc(25vh + 158px);z-index:2147483643;display:grid;place-items:center;width:min(200px,22vw);min-height:100px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out,transform .1s ease-in-out; }
 .scd-slots-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);transform:scale(1.06); }
-.scd-slots-launcher img { display:block;width:100%;height:auto;max-height:152px;object-fit:contain; }
+.scd-slots-launcher img { display:block;width:100%;height:auto;max-height:100px;object-fit:contain; }
 .scd-slots-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
-.scd-slots-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:42px 12px 12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-slots-fade .2s ease-out;font-family:'Nunito',sans-serif; }
+.scd-slots-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:42px 12px 12px;background:rgba(0,0,0,.58);animation:scd-slots-fade .2s ease-out;font-family:'Nunito',sans-serif; }
 .scd-slots-modal { position:relative;width:min(940px,calc(100vw - 24px));max-height:calc(100vh - 54px);display:flex;flex-direction:column;overflow:visible;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25);font-family:'Nunito',sans-serif; }
 .scd-slots-bulbs { position:absolute;z-index:4;left:5%;right:5%;top:-36px;display:flex;align-items:flex-end;justify-content:space-between;pointer-events:none; }
 .scd-slots-bulb { width:58px;height:58px;object-fit:contain;transform:rotate(var(--scd-bulb-turn));filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-bulb:not([src]) { border-radius:50%;background:#555;box-shadow:inset 0 0 0 5px #222; }
 .scd-slots-bulb:not([src]).fallback-on { background:#ffe822;box-shadow:0 0 18px #fff36a,inset 0 0 0 5px #b58e00; }
-.scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:hidden;border-radius:10px 10px 0 0; }
-.scd-slots-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
-.scd-slots-title img { display:block;width:min(520px,54vw);max-height:82px;object-fit:contain; }
+.scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:visible;border-radius:10px 10px 0 0; }
+.scd-slots-title { position:relative;z-index:6;width:200px;height:82px;display:grid;place-items:center;justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004;pointer-events:none; }
+.scd-slots-title img { display:block;width:200px;height:100px;max-width:none;object-fit:contain;transform:scale(2);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-actions { justify-self:end;display:flex;gap:6px; }
 .scd-slots-actions .scd-icon-button { width:42px;height:42px; }
-.scd-slots-actions .scd-icon { width:36px;height:36px; }
-.scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:10px 24px 24px;text-align:center; }
-.scd-slots-machine { width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px; }
-.scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px; }
+.scd-slots-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:34px 24px 24px;text-align:center; }
+.scd-slots-machine { width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px;padding:30px 0;overflow:visible; }
+.scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:30px 6px;overflow:visible; }
 .scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background:#fff;box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
 .scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
 .scd-slot-reel::before { top:0; }
 .scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
 .scd-slot-payline { width:78%;height:78%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
 .scd-slot-icon { display:grid;place-items:center;min-width:0;min-height:0; }
-.scd-slot-icon img { display:block;width:100%;height:100%;max-width:128px;max-height:128px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slot-payline > .scd-slot-icon { width:100%;height:100%; }
+.scd-slot-icon img { display:block;width:100%;height:100%;max-width:256px;max-height:256px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slot-icon-fallback { display:grid;place-items:center;width:100%;height:100%;font-size:clamp(28px,7vw,86px);font-weight:900;color:#222;text-shadow:3px 3px 0 #0003; }
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
@@ -767,9 +773,9 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
 .scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
 .scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
+.scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:fill; }
 .scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
 .scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
-.scd-slots-modal > .scd-progression-load { border-radius:10px;overflow:hidden; }
 .scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-slots-overlay::-webkit-scrollbar-thumb,.scd-slots-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
 @keyframes scd-slots-fade { from { opacity:0; } to { opacity:1; } }
@@ -784,7 +790,8 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 @media (max-width:720px) {
   .scd-slots-header { grid-template-columns:auto 1fr auto; }
   .scd-slots-title { font-size:1.2em; }
-  .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(240px,46vw); }
+  .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(200px,42vw);min-height:80px; }
+  .scd-slots-title img { transform:scale(1.5); }
   .scd-slots-machine { grid-template-columns:1fr; }
   .scd-slots-reels { gap:6px; }
   .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }

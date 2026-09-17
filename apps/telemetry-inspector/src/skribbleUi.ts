@@ -1,5 +1,10 @@
 import type { GatewaySkribbleAttempt, GatewaySkribbleState } from '@skribbl-duels/gateway-contracts';
 import {
+  getOfficialWords,
+  loadOfficialWordList,
+  SKRIBBL_LANGUAGE_NAME_BY_ID
+} from '@skribbl-duels/challenge-definitions';
+import {
   SocketIoGatewayClient,
   type GatewayConnectionSnapshot
 } from '@skribbl-duels/gateway-client';
@@ -7,6 +12,13 @@ import {
   EMBEDDED_PROGRESSION_ASSETS,
   type ProgressionAssetId
 } from './generatedProgressionAssets';
+import {
+  appendSkribbleKeyboardValue,
+  createSkribbleKeyboardRows,
+  getSkribbleKeyboardMark,
+  removeLastSkribbleCharacter,
+  type SkribbleKeyboardMark
+} from './skribbleKeyboard';
 
 interface SkribbleUiOptions {
   runtimeId: string;
@@ -100,6 +112,7 @@ export class SkribbleFeatureUi {
   private readonly coinAnimationTimers = new Set<number>();
   private mountTimer: number | null = null;
   private countdownTimer: number | null = null;
+  private keyboardWordListLoad: { languageId: number; task: Promise<void> } | null = null;
   private readonly resize = (): void => {
     if (this.modal) this.renderModal();
   };
@@ -114,6 +127,7 @@ export class SkribbleFeatureUi {
   public start(): void {
     this.ensureStyles();
     this.ensureMounted();
+    this.ensureKeyboardWordList(languageId(), SKRIBBL_LANGUAGE_NAME_BY_ID[languageId()] ?? null);
     this.mountTimer = window.setInterval(() => this.ensureMounted(), 700);
     this.countdownTimer = window.setInterval(() => this.updateCountdown(), 1_000);
     window.addEventListener('resize', this.resize, false);
@@ -150,6 +164,9 @@ export class SkribbleFeatureUi {
       this.visibleState = structuredClone(incoming);
       this.visibleFingerprint = incomingFingerprint;
       rerender = true;
+    }
+    if (incoming?.availability === 'ready') {
+      this.ensureKeyboardWordList(incoming.languageId, incoming.languageName);
     }
 
     const result = state.lastSkribbleGuess;
@@ -273,6 +290,11 @@ export class SkribbleFeatureUi {
     if (document.body) document.body.dataset.scdSkribbleScrollLock = this.options.runtimeId;
     this.options.onModalVisibilityChanged();
     this.renderModal();
+    const currentLanguageId = this.visibleState?.languageId ?? languageId();
+    this.ensureKeyboardWordList(
+      currentLanguageId,
+      this.visibleState?.languageName ?? SKRIBBL_LANGUAGE_NAME_BY_ID[currentLanguageId] ?? null
+    );
     if (!this.visibleState) this.requestRound('daily');
   }
 
@@ -328,9 +350,31 @@ export class SkribbleFeatureUi {
 
   private requestRound(mode: 'daily' | 'practice'): void {
     this.invalidMessage = null;
+    const selectedLanguageId = languageId();
+    this.ensureKeyboardWordList(
+      selectedLanguageId,
+      SKRIBBL_LANGUAGE_NAME_BY_ID[selectedLanguageId] ?? null
+    );
     this.beginRequest(mode === 'daily' ? 'open-daily' : 'open-practice', () => (
-      this.options.gateway.openSkribble(languageId(), mode)
+      this.options.gateway.openSkribble(selectedLanguageId, mode)
     ));
+  }
+
+  private ensureKeyboardWordList(language: number, languageName: string | null): void {
+    if (getOfficialWords(language).length > 0 || this.keyboardWordListLoad?.languageId === language) return;
+    const task = loadOfficialWordList(language, languageName).then(status => {
+      if (status.state !== 'ready'
+          || !this.modal
+          || this.visibleState?.languageId !== language) return;
+      this.renderModal();
+    }).catch(() => {
+      // The authoritative Gateway availability remains decisive. Until the
+      // local list is cached, the keyboard keeps the language preset without
+      // hiding or resetting the active round.
+    }).finally(() => {
+      if (this.keyboardWordListLoad?.task === task) this.keyboardWordListLoad = null;
+    });
+    this.keyboardWordListLoad = { languageId: language, task };
   }
 
   private renderModal(): void {
@@ -403,6 +447,7 @@ export class SkribbleFeatureUi {
       content.appendChild(board);
       if (this.invalidMessage) content.appendChild(element('div', 'scd-skribble-warning', this.invalidMessage));
       if (state.status !== 'playing') content.appendChild(this.ending(state));
+      content.appendChild(this.keyboard(state));
     }
     shell.append(header, content);
     overlay.appendChild(shell);
@@ -447,6 +492,105 @@ export class SkribbleFeatureUi {
       element('p', '', 'Only the first Daily solve on an account awards Skribbl Coins. Practice is always unrewarded.')
     );
     return card;
+  }
+
+  private keyboard(state: GatewaySkribbleState): HTMLElement {
+    const keyboard = element('div', 'scd-skribble-keyboard');
+    keyboard.setAttribute('role', 'group');
+    keyboard.setAttribute('aria-label', `${state.languageName} Skribble keyboard`);
+    const rows = createSkribbleKeyboardRows(state.languageId, getOfficialWords(state.languageId));
+    for (const characters of rows) {
+      if (characters.length === 0) continue;
+      const row = element('div', 'scd-skribble-keyboard-row');
+      row.style.setProperty('--scd-key-count', String(characters.length));
+      row.style.setProperty('--scd-key-max-width', `${characters.length * 42}px`);
+      for (const character of characters) {
+        row.appendChild(this.keyboardButton(
+          character,
+          character,
+          getSkribbleKeyboardMark(state.attempts, character, state.languageId),
+          state
+        ));
+      }
+      keyboard.appendChild(row);
+    }
+
+    const controls = element('div', 'scd-skribble-keyboard-controls');
+    controls.append(
+      this.keyboardButton('⌫', 'backspace', 'empty', state, 'wide', 'Backspace'),
+      this.keyboardButton(
+        'Space',
+        'space',
+        getSkribbleKeyboardMark(state.attempts, ' ', state.languageId),
+        state,
+        'extra-wide',
+        'Space'
+      ),
+      this.keyboardButton('↵', 'enter', 'empty', state, 'wide', 'Enter')
+    );
+    keyboard.appendChild(controls);
+    return keyboard;
+  }
+
+  private keyboardButton(
+    label: string,
+    value: string,
+    mark: SkribbleKeyboardMark,
+    state: GatewaySkribbleState,
+    widthClass = '',
+    ariaLabel = label
+  ): HTMLButtonElement {
+    const button = element(
+      'button',
+      `scd-skribble-key${widthClass ? ` ${widthClass}` : ''}`
+    ) as HTMLButtonElement;
+    button.type = 'button';
+    button.disabled = state.status !== 'playing' || Boolean(this.pendingAction);
+    button.dataset.value = value;
+    button.dataset.mark = mark;
+    button.setAttribute('aria-label', ariaLabel);
+    const assetId: ProgressionAssetId = mark === 'empty'
+      ? 'emptyTile'
+      : mark === 'semicorrect'
+        ? 'semicorrectTile'
+        : `${mark}Tile` as ProgressionAssetId;
+    const source = progressionAsset(assetId);
+    if (source) button.style.backgroundImage = `url(${JSON.stringify(source)})`;
+    button.appendChild(element('span', 'scd-skribble-key-label', label));
+    button.addEventListener('pointerdown', event => event.preventDefault());
+    button.addEventListener('click', () => this.useKeyboardValue(value, state));
+    return button;
+  }
+
+  private useKeyboardValue(value: string, state: GatewaySkribbleState): void {
+    if (state.status !== 'playing' || this.pendingAction) return;
+    if (value === 'enter') {
+      this.submitGuess(state);
+      return;
+    }
+    this.draft = value === 'backspace'
+      ? removeLastSkribbleCharacter(this.draft)
+      : appendSkribbleKeyboardValue(
+          this.draft,
+          value === 'space' ? ' ' : value,
+          state.languageId,
+          state.maximumLength
+        );
+    this.invalidMessage = null;
+    this.inputFocused = true;
+    this.renderModal();
+  }
+
+  private submitGuess(state: GatewaySkribbleState): void {
+    if (this.pendingAction) return;
+    const length = codePoints(this.draft.trim()).length;
+    if (length < state.minimumLength || length > state.maximumLength) {
+      this.invalidMessage = `Enter between ${state.minimumLength} and ${state.maximumLength} characters.`;
+      this.renderModal();
+      return;
+    }
+    const guess = this.draft;
+    this.beginRequest('guess', () => this.options.gateway.submitSkribbleGuess(state.sessionId, guess));
   }
 
   private attemptRow(
@@ -518,13 +662,7 @@ export class SkribbleFeatureUi {
       if (event.key !== 'Enter') return;
       event.preventDefault();
       if (event.shiftKey || this.pendingAction) return;
-      const length = codePoints(this.draft.trim()).length;
-      if (length < state.minimumLength || length > state.maximumLength) {
-        this.invalidMessage = `Enter between ${state.minimumLength} and ${state.maximumLength} characters.`;
-        this.renderModal();
-        return;
-      }
-      this.beginRequest('guess', () => this.options.gateway.submitSkribbleGuess(state.sessionId, this.draft));
+      this.submitGuess(state);
     });
     row.appendChild(input);
     row.addEventListener('click', () => input.focus());
@@ -624,9 +762,9 @@ export class SkribbleFeatureUi {
   }
 
   private syncLoadingOverlay(): void {
-    const shell = this.modal?.querySelector<HTMLElement>('.scd-skribble-modal');
-    if (!shell) return;
-    shell.querySelector('.scd-progression-load')?.remove();
+    const overlay = this.modal;
+    if (!overlay) return;
+    overlay.querySelector(':scope > .scd-progression-load')?.remove();
     if (!this.pendingAction) return;
     const load = element('div', 'scd-progression-load');
     const container = element('div', 'container');
@@ -634,7 +772,7 @@ export class SkribbleFeatureUi {
     icon.appendChild(element('div', 'graphic'));
     container.appendChild(icon);
     load.appendChild(container);
-    shell.appendChild(load);
+    overlay.appendChild(load);
   }
 
   private animateLoss(): void {
@@ -754,17 +892,17 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);transform:scale(1.06); }
 .scd-skribble-launcher img { display:block;width:100%;height:auto;max-height:152px;object-fit:contain; }
 .scd-skribble-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
-.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-skribble-fade .2s ease-out;font-family:'Nunito',sans-serif; }
+.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);animation:scd-skribble-fade .2s ease-out;font-family:'Nunito',sans-serif; }
 .scd-skribble-modal { position:relative;width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25);font-family:'Nunito',sans-serif; }
 .scd-skribble-header { min-height:86px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:8px 12px; }
 .scd-skribble-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
-.scd-skribble-title img { display:block;width:min(550px,56vw);max-height:80px;object-fit:contain; }
+.scd-skribble-title img { display:block;width:min(550px,56vw);max-height:80px;object-fit:contain;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-skribble-actions { justify-self:end;display:flex;gap:6px; }
 .scd-skribble-actions .scd-icon-button { width:42px;height:42px; }
-.scd-skribble-actions .scd-icon { width:36px;height:36px; }
+.scd-skribble-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-coin-pill { min-width:96px;max-width:180px;height:48px;justify-self:start;display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:4px 10px 4px 4px;background:var(--SCD_ACCENT,var(--COLOR_PANEL_BUTTON,#2a51d1));color:#fff;font:800 16px/1 'Nunito',sans-serif;text-shadow:2px 2px 0 #0004; }
 .scd-coin-pill.compact { min-width:0;width:max-content;height:38px;padding:3px 8px 3px 3px; }
-.scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated; }
+.scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-coin-pill.compact img { width:32px;height:32px; }
 .scd-skribble-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 18px 18px;text-align:center; }
 .scd-skribble-mode-bar { position:relative;width:100%;min-height:40px;display:flex;align-items:center;justify-content:center; }
@@ -785,6 +923,18 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-row.won .scd-skribble-tile.reveal { animation:scd-skribble-reveal .28s ease-out var(--scd-reveal-delay,0ms) forwards,scd-skribble-jump var(--scd-jump-duration,.9s) cubic-bezier(.2,.8,.3,1) calc(var(--scd-reveal-delay,0ms) + 500ms) infinite; }
 .scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards !important; }
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
+.scd-skribble-keyboard { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:auto;padding-top:8px;user-select:none;touch-action:manipulation; }
+.scd-skribble-keyboard-row { --scd-key-count:10;--scd-key-max-width:420px;width:min(100%,var(--scd-key-max-width));display:grid;grid-template-columns:repeat(var(--scd-key-count),minmax(0,1fr));gap:2px; }
+.scd-skribble-keyboard-controls { width:min(100%,520px);display:flex;justify-content:center;gap:3px; }
+.scd-skribble-key { position:relative;min-width:0;aspect-ratio:1/1;display:grid;place-items:center;border:0;padding:0;background-color:transparent;background-position:center;background-repeat:no-repeat;background-size:100% 100%;color:#111;cursor:pointer;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25));transition:scale .12s ease-in-out,filter .12s ease-in-out; }
+.scd-skribble-key:hover:not(:disabled) { scale:1.1;z-index:2;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)) brightness(1.06); }
+.scd-skribble-key:active:not(:disabled) { scale:.96; }
+.scd-skribble-key:disabled { cursor:default; }
+.scd-skribble-key-label { position:relative;transform:translate(4px,-2px);max-width:calc(100% - 5px);overflow:hidden;font:900 clamp(8px,calc(var(--scd-board-tile-size,32px) * .43),15px)/1 'Nunito',sans-serif;text-overflow:ellipsis;text-shadow:1px 1px 0 #fff5; }
+.scd-skribble-key.wide,.scd-skribble-key.extra-wide { width:auto;min-height:36px;aspect-ratio:auto;background-size:100% 100%; }
+.scd-skribble-key.wide { flex:1.35 1 72px; }
+.scd-skribble-key.extra-wide { flex:3.5 1 180px; }
+.scd-skribble-key.wide .scd-skribble-key-label,.scd-skribble-key.extra-wide .scd-skribble-key-label { transform:none; }
 .scd-skribble-help { width:100%;box-sizing:border-box;padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
 .scd-skribble-help p { margin:.55em 0 0; }
 .scd-skribble-warning { color:var(--COLOR_CHAT_TEXT_LEAVE,#ff8c66);font-weight:700; }
@@ -799,16 +949,15 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-secondary:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
 .scd-skribble-return { width:40px;padding:3px;display:grid;place-items:center; }
 .scd-skribble-return img { width:32px;height:32px;object-fit:contain; }
-.scd-progression-load { position:absolute;z-index:30;inset:0;animation:scd-load-opacity .3s ease-in-out;background-color:rgba(0,0,0,.75);backdrop-filter:blur(6px); }
+.scd-progression-load { position:fixed;z-index:2147483647;inset:0;animation:scd-load-opacity .3s ease-in-out;background-color:rgba(0,0,0,.75); }
 .scd-progression-load .container { position:absolute;left:50%;top:50%;animation:scd-load-position .3s ease-in-out; }
 .scd-progression-load .icon { position:absolute;width:128px;height:128px; }
 .scd-progression-load .graphic { position:absolute;left:-50%;top:-50%;width:100%;height:100%;background:url('/img/load.gif') center/contain no-repeat;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-skribble-spin .8s ease-in-out infinite; }
 .scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:20px;height:20px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
 .scd-skribble-overlay::-webkit-scrollbar,.scd-skribble-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-skribble-overlay::-webkit-scrollbar-thumb,.scd-skribble-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
-@supports (backdrop-filter:blur()) { .scd-progression-load { background-color:rgba(255,255,255,.2); } }
 @keyframes scd-skribble-fade { from { opacity:0; } to { opacity:1; } }
-@keyframes scd-load-opacity { from { opacity:0;backdrop-filter:blur(0); } to { opacity:1;backdrop-filter:blur(6px); } }
+@keyframes scd-load-opacity { from { opacity:0; } to { opacity:1; } }
 @keyframes scd-load-position { from { opacity:0;top:35%; } to { opacity:1;top:50%; } }
 @keyframes scd-skribble-spin { from { transform:rotate(0); } to { transform:rotate(360deg); } }
 @keyframes scd-skribble-cursor { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }

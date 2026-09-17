@@ -53,6 +53,13 @@ also fixes the mutable Coin-trigger search path and changes the authenticated
 profile RPC from `SECURITY DEFINER` to `SECURITY INVOKER`, with own-row RLS and
 the existing entitlement boundary enforced by a validating trigger.
 
+For v0.66.1, apply
+`202609170002_grant_analphabetism_slot_test_coins.sql` after the Slots migration.
+It adds exactly one idempotent +99,999 ledger transaction to the supplied owner
+account for Slots testing. The deterministic idempotency key prevents duplicate
+credit on a rerun; the migration neither updates the balance directly nor adds
+an account-wide owner bypass.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

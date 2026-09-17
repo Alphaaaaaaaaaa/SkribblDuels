@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.66.0
+// @version      0.66.1
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -16078,7 +16078,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.66.0";
+var GATEWAY_CLIENT_VERSION = "0.66.1";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -42332,6 +42332,715 @@ var EMBEDDED_PROGRESSION_ASSETS = {
 	"slotSkull": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///66wy+Pj4////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADr0i6DP4QsElVvLhSPLofl7ZAX+kJkfiY7AlVaysPqLM5p6AL5c53NUkD8As6dEAIMjgk0jCA54VXa1KhIMxVaCFuL9mp1CoFQ7dkI+mssw13WLWXmRYbl/TR4zv3FfNNTn4kQHBuN0cfRoVthzBHSElRNIZcKpBFmI2OGkp+gw8iE3ufPqGio5qglqhdkF6wnK0EUCGzgbWss5iwhrdvpY2/epM9p8O5L8OutcvOFQkAIfkEBRQABAAsAAAAACAAIAAAA7FIuqzwELZJSbz41ZbB+F+2ORFomgJWlWcLptHEurQAA/JD76/GeS+bDSUU9Hwk4OD2MC4vzhuj+WFCjJko0gLQZgbZ6pb6/IZt467YjDFKF9f1rI1Oq+VK0FW4JQ2rQkuBg29TTX9HOkGFhl2IZYqCjD+ORXWLk42WfJWcOCN7m5sxI1ydohelSZWsdZ+qqx0SsI2yfbCHaHwwtIainL1wkSizwaYnTMbCssqUqc3QCwkAOw==",
 	"slotPoop": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///49WO2Y5Mf///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADhki63P4wykkjAPTWpWffYAh91WVaWGmupEiYQ7y6zBXfQ1unDuvrHF7w9wOxYoLkjRVEAZDJaFTGAypsN6mUuoHhvkvrEBsmCne+nLmIXnuRauYVG11p78nZi4zv3+N7YFBKgllKR4WJiYhlbis4j42OP3E2Pl1FbCJMcjRzGCeeoqOkpRUJACH5BAUUAAQALAAAAAAgACAAAAOBSLrc/jDKSau9OFcAHP9cFjJgqZHfoIKnwqmqMHzLaKXw2rk7Vf60C3BoQ3lKuuGxgYwJntBZUALK5aCyYJFHBFhho2J3LH2AsFhp9+gdoN9RNav2csLvgh8B97XjoT99gld3VTldfW+GY4GCY2ZAVkQbjHtTN0otbD2anZ6foBQJADs="
 };
+var PRESETS = {
+	0: {
+		locale: "en",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l"
+			],
+			[
+				"z",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	},
+	1: {
+		locale: "de",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"z",
+				"u",
+				"i",
+				"o",
+				"p",
+				"\u00FC"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u00F6",
+				"\u00E4"
+			],
+			[
+				"y",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m",
+				"\u00DF"
+			]
+		]
+	},
+	3: {
+		locale: "cs",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"z",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l"
+			],
+			[
+				"y",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	},
+	6: {
+		locale: "fi",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p",
+				"\u00E5"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u00F6",
+				"\u00E4"
+			],
+			[
+				"z",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	},
+	7: {
+		locale: "fr",
+		rows: [
+			[
+				"a",
+				"z",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"q",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"m"
+			],
+			[
+				"w",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n"
+			]
+		]
+	},
+	11: {
+		locale: "hu",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"z",
+				"u",
+				"i",
+				"o",
+				"p",
+				"\u0151",
+				"\u00FA"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u00E9",
+				"\u00E1"
+			],
+			[
+				"\u00ED",
+				"y",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m",
+				"\u00F6",
+				"\u00FC",
+				"\u00F3",
+				"\u0171"
+			]
+		]
+	},
+	12: {
+		locale: "it",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l"
+			],
+			[
+				"z",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	},
+	18: {
+		locale: "pt",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u00E7"
+			],
+			[
+				"z",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	},
+	19: {
+		locale: "pl",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u0142"
+			],
+			[
+				"z",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	},
+	22: {
+		locale: "sr-Latn",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"z",
+				"u",
+				"i",
+				"o",
+				"p",
+				"\u0161",
+				"\u0111"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u010D",
+				"\u0107"
+			],
+			[
+				"y",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m",
+				"\u017E"
+			]
+		]
+	},
+	24: {
+		locale: "es",
+		rows: [
+			[
+				"q",
+				"w",
+				"e",
+				"r",
+				"t",
+				"y",
+				"u",
+				"i",
+				"o",
+				"p"
+			],
+			[
+				"a",
+				"s",
+				"d",
+				"f",
+				"g",
+				"h",
+				"j",
+				"k",
+				"l",
+				"\u00F1"
+			],
+			[
+				"z",
+				"x",
+				"c",
+				"v",
+				"b",
+				"n",
+				"m"
+			]
+		]
+	}
+};
+var FALLBACK_PRESET = PRESETS[0];
+var HANGUL_LEADS = [
+	"\u3131",
+	"\u3132",
+	"\u3134",
+	"\u3137",
+	"\u3138",
+	"\u3139",
+	"\u3141",
+	"\u3142",
+	"\u3143",
+	"\u3145",
+	"\u3146",
+	"\u3147",
+	"\u3148",
+	"\u3149",
+	"\u314A",
+	"\u314B",
+	"\u314C",
+	"\u314D",
+	"\u314E"
+];
+var HANGUL_VOWELS = [
+	"\u314F",
+	"\u3150",
+	"\u3151",
+	"\u3152",
+	"\u3153",
+	"\u3154",
+	"\u3155",
+	"\u3156",
+	"\u3157",
+	"\u3158",
+	"\u3159",
+	"\u315A",
+	"\u315B",
+	"\u315C",
+	"\u315D",
+	"\u315E",
+	"\u315F",
+	"\u3160",
+	"\u3161",
+	"\u3162",
+	"\u3163"
+];
+var HANGUL_TAILS = [
+	"",
+	"\u3131",
+	"\u3132",
+	"\u3133",
+	"\u3134",
+	"\u3135",
+	"\u3136",
+	"\u3137",
+	"\u3139",
+	"\u313A",
+	"\u313B",
+	"\u313C",
+	"\u313D",
+	"\u313E",
+	"\u313F",
+	"\u3140",
+	"\u3141",
+	"\u3142",
+	"\u3144",
+	"\u3145",
+	"\u3146",
+	"\u3147",
+	"\u3148",
+	"\u314A",
+	"\u314B",
+	"\u314C",
+	"\u314D",
+	"\u314E"
+];
+var HANGUL_ROWS = [
+	[
+		"\u3142",
+		"\u3143",
+		"\u3148",
+		"\u3149",
+		"\u3137",
+		"\u3138",
+		"\u3131",
+		"\u3132",
+		"\u3145",
+		"\u3146",
+		"\u315B",
+		"\u3155",
+		"\u3151",
+		"\u3152",
+		"\u3150",
+		"\u3154"
+	],
+	[
+		"\u3141",
+		"\u3134",
+		"\u3147",
+		"\u3139",
+		"\u314E",
+		"\u3157",
+		"\u3158",
+		"\u3159",
+		"\u315A",
+		"\u3153",
+		"\u314F",
+		"\u3163"
+	],
+	[
+		"\u314B",
+		"\u314C",
+		"\u314A",
+		"\u314D",
+		"\u3160",
+		"\u315C",
+		"\u315D",
+		"\u315E",
+		"\u315F",
+		"\u3161",
+		"\u3162",
+		"\u3156"
+	]
+];
+var LEAD_INDEX = new Map(HANGUL_LEADS.map((value, index) => [value, index]));
+var VOWEL_INDEX = new Map(HANGUL_VOWELS.map((value, index) => [value, index]));
+var TAIL_INDEX = new Map(HANGUL_TAILS.map((value, index) => [value, index]));
+var COMBINED_VOWELS = /* @__PURE__ */ new Map([
+	["\u3157\u314F", "\u3158"],
+	["\u3157\u3150", "\u3159"],
+	["\u3157\u3163", "\u315A"],
+	["\u315C\u3153", "\u315D"],
+	["\u315C\u3154", "\u315E"],
+	["\u315C\u3163", "\u315F"],
+	["\u3161\u3163", "\u3162"]
+]);
+var SPLIT_VOWELS = new Map([...COMBINED_VOWELS.entries()].map(([parts, combined]) => [combined, [parts[0], parts[1]]]));
+var COMBINED_TAILS = /* @__PURE__ */ new Map([
+	["\u3131\u3131", "\u3132"],
+	["\u3131\u3145", "\u3133"],
+	["\u3134\u3148", "\u3135"],
+	["\u3134\u314E", "\u3136"],
+	["\u3139\u3131", "\u313A"],
+	["\u3139\u3141", "\u313B"],
+	["\u3139\u3142", "\u313C"],
+	["\u3139\u3145", "\u313D"],
+	["\u3139\u314C", "\u313E"],
+	["\u3139\u314D", "\u313F"],
+	["\u3139\u314E", "\u3140"],
+	["\u3142\u3145", "\u3144"],
+	["\u3145\u3145", "\u3146"]
+]);
+var SPLIT_TAILS = new Map([...COMBINED_TAILS.entries()].map(([parts, combined]) => [combined, [parts[0], parts[1]]]));
+function preset(languageId) {
+	return languageId === 14 ? {
+		locale: "ko",
+		rows: HANGUL_ROWS
+	} : PRESETS[languageId] ?? FALLBACK_PRESET;
+}
+function normalizedCharacters(value, locale) {
+	return Array.from(value.normalize("NFKC").toLocaleLowerCase(locale));
+}
+function decomposeHangul(character) {
+	const code = character.codePointAt(0);
+	if (code === void 0 || code < 44032 || code > 55203) return [character];
+	const offset = code - 44032;
+	const lead = Math.floor(offset / 588);
+	const vowel = Math.floor(offset % 588 / 28);
+	const tail = offset % 28;
+	const vowelValue = HANGUL_VOWELS[vowel];
+	const tailValue = tail > 0 ? HANGUL_TAILS[tail] : null;
+	const vowelParts = SPLIT_VOWELS.get(vowelValue);
+	const tailParts = tailValue ? SPLIT_TAILS.get(tailValue) : null;
+	return [
+		HANGUL_LEADS[lead],
+		vowelValue,
+		...vowelParts ?? [],
+		...tailValue ? [tailValue] : [],
+		...tailParts ?? []
+	];
+}
+function feedbackUnits(character, languageId, locale) {
+	const normalized = normalizedCharacters(character, locale);
+	return languageId === 14 ? normalized.flatMap(decomposeHangul) : normalized;
+}
+function chunk(values, size) {
+	const rows = [];
+	for (let index = 0; index < values.length; index += size) rows.push(values.slice(index, index + size));
+	return rows;
+}
+function createSkribbleKeyboardRows(languageId, words) {
+	const selected = preset(languageId);
+	const baseRows = selected.rows.map((row) => [...row]);
+	const base = new Set(baseRows.flat());
+	const counts = /* @__PURE__ */ new Map();
+	for (const word of words) for (const character of normalizedCharacters(word, selected.locale)) {
+		const units = languageId === 14 ? decomposeHangul(character) : [character];
+		for (const unit of units) {
+			if (/\s/u.test(unit) || base.has(unit)) continue;
+			counts.set(unit, (counts.get(unit) ?? 0) + 1);
+		}
+	}
+	const extras = [...counts].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], selected.locale)).map(([character]) => character);
+	return [...baseRows, ...chunk(extras, languageId === 14 ? 12 : 14)];
+}
+function getSkribbleKeyboardMark(attempts, key, languageId) {
+	const locale = preset(languageId).locale;
+	let best = 0;
+	const rank = {
+		incorrect: 1,
+		semicorrect: 2,
+		correct: 3
+	};
+	for (const attempt of attempts) normalizedCharacters(attempt.guess, locale).forEach((character, index) => {
+		if (!feedbackUnits(character, languageId, locale).includes(key)) return;
+		best = Math.max(best, rank[attempt.marks[index] ?? "incorrect"]);
+	});
+	return best === 3 ? "correct" : best === 2 ? "semicorrect" : best === 1 ? "incorrect" : "empty";
+}
+function parseHangulSyllable(character) {
+	const code = character.codePointAt(0);
+	if (code === void 0 || code < 44032 || code > 55203) return null;
+	const offset = code - 44032;
+	return {
+		lead: Math.floor(offset / 588),
+		vowel: Math.floor(offset % 588 / 28),
+		tail: offset % 28
+	};
+}
+function composeHangul(lead, vowel, tail = 0) {
+	return String.fromCodePoint(44032 + (lead * 21 + vowel) * 28 + tail);
+}
+function replaceLast(value, replacement) {
+	const characters = Array.from(value);
+	characters.splice(-1, 1, replacement);
+	return characters.join("");
+}
+function appendKoreanJamo(value, jamo) {
+	const last = Array.from(value).at(-1);
+	if (!last) return jamo;
+	const syllable = parseHangulSyllable(last);
+	const vowelIndex = VOWEL_INDEX.get(jamo);
+	if (vowelIndex !== void 0) {
+		const standaloneLead = LEAD_INDEX.get(last);
+		if (standaloneLead !== void 0) return replaceLast(value, composeHangul(standaloneLead, vowelIndex));
+		if (!syllable) return value + jamo;
+		if (syllable.tail === 0) {
+			const combined = COMBINED_VOWELS.get(`${HANGUL_VOWELS[syllable.vowel]}${jamo}`);
+			const combinedIndex = combined ? VOWEL_INDEX.get(combined) : void 0;
+			return combinedIndex === void 0 ? value + jamo : replaceLast(value, composeHangul(syllable.lead, combinedIndex));
+		}
+		const tail = HANGUL_TAILS[syllable.tail];
+		const split = SPLIT_TAILS.get(tail);
+		const remainingTail = split?.[0] ?? "";
+		const movingLead = split?.[1] ?? tail;
+		const nextLead = LEAD_INDEX.get(movingLead);
+		if (nextLead === void 0) return value + jamo;
+		return replaceLast(value, composeHangul(syllable.lead, syllable.vowel, TAIL_INDEX.get(remainingTail) ?? 0)) + composeHangul(nextLead, vowelIndex);
+	}
+	if (syllable) {
+		if (syllable.tail === 0) {
+			const tailIndex = TAIL_INDEX.get(jamo);
+			return tailIndex === void 0 ? value + jamo : replaceLast(value, composeHangul(syllable.lead, syllable.vowel, tailIndex));
+		}
+		const combined = COMBINED_TAILS.get(`${HANGUL_TAILS[syllable.tail]}${jamo}`);
+		const combinedIndex = combined ? TAIL_INDEX.get(combined) : void 0;
+		if (combinedIndex !== void 0) return replaceLast(value, composeHangul(syllable.lead, syllable.vowel, combinedIndex));
+	}
+	return value + jamo;
+}
+function appendSkribbleKeyboardValue(current, value, languageId, maximumLength) {
+	const next = languageId === 14 && (LEAD_INDEX.has(value) || VOWEL_INDEX.has(value) || TAIL_INDEX.has(value)) ? appendKoreanJamo(current, value) : current + value;
+	return Array.from(next).length <= maximumLength ? next : current;
+}
+function removeLastSkribbleCharacter(value) {
+	return Array.from(value).slice(0, -1).join("");
+}
 function element$2(tag, className = "", text = "") {
 	const node = document.createElement(tag);
 	node.className = className;
@@ -42394,6 +43103,7 @@ var SkribbleFeatureUi = class {
 	coinAnimationTimers = /* @__PURE__ */ new Set();
 	mountTimer = null;
 	countdownTimer = null;
+	keyboardWordListLoad = null;
 	resize = () => {
 		if (this.modal) this.renderModal();
 	};
@@ -42407,6 +43117,7 @@ var SkribbleFeatureUi = class {
 	start() {
 		this.ensureStyles();
 		this.ensureMounted();
+		this.ensureKeyboardWordList(languageId(), SKRIBBL_LANGUAGE_NAME_BY_ID[languageId()] ?? null);
 		this.mountTimer = window.setInterval(() => this.ensureMounted(), 700);
 		this.countdownTimer = window.setInterval(() => this.updateCountdown(), 1e3);
 		window.addEventListener("resize", this.resize, false);
@@ -42442,6 +43153,7 @@ var SkribbleFeatureUi = class {
 			this.visibleFingerprint = incomingFingerprint;
 			rerender = true;
 		}
+		if (incoming?.availability === "ready") this.ensureKeyboardWordList(incoming.languageId, incoming.languageName);
 		const result = state.lastSkribbleGuess;
 		if (result && result.requestId !== this.lastGuessRequestId) {
 			this.lastGuessRequestId = result.requestId;
@@ -42533,6 +43245,8 @@ var SkribbleFeatureUi = class {
 		if (document.body) document.body.dataset.scdSkribbleScrollLock = this.options.runtimeId;
 		this.options.onModalVisibilityChanged();
 		this.renderModal();
+		const currentLanguageId = this.visibleState?.languageId ?? languageId();
+		this.ensureKeyboardWordList(currentLanguageId, this.visibleState?.languageName ?? SKRIBBL_LANGUAGE_NAME_BY_ID[currentLanguageId] ?? null);
 		if (!this.visibleState) this.requestRound("daily");
 	}
 	close() {
@@ -42577,7 +43291,22 @@ var SkribbleFeatureUi = class {
 	}
 	requestRound(mode) {
 		this.invalidMessage = null;
-		this.beginRequest(mode === "daily" ? "open-daily" : "open-practice", () => this.options.gateway.openSkribble(languageId(), mode));
+		const selectedLanguageId = languageId();
+		this.ensureKeyboardWordList(selectedLanguageId, SKRIBBL_LANGUAGE_NAME_BY_ID[selectedLanguageId] ?? null);
+		this.beginRequest(mode === "daily" ? "open-daily" : "open-practice", () => this.options.gateway.openSkribble(selectedLanguageId, mode));
+	}
+	ensureKeyboardWordList(language, languageName) {
+		if (getOfficialWords(language).length > 0 || this.keyboardWordListLoad?.languageId === language) return;
+		const task = loadOfficialWordList(language, languageName).then((status) => {
+			if (status.state !== "ready" || !this.modal || this.visibleState?.languageId !== language) return;
+			this.renderModal();
+		}).catch(() => {}).finally(() => {
+			if (this.keyboardWordListLoad?.task === task) this.keyboardWordListLoad = null;
+		});
+		this.keyboardWordListLoad = {
+			languageId: language,
+			task
+		};
 	}
 	renderModal() {
 		const overlay = this.modal;
@@ -42627,6 +43356,7 @@ var SkribbleFeatureUi = class {
 			content.appendChild(board);
 			if (this.invalidMessage) content.appendChild(element$2("div", "scd-skribble-warning", this.invalidMessage));
 			if (state.status !== "playing") content.appendChild(this.ending(state));
+			content.appendChild(this.keyboard(state));
 		}
 		shell.append(header, content);
 		overlay.appendChild(shell);
@@ -42661,6 +43391,60 @@ var SkribbleFeatureUi = class {
 		const card = element$2("section", "scd-skribble-help");
 		card.append(element$2("strong", "", "How Skribble works"), element$2("p", "", "Guess a word from the official word list for your selected Skribbl language. Words may contain spaces, hyphens and every Unicode character used by that language."), element$2("p", "", "Green means correct letter and position. Yellow means the character exists elsewhere. Gray means it is not available in the remaining answer."), element$2("p", "", "You have ten attempts and no clues."), element$2("p", "", "Only the first Daily solve on an account awards Skribbl Coins. Practice is always unrewarded."));
 		return card;
+	}
+	keyboard(state) {
+		const keyboard = element$2("div", "scd-skribble-keyboard");
+		keyboard.setAttribute("role", "group");
+		keyboard.setAttribute("aria-label", `${state.languageName} Skribble keyboard`);
+		const rows = createSkribbleKeyboardRows(state.languageId, getOfficialWords(state.languageId));
+		for (const characters of rows) {
+			if (characters.length === 0) continue;
+			const row = element$2("div", "scd-skribble-keyboard-row");
+			row.style.setProperty("--scd-key-count", String(characters.length));
+			row.style.setProperty("--scd-key-max-width", `${characters.length * 42}px`);
+			for (const character of characters) row.appendChild(this.keyboardButton(character, character, getSkribbleKeyboardMark(state.attempts, character, state.languageId), state));
+			keyboard.appendChild(row);
+		}
+		const controls = element$2("div", "scd-skribble-keyboard-controls");
+		controls.append(this.keyboardButton("\u232B", "backspace", "empty", state, "wide", "Backspace"), this.keyboardButton("Space", "space", getSkribbleKeyboardMark(state.attempts, " ", state.languageId), state, "extra-wide", "Space"), this.keyboardButton("\u21B5", "enter", "empty", state, "wide", "Enter"));
+		keyboard.appendChild(controls);
+		return keyboard;
+	}
+	keyboardButton(label, value, mark, state, widthClass = "", ariaLabel = label) {
+		const button = element$2("button", `scd-skribble-key${widthClass ? ` ${widthClass}` : ""}`);
+		button.type = "button";
+		button.disabled = state.status !== "playing" || Boolean(this.pendingAction);
+		button.dataset.value = value;
+		button.dataset.mark = mark;
+		button.setAttribute("aria-label", ariaLabel);
+		const source = progressionAsset(mark === "empty" ? "emptyTile" : mark === "semicorrect" ? "semicorrectTile" : `${mark}Tile`);
+		if (source) button.style.backgroundImage = `url(${JSON.stringify(source)})`;
+		button.appendChild(element$2("span", "scd-skribble-key-label", label));
+		button.addEventListener("pointerdown", (event) => event.preventDefault());
+		button.addEventListener("click", () => this.useKeyboardValue(value, state));
+		return button;
+	}
+	useKeyboardValue(value, state) {
+		if (state.status !== "playing" || this.pendingAction) return;
+		if (value === "enter") {
+			this.submitGuess(state);
+			return;
+		}
+		this.draft = value === "backspace" ? removeLastSkribbleCharacter(this.draft) : appendSkribbleKeyboardValue(this.draft, value === "space" ? " " : value, state.languageId, state.maximumLength);
+		this.invalidMessage = null;
+		this.inputFocused = true;
+		this.renderModal();
+	}
+	submitGuess(state) {
+		if (this.pendingAction) return;
+		const length = codePoints(this.draft.trim()).length;
+		if (length < state.minimumLength || length > state.maximumLength) {
+			this.invalidMessage = `Enter between ${state.minimumLength} and ${state.maximumLength} characters.`;
+			this.renderModal();
+			return;
+		}
+		const guess = this.draft;
+		this.beginRequest("guess", () => this.options.gateway.submitSkribbleGuess(state.sessionId, guess));
 	}
 	attemptRow(state, attempt, index, won) {
 		const row = element$2("div", `scd-skribble-row${won ? " won" : ""}`);
@@ -42725,13 +43509,7 @@ var SkribbleFeatureUi = class {
 			if (event.key !== "Enter") return;
 			event.preventDefault();
 			if (event.shiftKey || this.pendingAction) return;
-			const length = codePoints(this.draft.trim()).length;
-			if (length < state.minimumLength || length > state.maximumLength) {
-				this.invalidMessage = `Enter between ${state.minimumLength} and ${state.maximumLength} characters.`;
-				this.renderModal();
-				return;
-			}
-			this.beginRequest("guess", () => this.options.gateway.submitSkribbleGuess(state.sessionId, this.draft));
+			this.submitGuess(state);
 		});
 		row.appendChild(input);
 		row.addEventListener("click", () => input.focus());
@@ -42816,9 +43594,9 @@ var SkribbleFeatureUi = class {
 		node.textContent = `Next Daily Skribble in ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")} UTC`;
 	}
 	syncLoadingOverlay() {
-		const shell = this.modal?.querySelector(".scd-skribble-modal");
-		if (!shell) return;
-		shell.querySelector(".scd-progression-load")?.remove();
+		const overlay = this.modal;
+		if (!overlay) return;
+		overlay.querySelector(":scope > .scd-progression-load")?.remove();
 		if (!this.pendingAction) return;
 		const load = element$2("div", "scd-progression-load");
 		const container = element$2("div", "container");
@@ -42826,7 +43604,7 @@ var SkribbleFeatureUi = class {
 		icon.appendChild(element$2("div", "graphic"));
 		container.appendChild(icon);
 		load.appendChild(container);
-		shell.appendChild(load);
+		overlay.appendChild(load);
 	}
 	animateLoss() {
 		const rows = this.modal?.querySelectorAll(".scd-skribble-board .scd-skribble-row:not(.scd-skribble-loss-message)");
@@ -42963,17 +43741,17 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);transform:scale(1.06); }
 .scd-skribble-launcher img { display:block;width:100%;height:auto;max-height:152px;object-fit:contain; }
 .scd-skribble-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
-.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-skribble-fade .2s ease-out;font-family:'Nunito',sans-serif; }
+.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);animation:scd-skribble-fade .2s ease-out;font-family:'Nunito',sans-serif; }
 .scd-skribble-modal { position:relative;width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25);font-family:'Nunito',sans-serif; }
 .scd-skribble-header { min-height:86px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:8px 12px; }
 .scd-skribble-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
-.scd-skribble-title img { display:block;width:min(550px,56vw);max-height:80px;object-fit:contain; }
+.scd-skribble-title img { display:block;width:min(550px,56vw);max-height:80px;object-fit:contain;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-skribble-actions { justify-self:end;display:flex;gap:6px; }
 .scd-skribble-actions .scd-icon-button { width:42px;height:42px; }
-.scd-skribble-actions .scd-icon { width:36px;height:36px; }
+.scd-skribble-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-coin-pill { min-width:96px;max-width:180px;height:48px;justify-self:start;display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:4px 10px 4px 4px;background:var(--SCD_ACCENT,var(--COLOR_PANEL_BUTTON,#2a51d1));color:#fff;font:800 16px/1 'Nunito',sans-serif;text-shadow:2px 2px 0 #0004; }
 .scd-coin-pill.compact { min-width:0;width:max-content;height:38px;padding:3px 8px 3px 3px; }
-.scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated; }
+.scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-coin-pill.compact img { width:32px;height:32px; }
 .scd-skribble-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 18px 18px;text-align:center; }
 .scd-skribble-mode-bar { position:relative;width:100%;min-height:40px;display:flex;align-items:center;justify-content:center; }
@@ -42994,6 +43772,18 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-row.won .scd-skribble-tile.reveal { animation:scd-skribble-reveal .28s ease-out var(--scd-reveal-delay,0ms) forwards,scd-skribble-jump var(--scd-jump-duration,.9s) cubic-bezier(.2,.8,.3,1) calc(var(--scd-reveal-delay,0ms) + 500ms) infinite; }
 .scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards !important; }
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
+.scd-skribble-keyboard { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:auto;padding-top:8px;user-select:none;touch-action:manipulation; }
+.scd-skribble-keyboard-row { --scd-key-count:10;--scd-key-max-width:420px;width:min(100%,var(--scd-key-max-width));display:grid;grid-template-columns:repeat(var(--scd-key-count),minmax(0,1fr));gap:2px; }
+.scd-skribble-keyboard-controls { width:min(100%,520px);display:flex;justify-content:center;gap:3px; }
+.scd-skribble-key { position:relative;min-width:0;aspect-ratio:1/1;display:grid;place-items:center;border:0;padding:0;background-color:transparent;background-position:center;background-repeat:no-repeat;background-size:100% 100%;color:#111;cursor:pointer;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25));transition:scale .12s ease-in-out,filter .12s ease-in-out; }
+.scd-skribble-key:hover:not(:disabled) { scale:1.1;z-index:2;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)) brightness(1.06); }
+.scd-skribble-key:active:not(:disabled) { scale:.96; }
+.scd-skribble-key:disabled { cursor:default; }
+.scd-skribble-key-label { position:relative;transform:translate(4px,-2px);max-width:calc(100% - 5px);overflow:hidden;font:900 clamp(8px,calc(var(--scd-board-tile-size,32px) * .43),15px)/1 'Nunito',sans-serif;text-overflow:ellipsis;text-shadow:1px 1px 0 #fff5; }
+.scd-skribble-key.wide,.scd-skribble-key.extra-wide { width:auto;min-height:36px;aspect-ratio:auto;background-size:100% 100%; }
+.scd-skribble-key.wide { flex:1.35 1 72px; }
+.scd-skribble-key.extra-wide { flex:3.5 1 180px; }
+.scd-skribble-key.wide .scd-skribble-key-label,.scd-skribble-key.extra-wide .scd-skribble-key-label { transform:none; }
 .scd-skribble-help { width:100%;box-sizing:border-box;padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
 .scd-skribble-help p { margin:.55em 0 0; }
 .scd-skribble-warning { color:var(--COLOR_CHAT_TEXT_LEAVE,#ff8c66);font-weight:700; }
@@ -43008,16 +43798,15 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-secondary:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
 .scd-skribble-return { width:40px;padding:3px;display:grid;place-items:center; }
 .scd-skribble-return img { width:32px;height:32px;object-fit:contain; }
-.scd-progression-load { position:absolute;z-index:30;inset:0;animation:scd-load-opacity .3s ease-in-out;background-color:rgba(0,0,0,.75);backdrop-filter:blur(6px); }
+.scd-progression-load { position:fixed;z-index:2147483647;inset:0;animation:scd-load-opacity .3s ease-in-out;background-color:rgba(0,0,0,.75); }
 .scd-progression-load .container { position:absolute;left:50%;top:50%;animation:scd-load-position .3s ease-in-out; }
 .scd-progression-load .icon { position:absolute;width:128px;height:128px; }
 .scd-progression-load .graphic { position:absolute;left:-50%;top:-50%;width:100%;height:100%;background:url('/img/load.gif') center/contain no-repeat;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-skribble-spin .8s ease-in-out infinite; }
 .scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:20px;height:20px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
 .scd-skribble-overlay::-webkit-scrollbar,.scd-skribble-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-skribble-overlay::-webkit-scrollbar-thumb,.scd-skribble-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
-@supports (backdrop-filter:blur()) { .scd-progression-load { background-color:rgba(255,255,255,.2); } }
 @keyframes scd-skribble-fade { from { opacity:0; } to { opacity:1; } }
-@keyframes scd-load-opacity { from { opacity:0;backdrop-filter:blur(0); } to { opacity:1;backdrop-filter:blur(6px); } }
+@keyframes scd-load-opacity { from { opacity:0; } to { opacity:1; } }
 @keyframes scd-load-position { from { opacity:0;top:35%; } to { opacity:1;top:50%; } }
 @keyframes scd-skribble-spin { from { transform:rotate(0); } to { transform:rotate(360deg); } }
 @keyframes scd-skribble-cursor { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
@@ -43340,7 +44129,7 @@ var SkribblSlotsFeatureUi = class {
 		header.append(title, actions);
 		const content = element$1("div", "scd-slots-content");
 		if (this.helpOpen) content.appendChild(this.helpCard());
-		if (!this.visibleState) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the server-authoritative machine\u2026"));
+		if (!this.visibleState) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the machine\u2026"));
 		else {
 			const machine = element$1("div", "scd-slots-machine");
 			const reels = element$1("div", "scd-slots-reels");
@@ -43383,9 +44172,14 @@ var SkribblSlotsFeatureUi = class {
 			const lit = forceOn === null ? index === this.bulbIndex : forceOn;
 			const source = lit ? on : off;
 			if (source) {
-				bulb.src = source;
+				const state = lit ? "on" : "off";
+				if (bulb.dataset.state !== state || bulb.src !== source) {
+					bulb.dataset.state = state;
+					bulb.src = source;
+				}
 				bulb.style.display = "block";
 			} else {
+				delete bulb.dataset.state;
 				bulb.removeAttribute("src");
 				bulb.style.display = "block";
 				bulb.classList.toggle("fallback-on", lit);
@@ -43440,7 +44234,7 @@ var SkribblSlotsFeatureUi = class {
 		button.addEventListener("click", () => {
 			this.beginRequest("spin", () => this.options.gateway.spinSkribblSlots(state.sessionId));
 		});
-		this.options.registerTooltip(button, free ? `${state.freeSpins} Free Spin${state.freeSpins === 1 ? "" : "s"} available` : "One authoritative spin costs one Skribbl Coin");
+		this.options.registerTooltip(button, free ? `${state.freeSpins} Free Spin${state.freeSpins === 1 ? "" : "s"} available` : "One spin costs one Skribbl Coin");
 		return button;
 	}
 	heartProgress() {
@@ -43495,7 +44289,7 @@ var SkribblSlotsFeatureUi = class {
 			intro.appendChild(warning);
 		}
 		const copy = element$1("div");
-		copy.append(element$1("strong", "", "How Skribbl Slots works"), element$1("p", "", "Each server-authoritative spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice."), element$1("p", "", "Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the append-only Coin ledger."));
+		copy.append(element$1("strong", "", "How Skribbl Slots works"), element$1("p", "", "Each spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice."), element$1("p", "", "Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the Coin ledger."));
 		intro.appendChild(copy);
 		card.appendChild(intro);
 		const total = Object.values(GATEWAY_SLOT_BASE_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
@@ -43629,9 +44423,9 @@ var SkribblSlotsFeatureUi = class {
 		});
 	}
 	syncLoadingOverlay() {
-		const shell = this.modal?.querySelector(".scd-slots-modal");
-		if (!shell) return;
-		shell.querySelector(".scd-progression-load")?.remove();
+		const overlay = this.modal;
+		if (!overlay) return;
+		overlay.querySelector(":scope > .scd-progression-load")?.remove();
 		if (!this.pendingAction) return;
 		const load = element$1("div", "scd-progression-load");
 		const container = element$1("div", "container");
@@ -43639,7 +44433,7 @@ var SkribblSlotsFeatureUi = class {
 		icon.appendChild(element$1("div", "graphic"));
 		container.appendChild(icon);
 		load.appendChild(container);
-		shell.appendChild(load);
+		overlay.appendChild(load);
 	}
 	ensureStyles() {
 		if (document.getElementById("skribbl-duels-slots-styles")) return;
@@ -43647,32 +44441,33 @@ var SkribblSlotsFeatureUi = class {
 		style.id = "skribbl-duels-slots-styles";
 		style.textContent = `
 html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hidden !important;overscroll-behavior:none !important; }
-.scd-slots-launcher { position:fixed;right:18px;top:calc(25vh + 158px);z-index:2147483643;display:grid;place-items:center;width:min(300px,32vw);min-height:80px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out,transform .1s ease-in-out; }
+.scd-slots-launcher { position:fixed;right:18px;top:calc(25vh + 158px);z-index:2147483643;display:grid;place-items:center;width:min(200px,22vw);min-height:100px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out,transform .1s ease-in-out; }
 .scd-slots-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);transform:scale(1.06); }
-.scd-slots-launcher img { display:block;width:100%;height:auto;max-height:152px;object-fit:contain; }
+.scd-slots-launcher img { display:block;width:100%;height:auto;max-height:100px;object-fit:contain; }
 .scd-slots-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
-.scd-slots-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:42px 12px 12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-slots-fade .2s ease-out;font-family:'Nunito',sans-serif; }
+.scd-slots-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:42px 12px 12px;background:rgba(0,0,0,.58);animation:scd-slots-fade .2s ease-out;font-family:'Nunito',sans-serif; }
 .scd-slots-modal { position:relative;width:min(940px,calc(100vw - 24px));max-height:calc(100vh - 54px);display:flex;flex-direction:column;overflow:visible;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25);font-family:'Nunito',sans-serif; }
 .scd-slots-bulbs { position:absolute;z-index:4;left:5%;right:5%;top:-36px;display:flex;align-items:flex-end;justify-content:space-between;pointer-events:none; }
 .scd-slots-bulb { width:58px;height:58px;object-fit:contain;transform:rotate(var(--scd-bulb-turn));filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-bulb:not([src]) { border-radius:50%;background:#555;box-shadow:inset 0 0 0 5px #222; }
 .scd-slots-bulb:not([src]).fallback-on { background:#ffe822;box-shadow:0 0 18px #fff36a,inset 0 0 0 5px #b58e00; }
-.scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:hidden;border-radius:10px 10px 0 0; }
-.scd-slots-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
-.scd-slots-title img { display:block;width:min(520px,54vw);max-height:82px;object-fit:contain; }
+.scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:visible;border-radius:10px 10px 0 0; }
+.scd-slots-title { position:relative;z-index:6;width:200px;height:82px;display:grid;place-items:center;justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004;pointer-events:none; }
+.scd-slots-title img { display:block;width:200px;height:100px;max-width:none;object-fit:contain;transform:scale(2);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-actions { justify-self:end;display:flex;gap:6px; }
 .scd-slots-actions .scd-icon-button { width:42px;height:42px; }
-.scd-slots-actions .scd-icon { width:36px;height:36px; }
-.scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:10px 24px 24px;text-align:center; }
-.scd-slots-machine { width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px; }
-.scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px; }
+.scd-slots-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:34px 24px 24px;text-align:center; }
+.scd-slots-machine { width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px;padding:30px 0;overflow:visible; }
+.scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:30px 6px;overflow:visible; }
 .scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background:#fff;box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
 .scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
 .scd-slot-reel::before { top:0; }
 .scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
 .scd-slot-payline { width:78%;height:78%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
 .scd-slot-icon { display:grid;place-items:center;min-width:0;min-height:0; }
-.scd-slot-icon img { display:block;width:100%;height:100%;max-width:128px;max-height:128px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slot-payline > .scd-slot-icon { width:100%;height:100%; }
+.scd-slot-icon img { display:block;width:100%;height:100%;max-width:256px;max-height:256px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slot-icon-fallback { display:grid;place-items:center;width:100%;height:100%;font-size:clamp(28px,7vw,86px);font-weight:900;color:#222;text-shadow:3px 3px 0 #0003; }
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
@@ -43704,9 +44499,9 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
 .scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
 .scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
+.scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:fill; }
 .scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
 .scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
-.scd-slots-modal > .scd-progression-load { border-radius:10px;overflow:hidden; }
 .scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-slots-overlay::-webkit-scrollbar-thumb,.scd-slots-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
 @keyframes scd-slots-fade { from { opacity:0; } to { opacity:1; } }
@@ -43721,7 +44516,8 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 @media (max-width:720px) {
   .scd-slots-header { grid-template-columns:auto 1fr auto; }
   .scd-slots-title { font-size:1.2em; }
-  .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(240px,46vw); }
+  .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(200px,42vw);min-height:80px; }
+  .scd-slots-title img { transform:scale(1.5); }
   .scd-slots-machine { grid-template-columns:1fr; }
   .scd-slots-reels { gap:6px; }
   .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -44955,7 +45751,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.66.0",
+			version: "0.66.1",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 13,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -45105,7 +45901,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.66.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.66.1") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -48912,7 +49708,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.66.0";
+var BUILD_VERSION = "0.66.1";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

@@ -1,9 +1,43 @@
-# Skribbl Duels v0.65.0
+# Skribbl Duels v0.66.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v12, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v13, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.66.0
+
+- Adds Skribbl Slots as the first server-authoritative arcade sink: three reels,
+  one payline, a one-Coin spin price, persistent Free Spins and three-spin Heart
+  progress. Fill, Wizard, Eraser, Trash and Dice resolve in a fixed order before
+  the Gateway evaluates the final payline. Every accepted spin is an append-only,
+  idempotent ledger operation; retries cannot spend or reward twice.
+- Embeds the supplied Slots logo, warning, two bulbs and all 24 reel GIFs. The
+  homepage launcher and modal include the arcade bulb cycle, reel/effect motion,
+  transparent base weights, non-purchasable/no-cash-value disclosure and the
+  shared authoritative Coin balance. A seeded 120,000-spin regression keeps the
+  current rules at an approximately 9.1% combined Coin/Free-Spin return.
+- Stabilizes Skribble across short Gateway/account interruptions. The visible
+  board is retained while an action waits, a native-style loading surface times
+  out after five seconds, and reopening keeps the latest viewed Daily or Practice
+  round. Return to Daily is explicit instead of replacing an active Practice.
+- Makes accepted guesses case-insensitive but renders the exact official
+  word-list casing, reveals previous rows only once, keeps every completed row at
+  full opacity and shows the final word after both wins and losses. Daily rewards
+  now scale from 25 Coins on attempt one to 16 on attempt ten.
+- Moves all progression GIFs into `res/skribble-icons/` and
+  `res/skribbl-slots/`. Mini-game launchers require an authenticated connected
+  account; Coin balance is informational and appears in the Profile identity
+  card rather than the Hub action row.
+- Resolves the reported Supabase lint findings: the Coin mutation guard has an
+  immutable empty search path, while authenticated profile updates now run as
+  `SECURITY INVOKER` behind own-row RLS and a validating trigger.
+
+v0.66.0 requires Gateway Contract v13 and migration
+`202609170001_add_skribbl_slots_and_harden_functions.sql` after the v0.65 Coin
+ledger migration. It adds no Railway variable. Apply the migration and deploy
+the Gateway before distributing the userscript. See
+`docs/skribbl-slots-skribble-stability-v0.66.0.md` for the exact release order.
 
 ## v0.65.0
 

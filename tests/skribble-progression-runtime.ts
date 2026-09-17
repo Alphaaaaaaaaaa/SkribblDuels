@@ -9,6 +9,9 @@ import type {
   GatewayCoinAccountSnapshot,
   GatewayCoinTransactionInput,
   GatewayProgressionPersistence,
+  GatewaySlotCommitInput,
+  GatewaySlotCommitResult,
+  GatewaySlotsAccountSnapshot,
   GatewaySkribbleDailyRun,
   GatewaySkribbleDailyWord
 } from '../apps/gateway/src/progressionPersistence';
@@ -73,6 +76,14 @@ class MemoryProgressionPersistence implements GatewayProgressionPersistence {
   public async saveDailyRun(run: GatewaySkribbleDailyRun): Promise<void> {
     this.runs.set(`${run.accountId}:${run.dateKey}:${run.languageId}`, structuredClone(run));
   }
+
+  public async getSlotsAccount(): Promise<GatewaySlotsAccountSnapshot> {
+    return { freeSpins: 0, nextFreeSpinSource: null, heartProgress: 0, revision: 0 };
+  }
+
+  public async commitSlotSpin(_input: GatewaySlotCommitInput): Promise<GatewaySlotCommitResult> {
+    throw new Error('Slots are covered by the dedicated v0.66 runtime test.');
+  }
 }
 
 setOfficialWordListForTesting(0, ['array', 'rarer', 'civic', 'apple'], 'English');
@@ -108,7 +119,7 @@ await progression.handle(accountId, {
 const opened = messages.at(-1);
 assert.equal(opened?.type, 'SKRIBBLE_STATE');
 if (opened?.type !== 'SKRIBBLE_STATE') throw new Error('Daily state was not returned.');
-assert.equal('answer' in opened.state, false, 'The answer must never be shipped in advance.');
+assert.equal(opened.state.answer, null, 'The answer must never be shipped in advance.');
 assert.equal(opened.state.attempts.length, 0);
 assert.equal(opened.state.maxAttempts, 10);
 const dailyWord = persistence.words.values().next().value as GatewaySkribbleDailyWord;
@@ -131,8 +142,9 @@ const solveResult = [...messages].reverse().find(message => message.type === 'SK
 assert.equal(solveResult?.type, 'SKRIBBLE_GUESS_RESULT');
 if (solveResult?.type !== 'SKRIBBLE_GUESS_RESULT') throw new Error('Solve result missing.');
 assert.equal(solveResult.state.status, 'solved');
+assert.equal(solveResult.state.answer, dailyWord.word, 'The answer is disclosed only after the round ends.');
 assert.equal(solveResult.state.rewarded, true);
-assert.ok(solveResult.state.rewardAmount >= 10 && solveResult.state.rewardAmount <= 25);
+assert.equal(solveResult.state.rewardAmount, 25, 'A first-attempt Daily solve earns the maximum reward.');
 const earnedBalance = persistence.balance;
 assert.equal(persistence.transactions.size, 1);
 await progression.handle(accountId, {
@@ -183,16 +195,13 @@ assert.equal(german.state.canEarn, false);
 assert.equal(german.state.rewarded, false);
 const germanWord = persistence.words.get('2026-09-16:1')!;
 await progression.handle(accountId, {
-  type: 'SKRIBBLE_GUESS', requestId: 'solve-german', sessionId: german.state.sessionId, guess: germanWord.word
+  type: 'SKRIBBLE_GUESS', requestId: 'solve-german', sessionId: german.state.sessionId, guess: germanWord.word.toUpperCase()
 });
+const germanSolve = messages.at(-1);
+if (germanSolve?.type !== 'SKRIBBLE_GUESS_RESULT') throw new Error('German solve result missing.');
+assert.equal(germanSolve.state.attempts[0]?.guess, germanWord.word, 'Accepted guesses must use official word-list casing.');
 assert.equal(persistence.balance, earnedBalance, 'Only the first solve across all languages may reward an account each UTC day.');
 assert.equal(persistence.transactions.size, 1);
-
-await progression.handle(accountId, {
-  type: 'SKRIBBLE_CELEBRATION_REPLAY', requestId: 'replay-1', dateKey: '2026-09-16'
-});
-assert.equal(persistence.balance, earnedBalance - 1, 'Celebration replay is the harmless one-Coin cosmetic sink.');
-assert.equal(messages.at(-1)?.type, 'COIN_BALANCE');
 
 await progression.handle(accountId, {
   type: 'SKRIBBLE_OPEN', requestId: 'open-practice', languageId: 0, mode: 'practice'
@@ -205,6 +214,6 @@ const practiceAnswer = [...persistence.words.values()][0]!.word;
 await progression.handle(accountId, {
   type: 'SKRIBBLE_GUESS', requestId: 'practice-guess', sessionId: practice.state.sessionId, guess: practiceAnswer
 });
-assert.equal(persistence.balance, earnedBalance - 1);
+assert.equal(persistence.balance, earnedBalance);
 
 console.log('Authoritative Daily Skribble and Skribbl Coin runtime tests passed.');

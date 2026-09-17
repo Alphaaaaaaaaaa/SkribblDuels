@@ -6,11 +6,15 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
-Contract v12 adds authenticated Daily Skribble open/guess/celebration actions,
-answer-free Skribble state/results and authoritative Coin balance/transaction
-updates. The browser can request a guess or cosmetic sink but cannot choose a
-Daily answer, accept an invalid word, calculate its own reward or mutate its
-balance.
+Contract v13 adds authenticated Skribbl Slots open/spin actions, ordered effect
+steps, final payline outcomes, Free Spins and Heart progress. It also discloses
+the Skribble answer only after a solved/lost terminal state and removes the old
+celebration-replay sink. The browser can request an action but cannot choose
+reels, effects, answers, rewards or its Coin balance.
+
+Contract v12 introduced authenticated Daily Skribble open/guess actions,
+answer-private playing state/results and authoritative Coin balance/transaction
+updates.
 
 Contract v11 adds the server-validated 0–27 Duel name/Claim color index to the
 authenticated identity and every match participant. Clients receive only a

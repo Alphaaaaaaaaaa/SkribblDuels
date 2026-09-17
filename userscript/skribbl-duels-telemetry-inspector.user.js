@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.65.0
+// @version      0.66.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -15829,6 +15829,60 @@ var LocalStorageProductUiSettingsStore = class {
 	}
 };
 var GATEWAY_SOCKET_EVENT = "gateway:message";
+var GATEWAY_SLOT_ICON_IDS = [
+	"book",
+	"slimy",
+	"fill",
+	"wizard",
+	"eraser",
+	"trash",
+	"dice",
+	"heart",
+	"skribbl-coin",
+	"7",
+	"trophy",
+	"crown",
+	"pen",
+	"skribbl-duels-logo",
+	"potion",
+	"drop",
+	"pizza",
+	"pumpkin",
+	"eggplant",
+	"pineapple",
+	"peach",
+	"ribbon",
+	"skull",
+	"poop"
+];
+/** Integer entries in each independently sampled base reel (126 total). */
+var GATEWAY_SLOT_BASE_WEIGHTS = {
+	book: 7,
+	slimy: 3,
+	fill: 2,
+	wizard: 2,
+	eraser: 4,
+	trash: 1,
+	dice: 4,
+	heart: 8,
+	"skribbl-coin": 1,
+	"7": 2,
+	trophy: 3,
+	crown: 3,
+	pen: 4,
+	"skribbl-duels-logo": 4,
+	potion: 5,
+	drop: 5,
+	pizza: 7,
+	pumpkin: 7,
+	eggplant: 7,
+	pineapple: 9,
+	peach: 9,
+	ribbon: 9,
+	skull: 15,
+	poop: 15
+};
+var SLOT_ICON_IDS = new Set(GATEWAY_SLOT_ICON_IDS);
 function record(value) {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
@@ -15901,7 +15955,22 @@ function skribbleAttempt(value) {
 }
 function skribbleState(value) {
 	const state = record(value);
-	return Boolean(state && nonEmptyString(state.sessionId) && (state.mode === "daily" || state.mode === "practice") && dateKey(state.dateKey) && finiteNumber(state.nextDailyAt) && nonNegativeInteger(state.languageId) && Number(state.languageId) <= 27 && nonEmptyString(state.languageName, 64) && (state.availability === "ready" || state.availability === "unsupported") && (state.unavailableReason === null || nonEmptyString(state.unavailableReason, 512)) && (state.status === "playing" || state.status === "solved" || state.status === "lost") && state.maxAttempts === 10 && state.minimumLength === 2 && state.maximumLength === 32 && Array.isArray(state.attempts) && state.attempts.length <= 10 && state.attempts.every(skribbleAttempt) && typeof state.canEarn === "boolean" && typeof state.rewarded === "boolean" && nonNegativeInteger(state.rewardAmount) && Number(state.rewardAmount) <= 25);
+	return Boolean(state && nonEmptyString(state.sessionId) && (state.mode === "daily" || state.mode === "practice") && dateKey(state.dateKey) && finiteNumber(state.nextDailyAt) && nonNegativeInteger(state.languageId) && Number(state.languageId) <= 27 && nonEmptyString(state.languageName, 64) && (state.availability === "ready" || state.availability === "unsupported") && (state.unavailableReason === null || nonEmptyString(state.unavailableReason, 512)) && (state.status === "playing" || state.status === "solved" || state.status === "lost") && (state.status === "playing" ? state.answer === null : nonEmptyCodePointString(state.answer, 32)) && state.maxAttempts === 10 && state.minimumLength === 2 && state.maximumLength === 32 && Array.isArray(state.attempts) && state.attempts.length <= 10 && state.attempts.every(skribbleAttempt) && typeof state.canEarn === "boolean" && typeof state.rewarded === "boolean" && nonNegativeInteger(state.rewardAmount) && Number(state.rewardAmount) <= 25);
+}
+function slotIcons(value) {
+	return Array.isArray(value) && value.length === 3 && value.every((icon) => typeof icon === "string" && SLOT_ICON_IDS.has(icon));
+}
+function slotsState(value) {
+	const state = record(value);
+	return Boolean(state && nonEmptyString(state.sessionId) && nonNegativeInteger(state.rulesVersion) && Number(state.rulesVersion) > 0 && state.reelCount === 3 && state.spinCost === 1 && nonNegativeInteger(state.freeSpins) && Number(state.freeSpins) <= 1e4 && (state.nextFreeSpinSource === null || state.nextFreeSpinSource === "book" || state.nextFreeSpinSource === "slimy" || state.nextFreeSpinSource === "heart") && Number(state.freeSpins) > 0 === (state.nextFreeSpinSource !== null) && nonNegativeInteger(state.heartProgress) && Number(state.heartProgress) < 3 && state.heartTarget === 3 && typeof state.canSpin === "boolean");
+}
+function slotEffectStep(value) {
+	const step = record(value);
+	return Boolean(step && (step.kind === "fill" || step.kind === "wizard" || step.kind === "eraser" || step.kind === "trash" || step.kind === "dice") && nonNegativeInteger(step.sourceIndex) && Number(step.sourceIndex) < 3 && Array.isArray(step.targetIndices) && step.targetIndices.length >= 1 && step.targetIndices.length <= 3 && step.targetIndices.every((index) => nonNegativeInteger(index) && Number(index) < 3) && slotIcons(step.iconsAfter));
+}
+function slotOutcome(value) {
+	const outcome = record(value);
+	return Boolean(outcome && nonEmptyString(outcome.spinId) && slotIcons(outcome.initialIcons) && Array.isArray(outcome.effectSteps) && outcome.effectSteps.length <= 18 && outcome.effectSteps.every(slotEffectStep) && slotIcons(outcome.finalIcons) && typeof outcome.usedFreeSpin === "boolean" && (outcome.usedFreeSpinSource === null || outcome.usedFreeSpinSource === "book" || outcome.usedFreeSpinSource === "slimy" || outcome.usedFreeSpinSource === "heart") && (outcome.coinCost === 0 || outcome.coinCost === 1) && outcome.usedFreeSpin === (outcome.coinCost === 0) && outcome.usedFreeSpin === (outcome.usedFreeSpinSource !== null) && nonNegativeInteger(outcome.coinReward) && Number(outcome.coinReward) <= 10 && nonNegativeInteger(outcome.awardedFreeSpins) && Number(outcome.awardedFreeSpins) <= 11 && nonNegativeInteger(outcome.freeSpinsBefore) && Number(outcome.freeSpinsBefore) <= 1e4 && nonNegativeInteger(outcome.freeSpinsAfter) && Number(outcome.freeSpinsAfter) <= 1e4 && (outcome.nextFreeSpinSource === null || outcome.nextFreeSpinSource === "book" || outcome.nextFreeSpinSource === "slimy" || outcome.nextFreeSpinSource === "heart") && Number(outcome.freeSpinsAfter) > 0 === (outcome.nextFreeSpinSource !== null) && (!outcome.usedFreeSpin || Number(outcome.freeSpinsBefore) > 0) && Number(outcome.freeSpinsAfter) === Number(outcome.freeSpinsBefore) - (outcome.usedFreeSpin ? 1 : 0) + Number(outcome.awardedFreeSpins) && nonNegativeInteger(outcome.heartProgressBefore) && Number(outcome.heartProgressBefore) < 3 && nonNegativeInteger(outcome.heartProgressAfter) && Number(outcome.heartProgressAfter) < 3 && nonNegativeInteger(outcome.balanceBefore) && nonNegativeInteger(outcome.balanceAfter) && Number(outcome.balanceAfter) === Number(outcome.balanceBefore) - Number(outcome.coinCost) + Number(outcome.coinReward) && finiteNumber(outcome.occurredAt));
 }
 function coinTransaction(value) {
 	const transaction = record(value);
@@ -15941,7 +16010,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 12 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 13 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -15953,6 +16022,8 @@ function isGatewayServerMessage(value) {
 		case "TELEMETRY_ACK": return nonEmptyString(message.matchId) && nonNegativeInteger(message.lastSequence);
 		case "SKRIBBLE_STATE": return nonEmptyString(message.requestId) && skribbleState(message.state);
 		case "SKRIBBLE_GUESS_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "word-not-found" || message.reason === "invalid-length" || message.reason === "session-ended" || message.reason === "session-not-found") && skribbleState(message.state);
+		case "SLOTS_STATE": return nonEmptyString(message.requestId) && slotsState(message.state);
+		case "SLOTS_SPIN_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "session-not-found" || message.reason === "insufficient-coins") && slotsState(message.state) && (message.outcome === null || slotOutcome(message.outcome)) && message.accepted === (message.outcome !== null) && nonNegativeInteger(message.coinRevision);
 		case "COIN_BALANCE": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.balance) && nonNegativeInteger(message.revision) && (message.transaction === null || coinTransaction(message.transaction));
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
@@ -16007,7 +16078,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.65.0";
+var GATEWAY_CLIENT_VERSION = "0.66.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -19258,6 +19329,8 @@ function initialSnapshot(endpoint) {
 		coins: null,
 		skribble: null,
 		lastSkribbleGuess: null,
+		slots: null,
+		lastSlotsSpin: null,
 		error: null
 	};
 }
@@ -19533,12 +19606,20 @@ var SocketIoGatewayClient = class {
 		});
 		return requestId;
 	}
-	replaySkribbleCelebration(dateKey) {
-		const requestId = this.createRequestId("skribble-celebration");
+	openSkribblSlots() {
+		const requestId = this.createRequestId("slots-open");
 		this.emit({
-			type: "SKRIBBLE_CELEBRATION_REPLAY",
+			type: "SLOTS_OPEN",
+			requestId
+		});
+		return requestId;
+	}
+	spinSkribblSlots(sessionId) {
+		const requestId = this.createRequestId("slots-spin");
+		this.emit({
+			type: "SLOTS_SPIN",
 			requestId,
-			dateKey
+			sessionId
 		});
 		return requestId;
 	}
@@ -19594,7 +19675,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 12,
+				contractVersion: 13,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -19633,7 +19714,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v12 message.`
+				error: `Gateway sent an invalid Contract v13 message.`
 			});
 			return;
 		}
@@ -19660,6 +19741,8 @@ var SocketIoGatewayClient = class {
 				coins: this.state.coins,
 				skribble: this.state.skribble,
 				lastSkribbleGuess: this.state.lastSkribbleGuess,
+				slots: this.state.slots,
+				lastSlotsSpin: this.state.lastSlotsSpin,
 				error: null
 			});
 			this.flushTelemetry();
@@ -19722,6 +19805,35 @@ var SocketIoGatewayClient = class {
 					state: structuredClone(value.state)
 				},
 				lastSkribbleGuess: structuredClone(value),
+				error: null
+			});
+			return;
+		}
+		if (value.type === "SLOTS_STATE") {
+			this.update({
+				...this.state,
+				slots: structuredClone(value),
+				lastSlotsSpin: null,
+				error: null
+			});
+			return;
+		}
+		if (value.type === "SLOTS_SPIN_RESULT") {
+			this.update({
+				...this.state,
+				slots: {
+					type: "SLOTS_STATE",
+					requestId: value.requestId,
+					state: structuredClone(value.state)
+				},
+				lastSlotsSpin: structuredClone(value),
+				coins: value.outcome ? {
+					type: "COIN_BALANCE",
+					requestId: value.requestId,
+					balance: value.outcome.balanceAfter,
+					revision: value.coinRevision,
+					transaction: null
+				} : this.state.coins,
 				error: null
 			});
 			return;
@@ -42186,18 +42298,47 @@ function isTypoRuntimeDetected(dataset, typoSkribblLoaded = null) {
 var EMBEDDED_PROGRESSION_ASSETS = {
 	"coin": "data:image/gif;base64,R0lGODlhKAAoAJEAAPuyNth7FwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAKAAoAAAC65yPqcvtD6OcUtiLLXW5+3144jd5wImmZ1dh6SigGeTKsPVez2VjwR9Y1QCYBk94+akAv6GOcSRagMtpoFZURJNKle96fCKw1qA308RJNWP1upvrpGPrtppb3VrvbINeYBZHBsgnYGcDh4REN1V4+Ca4iOYYUhg46AGG9DjVwxjGRenHd8mDCSQ64NIp6fYF9ml4CBrzB4hKV8cJuLZWyzW3mAAa7AsM26Nl2ggDBJsrttvsHOW7sDri/Jyre+16TD20CWULk9fnzW2csWTNId7ePkPDHn+WFXGjL1uyLwIyyh86gAQLGjxosAAAIfkEBRQAAwAsAAAAACgAKAAAAvGcj6nL7Q+jnFHYizFluXu7Dd/oTR2Apmr6VdcKeGv3YDN5g87LZsEvQ2k4FpUvkAJmeoIGL3b5wX7KIrS5sF0FUqOFGuANE88oMvetCnUIrRnmUV8VZW53bcWE82yDO43GpIRHZgV1h1fHxYd1UIf4shTFWCjQc7aV6EPZZviVqKm3R9hpuQZ6ukXF6ehpKlkkOjhX2hMaa6Y25ueKhMsHtvfax8s4enUVLEZcjCesqczYWHvbAaZIZLr1sfpEm+WaG234DR4uu+Q1ba69HcS0TucNr6XuMg8Dt7vzkT9CQSIgMwgCS4RgR+OgwoUMIRQAADs=",
 	"skribbleLogo": "data:image/gif;base64,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",
+	"skribbleReturn": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACqISPqcvtD6OctNqLs968exOEwVeJIymZJ/qoK8u4L5zIIa2ogmCbpL7j9W4dYHA3nF2Mx2ZQpWE6p0KiRUqd+q6mrLdqpWC/TxFmTK5mpL3mdtlFDt1hrkg+xytLXTMiDrZhs3CnxyFDGFJWdwaVo7jo4fgHGSnpRxlw9IYDGIgDYMT5I7OJWdRmygiXpHq65uI1Khjr+oqadIuSBNrr+wscLDxMXGxRAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACroSPqcvtD6OctNqLs948hd9dHxhSI1lGJ5o6K9suLxwjqzDXxy3g85ji9X6rzqmHTCJ/m6PymXxlnNCqr2gZWbdXYJbKfWIrwrDyhCkvX2LvF9yFo6fa9e/sfn/sOznNdJRnACaoN+exx9ckpVC3ZnSIGIAXEmmTOPQnUghAqLkZ0OiYGaozONqlwxbFyTHDamlIZBcrK0RUCRfXqkHEaOpbajpMXGx8jJysvJxSAAA7",
 	"emptyTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///9mgZu7Dmv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADk0i63P4wykmrJSDrzTftYChxxGCe6KlBYOqq2bMJ2vuuzUxntoszGoGQ10v9FhnhEFA0xnIA5a6JOiqSSiJ1YMVEs8yt6Qn8LsVjgAN7RpOR5qlbDZVqt+9r/E7NB8FoXHRwZjVzdWBhYn5fJFRejDshkySElJcelmxSnJ1LZZueomBlBKOnkm+Yq0esmBewsbIKCQAh+QQJFAAEACwAAAAAIAAgAAADmEi63P4wykmrVSDrzfXsYChxxGCeqEl4T5e+6Aq0mpDB+JA5m2ADOdiuUfPdgqkhY+f7IZMzIqD5Az5NykWG6rzqossp9XjNysRN8tO85aqRbHTaWgZjZlSZ9ysl5N9BcVxddVKDgDmCY4g4inN0gSx3ciGVG2FilpVGdiGDn26dHaCknJhtpaRZRamLHVKasXaTsiIXtw4JADs=",
 	"correctTile": "data:image/gif;base64,R0lGODlhIAAgALMAAAAAAP///wsQBxchD5nlUEtpLxsnDwoOBQ4UBv///wAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAJACwCAAMAHAAbAAAEkjDJKYG9OGNKMfpgKFpc4iVEqq4qQk4WCCBs3b7mjBQubdcuQEVX4H1+wBexeESygpVd0eh8KqVMXzUFNWGpW64rOgWHCWNvuXlOz9basPvLlgvV0/p2Dj9zhTF9fmNLRnF7gHQzfmiJWT0oVQkyah8eIpiWGZmcnUExH2Wio6KfoaSoo58Jqa2Gpp6xGrO0tRIRACH5BAkUAAkALAEAAwAcABwAAASpMMlJgb04Xzrx+WAYbtz1JUSqrmlyWBWAzAdrry7QyUiB1LfgS2KZFXzAoG2YKB6RyhtTlnj+oktds2c1JLGEKdf6xYqfxys4NeShoeuwTvaGr9tjcly+rT4TandzCH5HgGVReHWBYIpvjGaDj5CJkmgIAIhSHxd5M5kioQcGBp9OPggDM6usrUY+na11s48Zq7S4abF5ubOYp72XroOuxa0aRBrKyzASEQA7",
 	"semicorrectTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///wICAP/PZ/qJAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwCAAMAHAAbAAADdVi6Cv4wQsakvbTEMrr/3lNJYBk6C0Q8pilqD7E6bfnGMl2DNyDngB0PBfvNhJ+eUYccKH/MJtGxDDY7Ux/Ues1Wr1hAQwsEO8XFrRmFK4PZVCBXKo7L13XtBgmDzy6AgYKDEkaGh4aFiIuHE4yPf4SSk5IKCQAh+QQJFAAFACwBAAMAHAAcAAADe1i6DP4wPrakvbTEMrr/neY0EWh+YvUQzukOo+gQLPCe8Uq3N5gDBVqt5wOKhDUbsfNDDpcw4wzJW450wirxCnA+rcApVQlOIUXQqFmIhnK92t7bGb/Ns/XXfZc3WcYXgRF8gn9Jhl6JeIiKioyNjhCQiRiFlhMylxgKCQA7",
-	"incorrectTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///4B3nZutt////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwCAAMAHAAbAAADdUi6Cv4wQsakvZREMrr/3lNJYBk6CyQ8pilqj7A6bfnGMl2DNyDngB0PBfvNhJ+eUYccKH/MJtGxDDY7Ux/Ues1Wr1hAQwsEO8XFrRmFK4PZVCBXKo7L13XtBgmDzy6AgYKDEkaGh4aFiIuHE4yPf4SSk5IKCQAh+QQJFAAEACwBAAMAHAAcAAADe0i6DP4wPrakvZREMrr/neY0EWh+YvUIzukOo+gILPCe8Uq3N5gDBFqt5wOKhDUbsfNDDpcw4wzJW450wirxCnA+rcApVQlOIUXQqFmIhnK92t7bGb/Ns/XXfZc3WcYXgRF8gn9Jhl6JeIiKioyNjhCQiRiFlhMylxgKCQA7"
+	"incorrectTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///4B3nZutt////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwCAAMAHAAbAAADdUi6Cv4wQsakvZREMrr/3lNJYBk6CyQ8pilqj7A6bfnGMl2DNyDngB0PBfvNhJ+eUYccKH/MJtGxDDY7Ux/Ues1Wr1hAQwsEO8XFrRmFK4PZVCBXKo7L13XtBgmDzy6AgYKDEkaGh4aFiIuHE4yPf4SSk5IKCQAh+QQJFAAEACwBAAMAHAAcAAADe0i6DP4wPrakvZREMrr/neY0EWh+YvUIzukOo+gILPCe8Uq3N5gDBFqt5wOKhDUbsfNDDpcw4wzJW450wirxCnA+rcApVQlOIUXQqFmIhnK92t7bGb/Ns/XXfZc3WcYXgRF8gn9Jhl6JeIiKioyNjhCQiRiFlhMylxgKCQA7",
+	"slotsLogo": "data:image/gif;base64,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",
+	"slotsWarning": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP/////PZ/qJAP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADgki63P4wykmrvfgBkOnenfRxoTaS5fINwpeqACu0aLnOdN1tMg7avFwutGLdXBme7EZLKmdMZKXoC0J/nlgv1xtgRc9qDDcEa8nXrffrUG5ng7dgHaGiN2i4lFGUM8l0bWF5VoB7BH1xb4qMjHuJjZGSgYgnlpeYSJmbnC+en6ChEQkAIfkEBRQABAAsAAAAACAAIAAAA4BIutz+MMpJq73YAZDp3p30ceEzgmWzDQOaKt8gfC8Ry7MbrriQp7GcjLYDsHJGZOeGxOkqzKaPaOE5V74WCcrzTZPf7cTqFRy9WjHk1tuUs08N2RtEU01GVu+7N98ZbHqCfXpxMHmDiYp/NieOVotqjY+UlZIelow1m5ydnp8MCQA7",
+	"slotBulbOff": "data:image/gif;base64,R0lGODdhIAAgAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAIAAgAIEAAAAAAABpamoAAAACfISPqcvt34KcE0aKqUW5V4sJoiCJ3ROOqoo50wqrwLe88T3TiX3fOlfq+X4GnhBGzAWOw0AtyFwlKchlL6kESEtQE5a6NZIkLnHK60SZuxqIZgRVpkG8YGtTtHGxbg8Zr+AH+HQyCATFR+dheFjIKGeV2Lf4mJdRGfgHUQAAIfkECRQAAAAsBAAAABgAIACBAAAAAAAAaWpqAAAAAnSEb6G76MhifEfa5qbYAvBZNdxIChgglirGqC6DKu4szXRkv3he1jzp+30UsYBwGCgCjSbZqLHoIFtPonLqnCaiU1IRkt1wxacQk1y1ZsZOEAVHdFOKl+QcfLmvLfp9E9a3dfYXKMhXWGcXyFamV1doJodQAAA7",
+	"slotBulbOn": "data:image/gif;base64,R0lGODdhIAAgAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAIAAgAIEAAAAAAAD78jZpamoCfoSPqcvt34KcE0aKqUW5V4sJoiCJ3ROOqoo50wqrwLe88T3TiX3fOlfq+X4GnhBGzAWOw0AtyFwlKchlL6kESEtQE5a6NZIkLnHK60SZuxqIZgRVpkG8YGtTtHGxbg8Zr+AH+HQyCCQxkMhH52F4WOgoF6D4F+k3ZwkZebhRAAAh+QQJFAAAACwEAAAAGAAgAIEAAAAAAAD78jZpamoCd4RvobvoyGJ8R9rmptgC8Fk13EgKGCCWKsaoLoMq7izNdGS/eF7WPOn7fRSxgHAYKAKNJtmoseggW0+icuqcJqJTUhGS3XDFpxCTXLVmxk4QBUd0U4qX5Bx8ua8t+v1A0mc2MPin1ldnF4gYuBVACMNYx2gmh1AAADs=",
+	"slotBook": "data:image/gif;base64,R0lGODlhGAAYAPcAAAAAACIgNEUoPGY5MY9WO99xJtmgZu7DmvvyNpnlUGq+MDeUbktpL1JLJDI8OT8/dDBggltu4WOb/1/N5Mvb/P///5utt4R+h2lqallWUnZCiqwyMtlXY9d7uo+XSopvMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAGAAYAAAIoAABCBxIkCCIgwUTKjzIEKHChA0jgnhoUOLBBAwXWryYoCPGiRUtesRIMuNAkR4lfgQJ4CADBgxXchzpsCWIlxFJprxo0iXOmTtB7BTI8CXMmTFHYjzpM2bDlCVBFv2ZtGPSmlOfWuUYkenNo0KvSvRqVKvECjVtfnUasQLatA3BtnXbsGBWhm7p1oXoEq/evRobvgX8cCNhihspIjb5MCAAIfkECRQAAAAsAAAAABgAGAAACJ0AAQgcSLAgCBAFEyoEcLDhwoUNIx58OFDiwQQYJz60iLFjAocJOXYE8TEjQoIiRzY0eVJgyogeP2pkCIIBg5UrPZKUWbHmTZg7Ze4E2dBmTpVBhdI8+POi0KEkiTJtCtMky5NFm8Z0KrFnzao5LXr9KvEqiAozl5K1eLAC2rRqqUZ0GzFk0bl0u9ol6zYvXINs9VIM/HejYIp7EQcEADs=",
+	"slotSlimy": "data:image/gif;base64,R0lGODlhHQAcAKIAAAAAAP///2q+MJnlUP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAHQAcAAADhUi63P4wykmrAzhny7TXnCYIwzAK3ySWbDl6kdbOLYpBmY2RtHtfOx2mx9o0ckLATGgDjgae2ce4CEJzUk+zA3iavDXtr9rllXbZ4BgJRg5P33XwRJouqXN6XcZ64ct6YF96VARagYgnY2QiiYGLXI2OfipsiYU4U34wFVNTHEeYoKOkEwkAIfkECRQABAAsAAAAAB0AHAAAA4dIutz+MMq5gL2WOsyxVpwgDIPYSSGpqoIHYeMqk+21WfGs1xlz5boZz4ej/YKsHqg44Mh4oxpRNHKurEoCjmpVYQFTqgkAbGJK2a2I1cqNo0q12EuurYZLsZ5nueO1cnpmgTYVMHtueoWGP4iOWQ0hjmKQkZJcHWATmZyVEZkfoaKjpKWmEAkAOw==",
+	"slotFill": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIIAAAAAAABRU1zrbRr8mT0AAAAAAAAAAAAD1Qi63P4wykmrvTjrzbv/YCiOZGCaJHWua9qwcOvG9JnCQq7r7MjuwJ3sswoacz1P8XgcbpbBgXQ64Dkz0Bx1O4V1TjqueEB7ggVjbvFqKaapPyRKs3qTcdY5pj6mBW10JmIxTIBYJ114THIBgYhSWYsChnuCU5JNlG0BW5hGbBOWVJ6fehWPl6RAoBGiqaqMjReIBASvsKwQgrW1kLCTmqG7vJABqrm6lr3FxpJJlZxqJotejtJnq9Vm0YlZZV+oNd9EZeKyIjEvyC7s7e7v8PHy8/QLCQAh+QQJFAAAACwAAAAAMAAwAIIAAAAAAABRU1zrbRr8mT0AAAAAAAAAAAAD0wi63P4wykmrvTjrzbv/YCiOYWCeASmhLKo2bWy+QCvc+M2qbO7rsxHqRxScRKei8vgZKolMj4k4qFqrOJd0irt6r61t4PYtV8OdqdmcNAY3pnW57U5x4nIwvX4PyGM/URknbDZQbxgoXjJLiImEA4xPfBqKkT2TWXaPflaZjZWdnp+BjhSQo6SagqdxBASppGgVhK+vWKp1piuutriyWhd4A7dnY5k7nIXIwcLDeseNrM5zeznJfaLG1rq7nDE1MtPZyeLjaePYNOvs7e7v8PHy8wkAOw==",
+	"slotWizard": "data:image/gif;base64,R0lGODlhMgAyAKIAAAAAAP///0AaZ0czdP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAMgAyAAADyki63P4wykmrvTjrzbv/YCiOZGmeGKCuKgqxMOsq8GALeAyYsGD/vxxsVAMag4IhaIU7Oge4pKzDjN6QPqBut6lGvwNWFsokrzSqqE64spV/08u2J1XdmkEzt6JjsKBWR191MRFKDVV5gINzcX4thmmDkzFjYY40e5GTapWWUG5nGZKdMUCcpWiNAJSronxzWISukBM9gl99IX+npYdLXrlbPKSzvyXFujNVxzMEaYXOiMrSC9HV07XY09vd3t/g4eLj5OXm5+jpCgkAIfkECRQABAAsAAAAADIAMgAAA8JIutz+MMpJq7046827/2AojmRpnmjKAGzbqqsrz6or3LhAm/Y9/MAB7lVq+YLIn44YagWPyCVA2mRFjUCpksnBIm0/o2AL+LBwWal1CaV2z7n4Mq28zVgYuHxcH8vvOxJ6Mjl9Q4R8QC4TZ4B7d0pJQgNcDYEEPTNRcWIyD56Wjml2gFNuoXgOhE+cO3efqTFghoCwsaG2poe1RXqklzy6arcpnaAwCoOVyK/IqsfOstHT1NXW19jZ2tvc3d7f4OEQCQA7",
+	"slotEraser": "data:image/gif;base64,R0lGODlhIAAgAJEAAKhAhNd7ugAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAIAAgAAACjpyPqcu9AqNwdMgLK8NcJx6EgeRZl4iOkXYNKQqsVPumcdbQNSw/0v66TXwRoE1IhBhhwiHitAwApqTPLyptOg8kLLX6XHm/OOtk3EyiwWFldJpWL6emslkAmAPq23seSMemEPG3Ayc4CDFVAxfnIAMn0oiYpNh42FPBMUk5g6FVksjRF8qFUfqYibraUAAAIfkECRQAAwAsAAAAACAAIAAAAoycj6nL3SKcVLDW+ayGmO7fGVtAkuKFaeVaWtLIxi4DxzK3qLYNoB602/VwiUuQN0NYjiyA03dYMkvOIfEEnJKq1t9AG+BCoxyteDyogM9XssBcTSqz0zgaC7dGcuoje88nAODnlHbnVsXzJPcDkchl1xZYAfnXsVGpF4Llo7Hp9iG5GQr4WcRomtpQAAA7",
+	"slotTrash": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///1FTXGlqav///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADmEi6rPCwySmhfTS3y4HW12J9WVRh5NatHsi+HMMKdF1DdExwAm7bvlsH+PgRAb9dyMhsCnnOaA4WlK4c1CxKVhQos14TFzklH829rahrMbafJ/L7SKCrzNXyT7zGd497alh+aHp2Y09uf2VxiYGFfIOOgId9k5dpLYiGlHB3mJk2XxM+eaFlmncAA6YvJVA1XzofWikUVyQJACH5BAUUAAQALAAAAAAgACAAAAOWSLpM8PC1SVu8suoF2d1aZHUgh51oha6sFwnCA8+0DGPKO9v0DvQxiQ5ILN4ADolxCRTymMskUvqE1kTUE/PkYnk/JqTvayPleMOreNwd/5pVs1RNhPTk9nE9njHRe3NqI29BhHpqU2GHf26Di4+FE3mFcIaRjkeWlIKYm4yZiWdlVZ5Zgzh3MlySZCslrVglYauytbYJADs=",
+	"slotDice": "data:image/gif;base64,R0lGODlhIAAgAPcAAAAAACIgNEUoPGY5MY9WO99xJtmgZu7DmvvyNpnlUGq+MDeUbktpL1JLJDI8OT8/dDBggltu4WOb/1/N5Mvb/P///5utt4R+h2lqallWUnZCiqwyMtlXY9d7uo+XSopvMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAIAAgAAAI1QABCBxIsKDBgwgTKlzIsKHDgiAiRny4UKJFigYtgqhQQSNGABo5Suwo8WFIjiQ3iixZcWRElC9XekzociRKmDFZZsxpk6TMlCAQnrzZU+bEgxEtWCQaEyiFozstKF3q0ymFp0GRgpA6larFq2ChQtzKVapGiWGviiWYtCzXr2EjYhVKVqlbuWCxgpir1azEt3vzYuUbtWtduXjzrh3YtitgvYIXC/zr1i9kxVl3Ni6LN3DczFrrPo6skyZly59BM7SIeibGs64/Tj4rm27t27hz6wYQEAAh+QQJFAAAACwAAAAAIAAgAAAI1QABCBxIsKDBgwgTKlzIEACIhw0bPpwIMSJCiiAqVJho0SBFjRg5WvwIcuJGjBIfalxJMiQIhSZNllx5EuXBmCRpfqR40WVGmjV/ivTosuTPk0Zf3gzJUmbSikQtSJVJFSMFqAUfSp3qkyKFr1gJat1qoevXs1fDChxLNiTaiWmVZgXBdSzctw/jLq1Lt2xevCD0Rq27Ne9dw3LnFmaL+C/YxGLZkvUbN/BZtWsnTuYaF3BCipsdXx76GTRnwJBLg/5rc6TLyh3nuoytOjXt27hz6yYYEAA7",
+	"slotHeart": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///6oaMuJPaP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADi0i63P4wykmrvThTwPvrIBCF4UKWDjisZbiyXtO970nXnMwJNzz3MB2AB/wBBzFFR0DscY4DQZKwbEKB0hxjx7wes6It1+qNZlPj8os5NaW9TDAEFIfGweHPmLy6gyZVZHd4G3tEg38VgYNsbYCGcYkXdIiOiouSGpSZGlQ7nJ2eoKGjoUp5pqmqFQkAIfkEBRQABAAsAAAAACAAIAAAA5RIutz+MMpJq70VaAC3zt7WhKJEesqJPtvguuo7hKwmw+GNfyOgz63fjrMI6mxCl6CUQh59ScGS1wQIklgpk7CRYoVaIkPj/erCju7V/JJO0+QyOywex9dmes3qzk/rPXxyP3SAdndReiZqeDJuWxEebo2TVBSSk5mQE5iZf4acnZ+gl5g0GIGnqHArq3ukrk2xsw4JADs=",
+	"slotCoin": "data:image/gif;base64,R0lGODlhKAAoAJEAAPuyNth7FwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAKAAoAAAC65yPqcvtD6OcUtiLLXW5+3144jd5wImmZ1dh6SigGeTKsPVez2VjwR9Y1QCYBk94+akAv6GOcSRagMtpoFZURJNKle96fCKw1qA308RJNWP1upvrpGPrtppb3VrvbINeYBZHBsgnYGcDh4REN1V4+Ca4iOYYUhg46AGG9DjVwxjGRenHd8mDCSQ64NIp6fYF9ml4CBrzB4hKV8cJuLZWyzW3mAAa7AsM26Nl2ggDBJsrttvsHOW7sDri/Jyre+16TD20CWULk9fnzW2csWTNId7ePkPDHn+WFXGjL1uyLwIyyh86gAQLGjxosAAAIfkEBRQAAwAsAAAAACgAKAAAAvGcj6nL7Q+jnFHYizFluXu7Dd/oTR2Apmr6VdcKeGv3YDN5g87LZsEvQ2k4FpUvkAJmeoIGL3b5wX7KIrS5sF0FUqOFGuANE88oMvetCnUIrRnmUV8VZW53bcWE82yDO43GpIRHZgV1h1fHxYd1UIf4shTFWCjQc7aV6EPZZviVqKm3R9hpuQZ6ukXF6ehpKlkkOjhX2hMaa6Y25ueKhMsHtvfax8s4enUVLEZcjCesqczYWHvbAaZIZLr1sfpEm+WaG234DR4uu+Q1ba69HcS0TucNr6XuMg8Dt7vzkT9CQSIgMwgCS4RgR+OgwoUMIRQAADs=",
+	"slotSeven": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///9mgZu7Dmv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADoUi63P4wykmrJSDrzTftYChxxGCe6KlBYOqq2bMJ2vuuzUxncDvgDI1gyOt1TMBFZkgE2JDFpGLJLNqsUgyAuXvWoAAHtel1omK5bdXs+sLEavKN/U5zrWc8FH6nw+Z8a216e0FjXSmEhUpjbk95dmt+jz9hhk0rlANaaIw7IaAkjKGkolMcXKmqqZ2ccauwfYYEsbWfraW5SbqlF76/wAoJACH5BAkUAAQALAAAAAAgACAAAAOnSLrc/jDKSatVIOvN9exgKHHEYJ6oSXhPl77oCrSakMH4kDmbYAOoENC0a9R8t5NQOTPOfL+cLjnlAaC/IYxadWKjW26Rkflyg1pic3GEntXpLvtqjqtfYwwd+9bg13oEWDJ/YU6CUIRodnJ6X2BMOHkyj285k2V8lpKAlJqMf3ltWUJCZJmlQkiAIY+udaccr7OrsZm0s6K3uG4gTqnAnTLBphfGDgkAOw==",
+	"slotTrophy": "data:image/gif;base64,R0lGODlhMAAwAJEAAAAAAP////uyNv///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAMAAwAAAC+ZyPqcvtD6OctNqLs06g+/9tC0iW4GamaVYK7gvD5RUa8X0PXkXa+P/SdSgmoKvzmzlURiTOtBwaPkBPEsrYHayDG9VbEwJG0mkoBnpqzWPFmoRGOuPv9XY3kwGOe/pJTNYmtaMGNnZid1fG1gVmyAgY2KbYqEcn2RAmVqg3iZDoZmcVF6TJ5plVN/YCJwBqmqnKmua6KIb6EDaq5vlHpLX7eIorURM8O9TDUnSprMGMrCTS0ukr8vlV63yNTYXFHboCHis+Lrlt3v2drjiKPt7KBwpO65ceb2j7nN0Ea3FipBqxCfgC3hoYgRqvdTxUOLT27+FDduAKAAAh+QQJFAADACwAAAAAMAAwAAAC/ZyPqcvtD6OctDqAs7ZV+49xF0iCIgIK6qqWIfex8iyY1GfQ+jpsEz7YCYOZW0yI2RUjJGEtSbMxSsiMjjSlXjVb6cHn6VpnveXyey6/ZKkZMJ1Wh9jJMd1jOPvk9iegBcWCpYbyQtgX2CfAZxinl6e4ElnU6BhHGPV3B5CwV2gIyZnpBirX4IlJR8qJVqrgWUR698n6gBcq2WaGOqKXGAbIycu0y6oUMiyBF5sJdMIYuHkp0ibt+lydO/3cipjM3Q11C947SG5rfn7qop41eX0OvFpLfnQMb2Ffhf8j7xSMbc2/WdSYDSSYb87BeTBcOEyn7KHEb+UmsmvXrgAAOw==",
+	"slotCrown": "data:image/gif;base64,R0lGODlhGAAYAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAGAAYAIEAAAAAAAD7sjYAAAACWISPFpvtt9ibKgZaL7R68mxRnCUIkRiZaXk+q7qwkkPKgd01b8nD23jr9UIA4E5I3MWEw9mRiZTUoMxW8Qklgqg87S+YtSamzRlt2fW6YkAMaOT+muMZTAEAIfkECRQAAAAsAAAAABgAGACBAAAAAAAA+7I2AAAAAlqEjxeR7bbiQ1LFNWEFF+duCZvTYYs4NmcpoMx0ulGbUrHcus+c97THeWl8xEqJR/y9jrekLhhwSiUXadLYtF5sUatMCO06tyRkj7wzyzKaGIjdfsMt6DmdXQAAOw==",
+	"slotPen": "data:image/gif;base64,R0lGODlhGgAqAPcAAAAAACIgNEUoPGY5MY9WO99xJtmgZu7DmvvyNpnlUGq+MDeUbktpL1JLJDI8OT8/dDBggltu4WOb/1/N5Mvb/P///5utt4R+h2lqallWUnZCiqwyMtlXY9d7uo+XSopvMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh/wtBU0VQUklURTEuMAAh+QQJFAAAACwAAAAAGgAqAAAIzwABCBxIsKDBgwgHggCRsCHBhRAdNoRIUaJBihgZWhQYsUNGjQ4pdhjpEWNIkSRHmkz4MWXJhSw/LhwJIGJMEAUKyLR5kGJOnTInQvwZsaJQmEBx1uTZc2hOp0ybLnwKFeZRolOTnsxqNOrFrEmpgryJFafWo2arjkXoNOzStVLLJoVbsO3QtxIjhi2AFy1GsXQf7jx7c6fXrwwNKP6Yd6Hix28D13X82EBkixArGzDamPLmw2wpfra6cedGhYxPc8yoGjXn1itbu5ZNu/bpgAAh+QQJFAAAACwAAAAAGgAqAAAI1wABCBxIsKDBgwgJggCRsKHChQwdNoQIUeJBihgtDqQoMKPGih1CepQIMaTJDhwdYgRxEmXFhBUxmgTw8iLEAgVkulwIcyFOnCtrGqT4MyjPngyBxkxp06dSEDhpHkV48ylUqVOHVs3pFOtEp1yhRhVacGvYomQfJg0rNuzXtlvTqgWAFm5WrW3Pen0rtupeqkb7yu0YeOzdsks5MgXM0IABoyQhOn68MvLCyQawRlQpefJfzpcnD24KQvRovJcXW4SscWPQ1q5Hwq4MO/bh1qprS9XNO2FAADs=",
+	"slotDuelsLogo": "data:image/gif;base64,R0lGODlhKAAoAKIAAIB3nZutt/uyNuh8AAAAAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAKAAoAAAD/1i63P4wykmrhSTry7XPyyd2XxCAivhdmukCaJEBrrtRXg3AREjsNdNN0nrtYjNgzUPM6HY8H5S2jDmKpulQMw0OGdjANAr+davXYvJolZnPwm3Lw/6632wbKndKMtNrPAR6PWp+dmWBWCV0f02KTn0zjYgYdHVxP1yOFpeCmZOVOFyYKm0ka5sjHIBvqqesiVCrsZakIyoVTCp1prANvr2CHgLFv4kCH7OvGcXJxz4Exr6hzc/QKRrOuCLT2NHWA1/E4isTIgPp5T13BOm5j+4e73sZ9PbrEfPrq/j86dce7PMFDt00QMXy6VuhAeCpcKISsbtDD5DCWrQKflvISQdirY8gKSQAACH5BAUUAAUALAAAAAAoACgAAAP/WLrc/jDKSRu5ON/Ki/5EV11AYJ4BNoLbQpao2Uqs6hJAHqfzk8WA3gsW61kwwGDoltMVjZ4fqinENYkno3RKXSqGuQvKFhUnw9WrkjDebGVWtLesRsI1z7jSAUa37Vl9UBlXgDw4gRh1czdggI6EXVBfipJ3cnprk5SZZoeRmIw+lWuJehodoHakHyJlcYo8mpsUqoggrhmcJJW6uTWKwTNkERgCAhqaa2uvtFHHyKwfs6jFF9DRp8DQzhkDx4TA19yiRwQD3wID4uPk5Y0Y6Ou+r9jVox/y80vx6fvvu9B5E+jmArpj/4jBU0fQ4L4o+v794zNOHgtODc8dVPiMHqGuasAOZjOXkUYNkVpw/XLIsZkrePRe1rons+aCBAA7",
+	"slotPotion": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///8SC6nZFr////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADh0i63P4wykmrvThfwLv/2CeKlhec6Ll0JacS4Aq0LOwp91Y3eeY6Ox/gJdPIAiCO0TbqhTyDKOkJiA4EWOtAqetgs1bnhLNtTsfk8ijMjXSi2NNXoJXO3Om4fF4P8qpXenNgWn44eYN8dXZ3DGlwiXSLbECPk5eMlSKYZg9mnzFooEukpaZLCQAh+QQFFAAEACwAAAAAIAAgAAADkUi63P4wykmrvdiBzTnuYLhZ4hacgeJVHOoGowqQwCmDN13fHdGzvRhjpZtBhB9TqoG8tGxDY8ZXImaqvyRnwO1mgYCuYMwNOTvjcafcPGI33YH1sZWL4mypBj4Yn9JpeHZ6UWIogIF4c1RhfQJ/iAKCg1F8jpGJcV91YpiCOJWTol5fPJajZm5vJUWrU6+wGQkAOw==",
+	"slotDrop": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///wBImYPQ9gCf5P///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAIAAgAAADfFi63P4wykmrfSDfmvWWnfdhITCSmdCdTUeoIusSb3zOtb3huSlntCDM9+kIgsHVKEUbIIdF5mCKVF6YhKmzSrRItUiClQNoUsPjCe6M1kF44aQbFQ8LYN7UvX7H5/t7NIB+ZACDh2kgRod9iYohgyFLJZRzhZQsmZqbLAkAIfkECRQABQAsAAAAACAAIAAAA4NYutz+MMpJFwA1q4t15Z0XgaHokJd5cgSnNiwhpO92EfhMv7Hs8hcBLvcz9Yg7URA3GOpUHOFgOixqloRpE2fNLLVbbulzy1KHrTGlF64m1wC03O0pz9HvSVA4F/jzEnt+Tn5/aoGChYpdeomKhoeIAI+FjHBRi5aXKJpXnDWgoaIeCQA7",
+	"slotPizza": "data:image/gif;base64,R0lGODlhHQAdAKIAAAAAAP/////SLtuWO7goKP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAHQAdAAADg1i63P4wysmAvZZWzLnuoBd1Q2ma3YOd7JluViuj2HLNOA0otxvGrEsBWPqRiiDkRSAgOJlGXofJdFqpTpF0+axem1ZhA2MlYM3ebMZxKVPfXrHK8oVD5XP6GS2oTTBpT34UZGUEgx9tZXgaQ4qHa40wd5GSW1qWNpiZmpWcG5+hohQJACH5BAkUAAUALAAAAAAdAB0AAAOBWLrc/jDKWYC92FKVe59eiEXZYJ7o8DFd6p4Ze720GVdzrV+4hYo5mAZj8xAILRWvp7wInsfjU7ToPKFRAnbFwUSx3+yycclqBV90VPPwpq/XIxvihttHEoz9iwc5wXJzFHpqa4IbTmaHGzhgi4x/fYxVHpNtN5YOkplkAJyfoJMJADs=",
+	"slotPumpkin": "data:image/gif;base64,R0lGODlhKAAoAKIAAAAAAP///zI8OUtpL99xJrw3E////wAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAGACwAAAAAKAAoAAADumi63P4wykmrvTjrzbv/YCiOpAacaEqmLBuywiAPguuh8awLNXqfvF5L+OO1jgAL8uiwQZZQlfJYqFpRBegkVcVaCV2ANSx9nsbnKpgAFqPTJ4k3rCac7fUsPG4e69V6AGB/hGFmbgVsfiltWHeGD3OKV4yBiJN8TZeTdWyNkoOZDWl5X4KKnoOlogykaqRLf4o+kYivrixkb0m1foGLtrisrbl0lMFuTrVRzGURzc0c0CXU1dbX2NnVCQAh+QQJFAAGACwAAAAAKAAoAAADyGi63P4wykmrvTjrzbv/YCiOD2CeJqmg7DmiwiAPAguecY3SqIfLLZMuxREKhgBDkChZLh2tpnPKtLQK2MIp67ReCwStKYsd26TbMTgsXoe34ioUPiaE7Vg7vs1NQuBlAGAmeHaCbHWBEWpgZHF3fFuIfnOCbn2EgWaEk3+Wl5oAbyhke3ILjHpZeoWsq6aUDamGeU6jjYoln3p1BEGTjqcrs2rAbIFkLrqMfH3JzHGLgIDNcZixy1TawpXbXUXaKuLj5OXm5+MJADs=",
+	"slotEggplant": "data:image/gif;base64,R0lGODlhIAAgALMAAAAAAP///0AaZw8GGUczdGlfmmq+MJnlUP///wAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAIACwAAAAAIAAgAAAExhBJQKu8OOtcu92gRhnH4VFhioykeapg1ZY0Coss7X73xBrAHa/H6rgEw9voREEmVZ2BdFAREDzEykAgkAKshDAWpuWaw+jrK0XZntGFAprJdnPTcXl6LZK+w3lxaWpPKwB2g4F6e4WHf3iCg4QbjneSiYuTHH6Wl4CRmhhtj56gapR2YJ6XT4epqqtzNqKuZp2xYgCUlba4sjGcvbFcsxy1to/IVLoxx8jPZstsrq/QXVRkbdW2U8XT1Nzd3tnU4uM9hmMaEQAh+QQFFAAIACwAAAAAIAAgAAAEvxCBOZG9OOtM+/6gBBhH54XgRJZmhW7UOh2s+2Ixrev2feU7GsX3ixlWhhZRpDrSkhPB6WVMHikCQqunaV5NWYJ2y2V+sWGxeqwsggVpQmG+VptwHXh8zqfX2RwAenV9fX+AbnCHcnyLY3iCio5rjWJDRYOTaoaIFlGZmowFdgCQenGhpKanqXVcaKCtr7Cxk1KlgZ+nkotwZXm7vIe+uLmRwcKnl120yMHLzLrOelMfb85tKFvE2Tdk3Uuedx8RADs=",
+	"slotPineapple": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///2q+MJnlUPzJSduWO////wAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAGACwAAAAAIAAgAAADvWi63P4wQkAVrTJfYDbP0taJ4ORRA1Za1Ymq6zkI1wyX8iwM9he/gB2PR7tpUMNkzxihCJVE0sMVfCYFRSZ1Y9VJF6dCwYWNfsEXAkFMYV+w2DMLoBar72su/OLYrN11f297fAxpghSIblSGiWoeimOMjXSPhwQXi0d1dn+WAG5HdGKSpImkkqKIoG6ohU2gmBuSbaZMjQWyjn60PrCxf7mei74mrJGotDi1tK3Ky7WZva8gYcTU0Fu32dgrCQAh+QQJFAAGACwAAAAAIAAgAAADxmi63P4wRkAXBTKbW7lu1caN4Sdi10CWHymo1ABj5nm91CuwLfcOgt+Ol4nJjsgh7bHK/ZBAJbPpe0Y9IE6hQOiOgrIglqHdUrrmm25suRC2hTM6rlYuFZx3GtDV0wFBYix5byNzcE6Cd259eYgAe4GDFFx6fX4XkWxuj317kH8jZKB7jVpNDmckpnyfd1kEI5WemESjnluXepR/EpSHs3u9vpB+dF6ntqOurcmvU5AkaZ8aZXDX1D280yQ1NlTKRVTeE+EaCQA7",
+	"slotPeach": "data:image/gif;base64,R0lGODlhIAAgALMAAAAAAP///2q+MJnlUP+NKYthQcFQALWTe////wAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAIACwAAAAAIAAgAAAEuRDJSau9+ILNQf5Wx4GktB1HsSGiWJpA2s4eRrdDngtdeHeCYFDHW1FEBILB8AMIg0bYJkldMpvQKIdavW6TrWLty112uNyZFK08s6kt2Nv7Rq/uU7QZULfX1npkfQRRLAAGbHSDYH+GiGx5i4SNG4+SdSMTlZaXZZlSnJ1KVxUcS6JJe40wp6JWn5qHrYtWXhqboXq1PbeyVmW1qqtHuMHGLh8dxsHIycrLzSUiu9EvTcMvUtXZ3CARACH5BAUUAAgALAAAAAAgACAAAAS7EMlJKbig6s0Rxl24XcdRXGLqkSaqhlj7vdL3maftdnrv7xUbgWD4AQQCXRAzHBqKl6YNObNEm8QPdjoYgGrX5pOJHX4E3h1ZvC4TMOg0GOCG0t3SY9fVJkLxWxdofHdYdoB5NmB1fXhKK4yFiG8ZX2FskohAi26XgFAaFwaTk6BLo6SfmysAqKmGplatr7Cxsq6pT3Yjok+kunYZvK26ZcC6VcPEx8zBIh/NwIopNsc+NEbTNHOP294qEQA7",
+	"slotRibbon": "data:image/gif;base64,R0lGODlhHgAeAKIAAAAAAP///9c6TNd0kv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAHgAeAAADX0i63P4wykmrvTjrzTf4YKeAJMCRQ0p6X+oOH/u6sVTG7Qyb0H3rux7o5ZvVHDnjj8ZDAnS+p+rYSDIBguwwJJQys2BBKVKaYsNiLjn6Casp0fQ74xONVva8fs/v+x8JACH5BAkUAAQALAAAAAAeAB4AAANeSLrc/jDKSau9OOvNu1dAKALeaJJbOKzrmAJsHGpizIpZbbfzpe+D3uRkkqEixCQPOeKJBAKd0PELhqDYE6TqxEJNW9hulMUxxTZT9ChR3ZLTMxFkrmg/+Lx+z68kAAA7",
+	"slotSkull": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///66wy+Pj4////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADr0i6DP4QsElVvLhSPLofl7ZAX+kJkfiY7AlVaysPqLM5p6AL5c53NUkD8As6dEAIMjgk0jCA54VXa1KhIMxVaCFuL9mp1CoFQ7dkI+mssw13WLWXmRYbl/TR4zv3FfNNTn4kQHBuN0cfRoVthzBHSElRNIZcKpBFmI2OGkp+gw8iE3ufPqGio5qglqhdkF6wnK0EUCGzgbWss5iwhrdvpY2/epM9p8O5L8OutcvOFQkAIfkEBRQABAAsAAAAACAAIAAAA7FIuqzwELZJSbz41ZbB+F+2ORFomgJWlWcLptHEurQAA/JD76/GeS+bDSUU9Hwk4OD2MC4vzhuj+WFCjJko0gLQZgbZ6pb6/IZt467YjDFKF9f1rI1Oq+VK0FW4JQ2rQkuBg29TTX9HOkGFhl2IZYqCjD+ORXWLk42WfJWcOCN7m5sxI1ydohelSZWsdZ+qqx0SsI2yfbCHaHwwtIainL1wkSizwaYnTMbCssqUqc3QCwkAOw==",
+	"slotPoop": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///49WO2Y5Mf///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADhki63P4wykkjAPTWpWffYAh91WVaWGmupEiYQ7y6zBXfQ1unDuvrHF7w9wOxYoLkjRVEAZDJaFTGAypsN6mUuoHhvkvrEBsmCne+nLmIXnuRauYVG11p78nZi4zv3+N7YFBKgllKR4WJiYhlbis4j42OP3E2Pl1FbCJMcjRzGCeeoqOkpRUJACH5BAUUAAQALAAAAAAgACAAAAOBSLrc/jDKSau9OFcAHP9cFjJgqZHfoIKnwqmqMHzLaKXw2rk7Vf60C3BoQ3lKuuGxgYwJntBZUALK5aCyYJFHBFhho2J3LH2AsFhp9+gdoN9RNav2csLvgh8B97XjoT99gld3VTldfW+GY4GCY2ZAVkQbjHtTN0otbD2anZ6foBQJADs="
 };
-function element$1(tag, className = "", text = "") {
+function element$2(tag, className = "", text = "") {
 	const node = document.createElement(tag);
 	node.className = className;
 	if (text) node.textContent = text;
 	return node;
 }
-function asset(id) {
+function progressionAsset(id) {
 	return EMBEDDED_PROGRESSION_ASSETS[id] ?? null;
 }
 function languageId() {
@@ -42211,8 +42352,21 @@ function languageId() {
 function codePoints(value) {
 	return Array.from(value.normalize("NFKC"));
 }
+function stateFingerprint(state) {
+	if (!state) return "";
+	return JSON.stringify({
+		sessionId: state.sessionId,
+		status: state.status,
+		answer: state.answer,
+		attempts: state.attempts,
+		rewardAmount: state.rewardAmount,
+		rewarded: state.rewarded,
+		canEarn: state.canEarn,
+		nextDailyAt: state.nextDailyAt
+	});
+}
 function shareText(state) {
-	const grid = state.attempts.map((attempt) => attempt.marks.map((mark) => mark === "correct" ? "\uD83D\uDFE9" : mark === "semicorrect" ? "\uD83D\uDFE8" : "\u2B1B").join("")).join("\n");
+	const grid = state.attempts.map((attempt) => attempt.marks.map((mark) => mark === "correct" ? "\uD83D\uDFE9" : mark === "semicorrect" ? "\uD83D\uDFE8" : "\u2B1B").join("")).join("\n\n");
 	const result = state.status === "solved" ? `Solved in ${state.attempts.length} of ${state.maxAttempts} tries.` : `Out of ${state.maxAttempts} tries.`;
 	return `Skribble\nLanguage: ${state.languageName}\n\n${result}\n\n${grid}`;
 }
@@ -42221,14 +42375,17 @@ var SkribbleFeatureUi = class {
 	launcher = null;
 	modal = null;
 	gatewayState;
+	visibleState = null;
+	visibleFingerprint = "";
 	draft = "";
+	draftSessionId = null;
 	inputFocused = false;
-	pendingGuess = false;
 	helpOpen = false;
 	invalidMessage = null;
 	lastGuessRequestId = null;
+	pendingRevealKey = null;
+	pendingAction = null;
 	lastTransactionId = null;
-	celebratedSessions = /* @__PURE__ */ new Set();
 	lostSessions = /* @__PURE__ */ new Set();
 	coinNodes = /* @__PURE__ */ new Set();
 	visualCoinBalance = 0;
@@ -42243,6 +42400,8 @@ var SkribbleFeatureUi = class {
 	constructor(options) {
 		this.options = options;
 		this.gatewayState = options.getGatewayState();
+		this.visibleState = this.gatewayState.skribble?.state ?? null;
+		this.visibleFingerprint = stateFingerprint(this.visibleState);
 		this.visualCoinBalance = this.gatewayState.coins?.balance ?? 0;
 	}
 	start() {
@@ -42258,6 +42417,7 @@ var SkribbleFeatureUi = class {
 		this.mountTimer = null;
 		this.countdownTimer = null;
 		window.removeEventListener("resize", this.resize, false);
+		this.clearPendingAction();
 		this.finishCoinAnimation();
 		this.close();
 		this.launcher?.remove();
@@ -42265,45 +42425,64 @@ var SkribbleFeatureUi = class {
 		this.coinNodes.clear();
 	}
 	update(state) {
-		const previous = this.gatewayState;
+		const previousState = this.visibleState;
+		const previousCoins = this.gatewayState.coins;
 		this.gatewayState = state;
+		this.trySendPendingAction();
+		const incoming = state.skribble?.state ?? null;
+		const incomingFingerprint = stateFingerprint(incoming);
+		let rerender = false;
+		if (incoming && incomingFingerprint !== this.visibleFingerprint) {
+			if (this.draftSessionId !== incoming.sessionId) {
+				this.draft = "";
+				this.draftSessionId = incoming.sessionId;
+				this.invalidMessage = null;
+			}
+			this.visibleState = structuredClone(incoming);
+			this.visibleFingerprint = incomingFingerprint;
+			rerender = true;
+		}
 		const result = state.lastSkribbleGuess;
 		if (result && result.requestId !== this.lastGuessRequestId) {
 			this.lastGuessRequestId = result.requestId;
-			this.pendingGuess = false;
+			if (this.pendingAction?.requestId === result.requestId) this.clearPendingAction();
 			if (result.accepted) {
 				this.draft = "";
 				this.invalidMessage = null;
+				if (previousState?.sessionId === result.state.sessionId && result.state.attempts.length > (previousState?.attempts.length ?? 0)) this.pendingRevealKey = `${result.state.sessionId}:${result.state.attempts.length - 1}`;
 			} else this.invalidMessage = result.reason === "word-not-found" ? `Word not found inside provided ${result.state.languageName} wordlist.` : result.reason === "invalid-length" ? "Skribble words must contain between 2 and 32 characters." : result.reason === "session-not-found" ? "This Skribble session expired. Start a fresh round." : "This Skribble round has already ended.";
+			rerender = true;
+		}
+		if (state.skribble?.requestId && this.pendingAction?.requestId === state.skribble.requestId) {
+			this.clearPendingAction();
+			rerender = true;
 		}
 		const transaction = state.coins?.transaction;
 		if (transaction && transaction.transactionId !== this.lastTransactionId) {
 			this.lastTransactionId = transaction.transactionId;
 			if (transaction.sourceSinkType === "skribble-daily-solve" && transaction.amount > 0) this.animateCoinReward(transaction.amount, transaction.balanceBefore, transaction.balanceAfter);
 			else this.visualCoinBalance = transaction.balanceAfter;
-		} else if (!this.coinAnimationFinalBalance && state.coins?.balance !== previous.coins?.balance) this.visualCoinBalance = state.coins?.balance ?? 0;
+		} else if (this.coinAnimationFinalBalance === null && state.coins?.balance !== previousCoins?.balance) this.visualCoinBalance = state.coins?.balance ?? 0;
 		this.refreshCoinNodes();
-		if (this.modal) this.renderModal();
-		const skribble = state.skribble?.state;
-		if (skribble?.status === "solved" && !this.celebratedSessions.has(skribble.sessionId)) {
-			this.celebratedSessions.add(skribble.sessionId);
-			requestAnimationFrame(() => this.animateSolvedRow());
-		}
+		this.ensureMounted();
+		if (this.modal && rerender) this.renderModal();
+		else this.syncLoadingOverlay();
+		const skribble = this.visibleState;
 		if (skribble?.status === "lost" && !this.lostSessions.has(skribble.sessionId)) {
 			this.lostSessions.add(skribble.sessionId);
 			requestAnimationFrame(() => this.animateLoss());
 		}
 	}
 	createCoinPill(compact = true) {
-		const pill = element$1("button", `scd-coin-pill${compact ? " compact" : ""}`);
-		pill.type = "button";
-		pill.setAttribute("aria-label", "Open Skribble and view Skribbl Coin balance");
-		const image = element$1("img");
+		const pill = element$2("div", `scd-coin-pill${compact ? " compact" : ""}`);
+		pill.setAttribute("role", "status");
+		pill.setAttribute("aria-label", `Skribbl Coin balance: ${this.visualCoinBalance}`);
+		const image = element$2("img");
 		image.alt = "";
-		image.src = asset("coin") ?? "";
+		image.src = progressionAsset("coin") ?? "";
 		if (!image.src) image.style.display = "none";
-		pill.append(image, element$1("span", "scd-coin-balance", String(this.visualCoinBalance)));
-		pill.addEventListener("click", () => this.open());
+		pill.append(image, element$2("span", "scd-coin-balance", String(this.visualCoinBalance)));
+		this.options.registerTooltip(pill, "Skribbl Coin is the currency of Skribbl Duels", "Y");
 		this.coinNodes.add(pill);
 		return pill;
 	}
@@ -42313,31 +42492,36 @@ var SkribbleFeatureUi = class {
 	closeForMatchFound() {
 		this.close();
 	}
+	accountConnected() {
+		return this.gatewayState.status === "connected" && this.gatewayState.identity !== null;
+	}
 	ensureMounted() {
 		if (!this.launcher) {
-			const launcher = element$1("button", "scd-skribble-launcher");
+			const launcher = element$2("button", "scd-skribble-launcher");
 			launcher.id = "skribbl-duels-skribble-launcher";
 			launcher.type = "button";
 			launcher.dataset.scdRuntimeId = this.options.runtimeId;
 			launcher.setAttribute("aria-label", "Open Skribble");
-			const logo = asset("skribbleLogo");
+			const logo = progressionAsset("skribbleLogo");
 			if (logo) {
-				const image = element$1("img");
+				const image = element$2("img");
 				image.src = logo;
 				image.alt = "Skribble";
 				launcher.appendChild(image);
-			} else launcher.appendChild(element$1("span", "scd-skribble-logo-fallback", "SKRIBBLE"));
+			} else launcher.appendChild(element$2("span", "scd-skribble-logo-fallback", "SKRIBBLE"));
 			launcher.addEventListener("click", () => this.open());
+			this.options.registerTooltip(launcher, "Open Skribble", "X");
 			this.launcher = launcher;
 		}
 		if (!this.launcher.isConnected) (document.body ?? document.documentElement).appendChild(this.launcher);
 		const home = document.querySelector("#home");
-		const visible = window.location.pathname === "/" && Boolean(home && getComputedStyle(home).display !== "none" && home.getClientRects().length > 0);
+		const visible = this.accountConnected() && window.location.pathname === "/" && Boolean(home && getComputedStyle(home).display !== "none" && home.getClientRects().length > 0);
 		this.launcher.style.display = visible ? "grid" : "none";
+		if (!this.gatewayState.identity && this.gatewayState.status !== "connecting" && this.modal) this.close();
 	}
 	open() {
-		if (this.modal) return;
-		const overlay = element$1("div", "scd-skribble-overlay");
+		if (this.modal || !this.accountConnected()) return;
+		const overlay = element$2("div", "scd-skribble-overlay");
 		overlay.id = "skribbl-duels-skribble";
 		overlay.dataset.scdRuntimeId = this.options.runtimeId;
 		overlay.addEventListener("click", (event) => {
@@ -42349,79 +42533,104 @@ var SkribbleFeatureUi = class {
 		if (document.body) document.body.dataset.scdSkribbleScrollLock = this.options.runtimeId;
 		this.options.onModalVisibilityChanged();
 		this.renderModal();
-		if (this.gatewayState.status !== "connected") return;
-		try {
-			this.options.gateway.openSkribble(languageId(), "daily");
-		} catch (error) {
-			this.options.showToast("Skribble unavailable", error instanceof Error ? error.message : String(error), 6e3);
-		}
+		if (!this.visibleState) this.requestRound("daily");
 	}
 	close() {
+		this.clearPendingAction();
 		this.finishCoinAnimation();
 		this.modal?.remove();
 		this.modal = null;
-		this.draft = "";
 		this.inputFocused = false;
-		this.pendingGuess = false;
 		this.helpOpen = false;
-		this.invalidMessage = null;
 		for (const node of [document.documentElement, document.body]) if (node?.dataset.scdSkribbleScrollLock === this.options.runtimeId) delete node.dataset.scdSkribbleScrollLock;
 		this.options.onModalVisibilityChanged();
+	}
+	beginRequest(kind, send) {
+		if (this.pendingAction) return;
+		const timer = window.setTimeout(() => {
+			if (!this.pendingAction || this.pendingAction.timer !== timer) return;
+			this.pendingAction = null;
+			this.syncLoadingOverlay();
+			this.options.showToast("Gateway unavailable", "Skribbl Duels did not answer within 5 seconds. Your current Skribble board was kept unchanged.", 6e3);
+		}, 5e3);
+		this.pendingAction = {
+			requestId: null,
+			kind,
+			timer,
+			send
+		};
+		this.trySendPendingAction();
+		this.syncLoadingOverlay();
+	}
+	trySendPendingAction() {
+		const pending = this.pendingAction;
+		if (!pending || pending.requestId !== null || !this.accountConnected()) return;
+		try {
+			pending.requestId = pending.send();
+		} catch {}
+	}
+	clearPendingAction() {
+		if (!this.pendingAction) return;
+		window.clearTimeout(this.pendingAction.timer);
+		this.pendingAction = null;
+		this.syncLoadingOverlay();
+	}
+	requestRound(mode) {
+		this.invalidMessage = null;
+		this.beginRequest(mode === "daily" ? "open-daily" : "open-practice", () => this.options.gateway.openSkribble(languageId(), mode));
 	}
 	renderModal() {
 		const overlay = this.modal;
 		if (!overlay) return;
 		const previousInputFocused = this.inputFocused;
 		overlay.replaceChildren();
-		const shell = element$1("div", "scd-skribble-modal");
-		const header = element$1("div", "scd-skribble-header");
+		const shell = element$2("div", "scd-skribble-modal");
+		const header = element$2("div", "scd-skribble-header");
 		header.appendChild(this.createCoinPill(false));
-		const logo = asset("skribbleLogo");
-		const title = element$1("div", "scd-skribble-title");
+		const title = element$2("div", "scd-skribble-title");
+		const logo = progressionAsset("skribbleLogo");
 		if (logo) {
-			const image = element$1("img");
+			const image = element$2("img");
 			image.src = logo;
 			image.alt = "Skribble";
 			title.appendChild(image);
 		} else title.textContent = "SKRIBBLE";
-		const actions = element$1("div", "scd-skribble-actions");
-		const help = element$1("button", "scd-skribble-icon-button", "?");
-		help.type = "button";
-		help.setAttribute("aria-label", "Skribble help");
+		const actions = element$2("div", "scd-skribble-actions");
+		const help = this.headerIconButton("About and help", false);
 		help.addEventListener("click", () => {
 			this.helpOpen = !this.helpOpen;
 			this.renderModal();
 		});
-		const close = element$1("button", "scd-skribble-icon-button", "\u00D7");
-		close.type = "button";
-		close.setAttribute("aria-label", "Close Skribble");
+		const close = this.headerIconButton("Close Skribble", true);
 		close.addEventListener("click", () => this.close());
 		actions.append(help, close);
 		header.append(title, actions);
-		const content = element$1("div", "scd-skribble-content");
-		const state = this.gatewayState.skribble?.state ?? null;
+		const content = element$2("div", "scd-skribble-content");
+		const state = this.visibleState;
 		if (this.helpOpen) content.appendChild(this.helpCard());
-		if (this.gatewayState.status !== "connected") content.append(element$1("strong", "", "Connect Skribbl Duels first"), element$1("p", "scd-skribble-muted", "Sign in with Discord and connect the authenticated Gateway in the Skribbl Duels Hub before starting the Daily Word."));
-		else if (!state) content.append(element$1("div", "scd-skribble-loading"), element$1("div", "scd-skribble-muted", "Loading the authoritative Daily Word\u2026"));
-		else if (state.availability === "unsupported") content.append(element$1("strong", "", `${state.languageName} is not available`), element$1("p", "scd-skribble-warning", state.unavailableReason ?? "This official word list could not be fetched."));
+		if (!state) content.appendChild(element$2("div", "scd-skribble-muted", "Preparing your Daily Skribble\u2026"));
+		else if (state.availability === "unsupported") content.append(element$2("strong", "", `${state.languageName} is not available`), element$2("p", "scd-skribble-warning", state.unavailableReason ?? "This official word list could not be fetched."));
 		else {
-			content.appendChild(element$1("div", "scd-skribble-mode", `${state.mode === "daily" ? "Daily Word" : "Practice"} \u00B7 ${state.languageName} \u00B7 ${state.attempts.length}/${state.maxAttempts}`));
-			const board = element$1("div", "scd-skribble-board");
+			const modeBar = element$2("div", "scd-skribble-mode-bar");
+			if (state.mode === "practice") modeBar.appendChild(this.returnToDailyButton());
+			modeBar.appendChild(element$2("div", "scd-skribble-mode", `${state.mode === "daily" ? "Daily Word" : "Practice"} \u00B7 ${state.languageName} \u00B7 ${state.attempts.length}/${state.maxAttempts}`));
+			content.appendChild(modeBar);
+			const board = element$2("div", "scd-skribble-board");
 			const inputWidth = state.status === "playing" ? Math.min(state.maximumLength, Math.max(2, codePoints(this.draft).length + 1)) : 0;
 			const widestRow = Math.max(2, inputWidth, state.status === "lost" ? codePoints("You lost!").length : 0, ...state.attempts.map((attempt) => codePoints(attempt.guess).length));
 			const availableWidth = Math.max(180, Math.min(944, window.innerWidth - 60));
 			const tileSize = Math.max(4, Math.min(32, (availableWidth - (widestRow - 1) * 2) / widestRow));
 			board.style.setProperty("--scd-board-tile-size", `${tileSize}px`);
-			state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(attempt, index, state.attempts.length, state.status === "solved" && index === state.attempts.length - 1)));
+			state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(state, attempt, index, state.status === "solved" && index === state.attempts.length - 1)));
 			if (state.status === "playing") board.appendChild(this.inputRow(state));
 			if (state.status === "lost") board.appendChild(this.lossMessageRow());
 			content.appendChild(board);
-			if (this.invalidMessage) content.appendChild(element$1("div", "scd-skribble-warning", this.invalidMessage));
-			if (state.mode === "practice") content.appendChild(element$1("div", "scd-skribble-muted", "Practice rounds never award Skribbl Coins."));
+			if (this.invalidMessage) content.appendChild(element$2("div", "scd-skribble-warning", this.invalidMessage));
 			if (state.status !== "playing") content.appendChild(this.ending(state));
 		}
 		shell.append(header, content);
 		overlay.appendChild(shell);
+		this.syncLoadingOverlay();
 		if (previousInputFocused && state?.status === "playing") queueMicrotask(() => {
 			const input = overlay.querySelector(".scd-skribble-native-input");
 			input?.focus();
@@ -42429,33 +42638,50 @@ var SkribbleFeatureUi = class {
 		});
 		this.refreshCoinNodes();
 	}
+	headerIconButton(tooltip, close) {
+		const button = element$2("button", `scd-icon-button${close ? " scd-modal-close" : ""}`);
+		button.type = "button";
+		if (close) button.textContent = "\u00D7";
+		else {
+			const icon = element$2("span", "scd-icon");
+			icon.setAttribute("role", "img");
+			icon.setAttribute("aria-label", "About");
+			if (this.options.aboutIconUrl) {
+				const image = element$2("img", "scd-icon-image");
+				image.alt = "";
+				image.src = this.options.aboutIconUrl;
+				icon.appendChild(image);
+			} else icon.textContent = "?";
+			button.appendChild(icon);
+		}
+		this.options.registerTooltip(button, tooltip, "Y");
+		return button;
+	}
 	helpCard() {
-		const card = element$1("section", "scd-skribble-help");
-		card.append(element$1("strong", "", "How Skribble works"), element$1("p", "", "Guess a word from the official word list for your selected Skribbl language. Words may contain spaces, hyphens and every Unicode character used by that language."), element$1("p", "", "Green means correct letter and position. Yellow means the character exists elsewhere. Gray means it is not available in the remaining answer."), element$1("p", "", "You have ten attempts and no clues. The Gateway checks every guess without sending the answer to the browser in advance."), element$1("p", "", "Only the first Daily solve on an account each UTC day awards Coins. Practice is always unrewarded."));
+		const card = element$2("section", "scd-skribble-help");
+		card.append(element$2("strong", "", "How Skribble works"), element$2("p", "", "Guess a word from the official word list for your selected Skribbl language. Words may contain spaces, hyphens and every Unicode character used by that language."), element$2("p", "", "Green means correct letter and position. Yellow means the character exists elsewhere. Gray means it is not available in the remaining answer."), element$2("p", "", "You have ten attempts and no clues."), element$2("p", "", "Only the first Daily solve on an account awards Skribbl Coins. Practice is always unrewarded."));
 		return card;
 	}
-	attemptRow(attempt, index, total, won) {
-		const row = element$1("div", `scd-skribble-row${won ? " won" : ""}`);
+	attemptRow(state, attempt, index, won) {
+		const row = element$2("div", `scd-skribble-row${won ? " won" : ""}`);
 		const characters = codePoints(attempt.guess);
+		const revealKey = `${state.sessionId}:${index}`;
+		const reveal = this.pendingRevealKey === revealKey;
 		row.style.setProperty("--scd-row-tile-count", String(Math.max(1, characters.length)));
-		row.style.opacity = String(Math.max(.1, 1 - (total - index - 1) * .1));
-		row.addEventListener("mouseenter", () => {
-			row.style.opacity = "1";
-		});
-		row.addEventListener("mouseleave", () => {
-			row.style.opacity = String(Math.max(.1, 1 - (total - index - 1) * .1));
-		});
 		characters.forEach((character, characterIndex) => {
 			const mark = attempt.marks[characterIndex] ?? "incorrect";
 			const tile = this.tile(character, mark === "semicorrect" ? "semicorrectTile" : `${mark}Tile`);
-			tile.style.animationDelay = `${characterIndex * 90}ms`;
-			if (index === total - 1) tile.classList.add("reveal");
+			tile.style.setProperty("--scd-reveal-delay", `${characterIndex * 90}ms`);
+			tile.style.setProperty("--scd-jump-delay", `${Math.floor(Math.random() * 620)}ms`);
+			tile.style.setProperty("--scd-jump-duration", `${700 + Math.floor(Math.random() * 650)}ms`);
+			if (reveal) tile.classList.add("reveal");
 			row.appendChild(tile);
 		});
+		if (reveal) this.pendingRevealKey = null;
 		return row;
 	}
 	inputRow(state) {
-		const row = element$1("div", `scd-skribble-row scd-skribble-input-row${this.invalidMessage ? " invalid" : ""}`);
+		const row = element$2("div", `scd-skribble-row scd-skribble-input-row${this.invalidMessage ? " invalid" : ""}`);
 		const characters = codePoints(this.draft).slice(0, state.maximumLength);
 		const slots = Math.min(state.maximumLength, Math.max(2, characters.length + 1));
 		row.style.setProperty("--scd-row-tile-count", String(slots));
@@ -42474,7 +42700,7 @@ var SkribbleFeatureUi = class {
 			indicator.classList.add("indicator");
 			row.appendChild(indicator);
 		}
-		const input = element$1("input", "scd-skribble-native-input");
+		const input = element$2("input", "scd-skribble-native-input");
 		input.type = "text";
 		input.value = this.draft;
 		input.autocomplete = "off";
@@ -42493,76 +42719,71 @@ var SkribbleFeatureUi = class {
 			this.draft = codePoints(input.value).slice(0, state.maximumLength).join("");
 			this.invalidMessage = null;
 			this.inputFocused = true;
-			this.renderModal();
+			row.replaceWith(this.inputRow(state));
 		});
 		input.addEventListener("keydown", (event) => {
 			if (event.key !== "Enter") return;
 			event.preventDefault();
-			if (event.shiftKey || this.pendingGuess) return;
+			if (event.shiftKey || this.pendingAction) return;
 			const length = codePoints(this.draft.trim()).length;
 			if (length < state.minimumLength || length > state.maximumLength) {
 				this.invalidMessage = `Enter between ${state.minimumLength} and ${state.maximumLength} characters.`;
 				this.renderModal();
 				return;
 			}
-			this.pendingGuess = true;
-			try {
-				this.options.gateway.submitSkribbleGuess(state.sessionId, this.draft);
-			} catch (error) {
-				this.pendingGuess = false;
-				this.options.showToast("Guess not sent", error instanceof Error ? error.message : String(error));
-			}
+			this.beginRequest("guess", () => this.options.gateway.submitSkribbleGuess(state.sessionId, this.draft));
 		});
 		row.appendChild(input);
 		row.addEventListener("click", () => input.focus());
-		queueMicrotask(() => input.focus());
+		queueMicrotask(() => {
+			input.focus();
+			input.setSelectionRange(input.value.length, input.value.length);
+		});
 		return row;
 	}
 	tile(character, assetId) {
-		const tile = element$1("span", `scd-skribble-tile ${assetId}`);
-		const source = asset(assetId);
+		const tile = element$2("span", `scd-skribble-tile ${assetId}`);
+		const source = progressionAsset(assetId);
 		if (source) tile.style.backgroundImage = `url(${JSON.stringify(source)})`;
-		tile.appendChild(element$1("span", "scd-skribble-character", character));
+		tile.appendChild(element$2("span", "scd-skribble-character", character));
 		return tile;
 	}
 	ending(state) {
-		const end = element$1("div", "scd-skribble-ending");
-		end.appendChild(element$1("strong", state.status === "solved" ? "scd-skribble-success" : "scd-skribble-warning", state.status === "solved" ? state.rewarded ? `Solved! +${state.rewardAmount} Skribbl Coins` : "Solved! Today\u2019s account reward was already claimed." : "Try again tomorrow. You can keep playing in unranked Practice."));
-		const countdown = element$1("div", "scd-skribble-countdown");
+		const end = element$2("div", "scd-skribble-ending");
+		end.appendChild(element$2("strong", state.status === "solved" ? "scd-skribble-success" : "scd-skribble-warning", state.status === "solved" ? state.rewarded ? `Solved! +${state.rewardAmount} Skribbl Coins` : "Solved! Today\u2019s account reward was already claimed." : "Try again tomorrow. You can keep playing in unranked Practice."));
+		if (state.answer) end.appendChild(element$2("div", "scd-skribble-answer", `The word was '${state.answer}'`));
+		const countdown = element$2("div", "scd-skribble-countdown");
 		countdown.dataset.nextDailyAt = String(state.nextDailyAt);
 		end.appendChild(countdown);
-		const actions = element$1("div", "scd-skribble-ending-actions");
-		const practice = element$1("button", "scd-skribble-practice", "Practice");
+		const actions = element$2("div", "scd-skribble-ending-actions");
+		const practice = element$2("button", "scd-skribble-practice", "Practice");
 		practice.type = "button";
-		practice.addEventListener("click", () => {
-			this.draft = "";
-			this.invalidMessage = null;
-			this.options.gateway.openSkribble(state.languageId, "practice");
-		});
-		const share = element$1("button", "scd-skribble-secondary", "Copy result");
+		practice.addEventListener("click", () => this.requestRound("practice"));
+		this.options.registerTooltip(practice, "Start an unrewarded Practice round");
+		const share = element$2("button", "scd-skribble-secondary", "Copy result");
 		share.type = "button";
 		share.addEventListener("click", () => void this.copyResult(state));
 		actions.append(practice, share);
-		if (state.status === "solved" && state.mode === "daily") {
-			const replay = element$1("button", "scd-skribble-secondary", "Replay celebration \u00B7 1 Coin");
-			replay.type = "button";
-			replay.disabled = (this.gatewayState.coins?.balance ?? 0) < 1;
-			replay.addEventListener("click", () => {
-				try {
-					this.options.gateway.replaySkribbleCelebration(state.dateKey);
-					this.animateSolvedRow();
-				} catch (error) {
-					this.options.showToast("Celebration unavailable", error instanceof Error ? error.message : String(error));
-				}
-			});
-			actions.appendChild(replay);
-		}
-		end.append(actions, element$1("div", "scd-skribble-muted", "Practice rounds and celebration replays never award additional Skribbl Coins."));
+		end.appendChild(actions);
 		return end;
+	}
+	returnToDailyButton() {
+		const button = element$2("button", "scd-skribble-secondary scd-skribble-return");
+		button.type = "button";
+		const source = progressionAsset("skribbleReturn");
+		if (source) {
+			const image = element$2("img");
+			image.src = source;
+			image.alt = "";
+			button.appendChild(image);
+		} else button.textContent = "\u21A9";
+		button.addEventListener("click", () => this.requestRound("daily"));
+		this.options.registerTooltip(button, "Return to Daily");
+		return button;
 	}
 	lossMessageRow() {
 		const text = codePoints("You lost!");
-		const row = element$1("div", "scd-skribble-row scd-skribble-loss-message");
+		const row = element$2("div", "scd-skribble-row scd-skribble-loss-message");
 		row.style.setProperty("--scd-row-tile-count", String(text.length));
 		text.forEach((character, index) => {
 			const tile = this.tile(character, "emptyTile");
@@ -42575,7 +42796,7 @@ var SkribbleFeatureUi = class {
 		const text = shareText(state);
 		try {
 			await navigator.clipboard.writeText(text);
-			this.options.showToast("Skribble result copied", "The spoiler-free result is ready to share.");
+			this.options.showToast("Skribble result copied", "Your result is ready to share.");
 		} catch {
 			this.options.showToast("Clipboard blocked", text, 8e3);
 		}
@@ -42585,18 +42806,27 @@ var SkribbleFeatureUi = class {
 		if (!node) return;
 		const deadline = Number(node.dataset.nextDailyAt);
 		const remaining = Math.max(0, deadline - Date.now());
+		if (remaining <= 0) {
+			node.textContent = "Daily Skribble available!";
+			return;
+		}
 		const hours = Math.floor(remaining / 36e5);
 		const minutes = Math.floor(remaining % 36e5 / 6e4);
 		const seconds = Math.floor(remaining % 6e4 / 1e3);
-		node.textContent = `Next official Skribble in ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")} UTC`;
+		node.textContent = `Next Daily Skribble in ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")} UTC`;
 	}
-	animateSolvedRow() {
-		(this.modal?.querySelectorAll(".scd-skribble-row.won .scd-skribble-tile"))?.forEach((tile, index) => {
-			tile.style.animationDelay = `${index * 73 % 310}ms`;
-			tile.classList.remove("jump");
-			tile.offsetWidth;
-			tile.classList.add("jump");
-		});
+	syncLoadingOverlay() {
+		const shell = this.modal?.querySelector(".scd-skribble-modal");
+		if (!shell) return;
+		shell.querySelector(".scd-progression-load")?.remove();
+		if (!this.pendingAction) return;
+		const load = element$2("div", "scd-progression-load");
+		const container = element$2("div", "container");
+		const icon = element$2("div", "icon");
+		icon.appendChild(element$2("div", "graphic"));
+		container.appendChild(icon);
+		load.appendChild(container);
+		shell.appendChild(load);
 	}
 	animateLoss() {
 		const rows = this.modal?.querySelectorAll(".scd-skribble-board .scd-skribble-row:not(.scd-skribble-loss-message)");
@@ -42616,7 +42846,7 @@ var SkribbleFeatureUi = class {
 		this.coinAnimationFinalBalance = balanceAfter;
 		this.refreshCoinNodes();
 		const source = this.modal?.querySelector(".scd-skribble-row.won");
-		const coinSource = asset("coin");
+		const coinSource = progressionAsset("coin");
 		if (!source || !coinSource || !this.modal) {
 			this.finishCoinAnimation();
 			return;
@@ -42627,7 +42857,7 @@ var SkribbleFeatureUi = class {
 			const timer = window.setTimeout(() => {
 				this.coinAnimationTimers.delete(timer);
 				if (generation !== this.coinAnimationGeneration || !this.modal) return;
-				const coin = element$1("img", "scd-skribble-coin-particle");
+				const coin = element$2("img", "scd-skribble-coin-particle");
 				coin.src = coinSource;
 				coin.alt = "";
 				coin.style.left = `${sourceRect.left + sourceRect.width / 2 - 10}px`;
@@ -42714,12 +42944,13 @@ var SkribbleFeatureUi = class {
 	}
 	refreshCoinNodes() {
 		for (const node of [...this.coinNodes]) {
-			if (!node.isConnected && node !== this.modal) {
+			if (!node.isConnected) {
 				this.coinNodes.delete(node);
 				continue;
 			}
 			const value = node.querySelector(".scd-coin-balance");
 			if (value) value.textContent = String(this.visualCoinBalance);
+			node.setAttribute("aria-label", `Skribbl Coin balance: ${this.visualCoinBalance}`);
 		}
 	}
 	ensureStyles() {
@@ -42728,72 +42959,777 @@ var SkribbleFeatureUi = class {
 		style.id = "skribbl-duels-skribble-styles";
 		style.textContent = `
 html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overflow:hidden !important;overscroll-behavior:none !important; }
-.scd-skribble-launcher { position:fixed;right:18px;top:25vh;z-index:2147483643;display:grid;place-items:center;min-width:96px;min-height:54px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out; }
-.scd-skribble-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08); }
-.scd-skribble-launcher img { display:block;max-width:150px;max-height:76px;object-fit:contain; }
+.scd-skribble-launcher { position:fixed;right:18px;top:25vh;z-index:2147483643;display:grid;place-items:center;width:min(300px,32vw);min-height:80px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out,transform .1s ease-in-out; }
+.scd-skribble-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);transform:scale(1.06); }
+.scd-skribble-launcher img { display:block;width:100%;height:auto;max-height:152px;object-fit:contain; }
 .scd-skribble-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
-.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-skribble-fade .2s ease-out; }
-.scd-skribble-modal { width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25); }
-.scd-skribble-header { min-height:68px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(140px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:8px 12px; }
+.scd-skribble-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-skribble-fade .2s ease-out;font-family:'Nunito',sans-serif; }
+.scd-skribble-modal { position:relative;width:min(980px,calc(100vw - 24px));max-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25);font-family:'Nunito',sans-serif; }
+.scd-skribble-header { min-height:86px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:8px 12px; }
 .scd-skribble-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
-.scd-skribble-title img { display:block;max-width:min(260px,38vw);max-height:60px;object-fit:contain; }
+.scd-skribble-title img { display:block;width:min(550px,56vw);max-height:80px;object-fit:contain; }
 .scd-skribble-actions { justify-self:end;display:flex;gap:6px; }
-.scd-skribble-icon-button { width:42px;height:42px;border:0;padding:0;background:transparent;color:#fff;font:900 32px/1 Arial;cursor:pointer;text-shadow:2px 2px 0 #0004; }
-.scd-coin-pill { min-width:96px;max-width:160px;height:48px;justify-self:start;display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:4px 10px 4px 4px;background:var(--SCD_ACCENT,var(--COLOR_PANEL_BUTTON,#2a51d1));color:#fff;font:800 16px/1 Arial;cursor:pointer;text-shadow:2px 2px 0 #0004; }
-.scd-coin-pill.compact { min-width:0;width:auto;height:38px;padding:3px 8px 3px 3px; }
-.scd-coin-pill:hover { background:var(--SCD_ACCENT_HOVER,var(--COLOR_PANEL_BUTTON_HOVER,#1e44be)); }
+.scd-skribble-actions .scd-icon-button { width:42px;height:42px; }
+.scd-skribble-actions .scd-icon { width:36px;height:36px; }
+.scd-coin-pill { min-width:96px;max-width:180px;height:48px;justify-self:start;display:flex;align-items:center;gap:7px;border:0;border-radius:8px;padding:4px 10px 4px 4px;background:var(--SCD_ACCENT,var(--COLOR_PANEL_BUTTON,#2a51d1));color:#fff;font:800 16px/1 'Nunito',sans-serif;text-shadow:2px 2px 0 #0004; }
+.scd-coin-pill.compact { min-width:0;width:max-content;height:38px;padding:3px 8px 3px 3px; }
 .scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated; }
 .scd-coin-pill.compact img { width:32px;height:32px; }
 .scd-skribble-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 18px 18px;text-align:center; }
+.scd-skribble-mode-bar { position:relative;width:100%;min-height:40px;display:flex;align-items:center;justify-content:center; }
+.scd-skribble-mode-bar .scd-skribble-return { position:absolute;left:0; }
 .scd-skribble-mode { font-weight:800;opacity:.86; }
 .scd-skribble-board { width:100%;display:flex;flex-direction:column;align-items:center;gap:6px; }
-.scd-skribble-row { --scd-row-tile-count:2;width:100%;display:grid;grid-template-columns:repeat(var(--scd-row-tile-count),var(--scd-board-tile-size,32px));gap:2px;justify-content:center;transition:opacity .16s ease-in-out; }
-.scd-skribble-tile { position:relative;width:var(--scd-board-tile-size,32px);aspect-ratio:1/1;justify-self:center;display:grid;place-items:center;border-radius:3px;background-color:#d8b773;background-position:center;background-size:100% 100%;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .16s ease-in-out,opacity .16s ease-in-out,transform .16s ease-in-out; }
-.scd-skribble-tile.correctTile { background-color:#69bd45; }
-.scd-skribble-tile.semicorrectTile { background-color:#e4aa32; }
-.scd-skribble-tile.incorrectTile { background-color:#68717e; }
-.scd-skribble-character { position:relative;transform:translate(4px,-2px);max-width:100%;overflow:hidden;color:#111;font:900 clamp(5px,calc(var(--scd-board-tile-size,32px) * .5),16px)/1 Arial,sans-serif;text-shadow:1px 1px 0 #fff5; }
+.scd-skribble-row { --scd-row-tile-count:2;width:100%;display:grid;grid-template-columns:repeat(var(--scd-row-tile-count),var(--scd-board-tile-size,32px));gap:2px;justify-content:center; }
+.scd-skribble-tile { position:relative;width:var(--scd-board-tile-size,32px);aspect-ratio:1/1;justify-self:center;display:grid;place-items:center;border-radius:3px;background-position:center;background-size:100% 100%;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .16s ease-in-out,opacity .16s ease-in-out,scale .16s ease-in-out; }
+.scd-skribble-tile:hover { scale:1.12;z-index:2; }
+.scd-skribble-character { position:relative;transform:translate(4px,-2px);max-width:100%;overflow:hidden;color:#111;font:900 clamp(5px,calc(var(--scd-board-tile-size,32px) * .5),16px)/1 'Nunito',sans-serif;text-shadow:1px 1px 0 #fff5; }
 .scd-skribble-tile.indicator { opacity:.6; }
 .scd-skribble-tile.active::after { content:'';position:absolute;left:calc(50% + 5px);top:20%;width:2px;height:58%;background:#111;animation:scd-skribble-cursor .75s steps(1) infinite; }
 .scd-skribble-native-input { position:fixed !important;left:-10000px !important;top:auto !important;width:1px !important;height:1px !important;opacity:0 !important;pointer-events:none !important; }
 .scd-skribble-input-row { cursor:text; }
 .scd-skribble-input-row.invalid .scd-skribble-tile { filter:brightness(75%) contrast(200%) saturate(300%) hue-rotate(310deg) drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
-.scd-skribble-tile.reveal { opacity:0;animation:scd-skribble-reveal .28s ease-out forwards; }
-.scd-skribble-tile.jump { animation:scd-skribble-jump .72s cubic-bezier(.2,.8,.3,1) 2; }
-.scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards; }
+.scd-skribble-tile.reveal { opacity:0;animation:scd-skribble-reveal .28s ease-out var(--scd-reveal-delay,0ms) forwards; }
+.scd-skribble-row.won .scd-skribble-tile:not(.reveal) { animation:scd-skribble-jump var(--scd-jump-duration,.9s) cubic-bezier(.2,.8,.3,1) var(--scd-jump-delay,0ms) infinite; }
+.scd-skribble-row.won .scd-skribble-tile.reveal { animation:scd-skribble-reveal .28s ease-out var(--scd-reveal-delay,0ms) forwards,scd-skribble-jump var(--scd-jump-duration,.9s) cubic-bezier(.2,.8,.3,1) calc(var(--scd-reveal-delay,0ms) + 500ms) infinite; }
+.scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards !important; }
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
-.scd-skribble-help { width:min(680px,100%);padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
+.scd-skribble-help { width:100%;box-sizing:border-box;padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
 .scd-skribble-help p { margin:.55em 0 0; }
 .scd-skribble-warning { color:var(--COLOR_CHAT_TEXT_LEAVE,#ff8c66);font-weight:700; }
-.scd-skribble-success { color:var(--COLOR_CHAT_TEXT_GUESSED,#6fd66a); }
+.scd-skribble-success,.scd-skribble-answer { color:var(--COLOR_CHAT_TEXT_GUESSED,#6fd66a);font-weight:800; }
 .scd-skribble-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
 .scd-skribble-ending { width:min(720px,100%);display:flex;flex-direction:column;gap:10px;align-items:center; }
 .scd-skribble-ending-actions { width:100%;display:flex;justify-content:center;gap:8px;flex-wrap:wrap; }
-.scd-skribble-practice,.scd-skribble-secondary { min-height:40px;border:0;border-radius:var(--BORDER_RADIUS,7px);padding:7px 14px;color:#fff;font:800 15px/1.1 Arial;cursor:pointer;text-shadow:2px 2px 0 #0003; }
+.scd-skribble-practice,.scd-skribble-secondary { min-height:40px;border:0;border-radius:var(--BORDER_RADIUS,7px);padding:7px 14px;color:#fff;font:800 15px/1.1 'Nunito',sans-serif;cursor:pointer;text-shadow:2px 2px 0 #0003; }
 .scd-skribble-practice { background:#2c8de7; }
 .scd-skribble-practice:hover { background:#1671c5; }
 .scd-skribble-secondary { background:var(--COLOR_PANEL_BUTTON,#2a51d1); }
 .scd-skribble-secondary:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
-.scd-skribble-secondary:disabled { opacity:.45;cursor:not-allowed; }
-.scd-skribble-loading { width:64px;height:64px;background:url('/img/load.gif') center/contain no-repeat;animation:scd-skribble-spin .8s ease-in-out infinite; }
+.scd-skribble-return { width:40px;padding:3px;display:grid;place-items:center; }
+.scd-skribble-return img { width:32px;height:32px;object-fit:contain; }
+.scd-progression-load { position:absolute;z-index:30;inset:0;animation:scd-load-opacity .3s ease-in-out;background-color:rgba(0,0,0,.75);backdrop-filter:blur(6px); }
+.scd-progression-load .container { position:absolute;left:50%;top:50%;animation:scd-load-position .3s ease-in-out; }
+.scd-progression-load .icon { position:absolute;width:128px;height:128px; }
+.scd-progression-load .graphic { position:absolute;left:-50%;top:-50%;width:100%;height:100%;background:url('/img/load.gif') center/contain no-repeat;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-skribble-spin .8s ease-in-out infinite; }
 .scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:20px;height:20px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
 .scd-skribble-overlay::-webkit-scrollbar,.scd-skribble-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-skribble-overlay::-webkit-scrollbar-thumb,.scd-skribble-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
+@supports (backdrop-filter:blur()) { .scd-progression-load { background-color:rgba(255,255,255,.2); } }
 @keyframes scd-skribble-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes scd-load-opacity { from { opacity:0;backdrop-filter:blur(0); } to { opacity:1;backdrop-filter:blur(6px); } }
+@keyframes scd-load-position { from { opacity:0;top:35%; } to { opacity:1;top:50%; } }
 @keyframes scd-skribble-spin { from { transform:rotate(0); } to { transform:rotate(360deg); } }
 @keyframes scd-skribble-cursor { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
 @keyframes scd-skribble-reveal { from { opacity:0;transform:rotateY(90deg); } to { opacity:1;transform:rotateY(0); } }
-@keyframes scd-skribble-jump { 0%,100% { transform:translateY(0) rotate(0); } 38% { transform:translateY(-20px) rotate(-5deg); } 72% { transform:translateY(2px) rotate(4deg); } }
+@keyframes scd-skribble-jump { 0%,100% { transform:translateY(0) rotate(0); } 38% { transform:translateY(-16px) rotate(-5deg); } 72% { transform:translateY(2px) rotate(4deg); } }
 @keyframes scd-skribble-fall { from { opacity:1;transform:translateY(0) rotate(0); } to { opacity:0;transform:translateY(240px) rotate(38deg); } }
 @keyframes scd-skribble-loss-bounce { 0% { opacity:0;transform:translateY(-130px); } 72% { opacity:1;transform:translateY(8px); } 88% { transform:translateY(-5px); } 100% { opacity:1;transform:translateY(0); } }
 @media (max-width:620px) {
   .scd-skribble-header { grid-template-columns:auto 1fr auto; }
   .scd-skribble-title { font-size:1.2em; }
-  .scd-skribble-launcher { right:8px;top:22vh;transform:scale(.8);transform-origin:right center; }
+  .scd-skribble-launcher { right:8px;top:22vh;width:min(240px,46vw); }
   .scd-coin-pill { min-width:0; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .scd-skribble-overlay,.scd-skribble-loading,.scd-skribble-tile,.scd-skribble-coin-particle { animation:none !important; }
+  .scd-skribble-overlay,.scd-progression-load *,.scd-skribble-tile,.scd-skribble-coin-particle { animation:none !important; }
+}
+`;
+		(document.head ?? document.documentElement).appendChild(style);
+	}
+};
+var SLOT_ASSETS = {
+	book: "slotBook",
+	slimy: "slotSlimy",
+	fill: "slotFill",
+	wizard: "slotWizard",
+	eraser: "slotEraser",
+	trash: "slotTrash",
+	dice: "slotDice",
+	heart: "slotHeart",
+	"skribbl-coin": "slotCoin",
+	"7": "slotSeven",
+	trophy: "slotTrophy",
+	crown: "slotCrown",
+	pen: "slotPen",
+	"skribbl-duels-logo": "slotDuelsLogo",
+	potion: "slotPotion",
+	drop: "slotDrop",
+	pizza: "slotPizza",
+	pumpkin: "slotPumpkin",
+	eggplant: "slotEggplant",
+	pineapple: "slotPineapple",
+	peach: "slotPeach",
+	ribbon: "slotRibbon",
+	skull: "slotSkull",
+	poop: "slotPoop"
+};
+var SLOT_LABELS = {
+	book: "Book",
+	slimy: "Slimy",
+	fill: "Fill",
+	wizard: "Wizard",
+	eraser: "Eraser",
+	trash: "Trash",
+	dice: "Dice",
+	heart: "Heart",
+	"skribbl-coin": "Skribbl Coin",
+	"7": "Seven",
+	trophy: "Trophy",
+	crown: "Crown",
+	pen: "Pen",
+	"skribbl-duels-logo": "Skribbl Duels",
+	potion: "Potion",
+	drop: "Drop",
+	pizza: "Pizza",
+	pumpkin: "Pumpkin",
+	eggplant: "Eggplant",
+	pineapple: "Pineapple",
+	peach: "Peach",
+	ribbon: "Ribbon",
+	skull: "Skull",
+	poop: "Poop"
+};
+var SLOT_FALLBACKS = {
+	book: "\uD83D\uDCD5",
+	slimy: "\uD83D\uDFE2",
+	fill: "\u25A3",
+	wizard: "\uD83E\uDDD9",
+	eraser: "\u25B1",
+	trash: "\uD83D\uDDD1",
+	dice: "\uD83C\uDFB2",
+	heart: "\u2665",
+	"skribbl-coin": "\u25CE",
+	"7": "7",
+	trophy: "\uD83C\uDFC6",
+	crown: "\u265B",
+	pen: "\u270E",
+	"skribbl-duels-logo": "SD",
+	potion: "\u2697",
+	drop: "\uD83D\uDCA7",
+	pizza: "\uD83C\uDF55",
+	pumpkin: "\uD83C\uDF83",
+	eggplant: "\uD83C\uDF46",
+	pineapple: "\uD83C\uDF4D",
+	peach: "\uD83C\uDF51",
+	ribbon: "\uD83C\uDF80",
+	skull: "\u2620",
+	poop: "\u25CF"
+};
+function element$1(tag, className = "", text = "") {
+	const node = document.createElement(tag);
+	node.className = className;
+	if (text) node.textContent = text;
+	return node;
+}
+function slotsFingerprint(state) {
+	return state ? JSON.stringify(state) : "";
+}
+function isWin(outcome) {
+	return outcome.coinReward > 0 || outcome.awardedFreeSpins > 0;
+}
+var SkribblSlotsFeatureUi = class {
+	options;
+	launcher = null;
+	modal = null;
+	gatewayState;
+	visibleState = null;
+	visibleFingerprint = "";
+	displayIcons = [
+		"skribbl-coin",
+		"7",
+		"crown"
+	];
+	latestOutcome = null;
+	lastSpinRequestId = null;
+	pendingAction = null;
+	helpOpen = false;
+	resultMessage = "Match three icons on the single payline.";
+	animating = false;
+	animationGeneration = 0;
+	animationTimers = /* @__PURE__ */ new Set();
+	mountTimer = null;
+	bulbTimer = null;
+	bulbIndex = 0;
+	bulbDirection = 1;
+	bulbsFlashing = false;
+	constructor(options) {
+		this.options = options;
+		this.gatewayState = options.getGatewayState();
+		this.visibleState = this.gatewayState.slots?.state ?? null;
+		this.visibleFingerprint = slotsFingerprint(this.visibleState);
+		const outcome = this.gatewayState.lastSlotsSpin?.accepted ? this.gatewayState.lastSlotsSpin.outcome : null;
+		if (outcome) {
+			this.latestOutcome = outcome;
+			this.displayIcons = [...outcome.finalIcons];
+			this.resultMessage = this.outcomeMessage(outcome);
+		}
+	}
+	start() {
+		this.ensureStyles();
+		this.ensureMounted();
+		this.mountTimer = window.setInterval(() => this.ensureMounted(), 700);
+		this.bulbTimer = window.setInterval(() => this.advanceBulb(), 190);
+	}
+	stop() {
+		if (this.mountTimer !== null) window.clearInterval(this.mountTimer);
+		if (this.bulbTimer !== null) window.clearInterval(this.bulbTimer);
+		this.mountTimer = null;
+		this.bulbTimer = null;
+		this.clearPendingAction();
+		this.cancelAnimations();
+		this.close();
+		this.launcher?.remove();
+		this.launcher = null;
+	}
+	update(state) {
+		this.gatewayState = state;
+		this.trySendPendingAction();
+		const incoming = state.slots?.state ?? null;
+		const fingerprint = slotsFingerprint(incoming);
+		let rerender = false;
+		if (incoming && fingerprint !== this.visibleFingerprint) {
+			this.visibleState = structuredClone(incoming);
+			this.visibleFingerprint = fingerprint;
+			rerender = true;
+		}
+		const result = state.lastSlotsSpin;
+		if (result && result.requestId !== this.lastSpinRequestId) {
+			this.lastSpinRequestId = result.requestId;
+			if (this.pendingAction?.requestId === result.requestId) this.clearPendingAction();
+			this.visibleState = structuredClone(result.state);
+			this.visibleFingerprint = slotsFingerprint(result.state);
+			if (result.accepted && result.outcome) {
+				this.latestOutcome = structuredClone(result.outcome);
+				if (this.modal) {
+					this.renderModal();
+					this.animateOutcome(result.outcome);
+				} else {
+					this.displayIcons = [...result.outcome.finalIcons];
+					this.resultMessage = this.outcomeMessage(result.outcome);
+				}
+			} else {
+				this.resultMessage = result.reason === "insufficient-coins" ? "You need one Skribbl Coin or a Free Spin." : "This Slots session expired. A fresh machine is ready.";
+				this.options.showToast("Skribbl Slots", this.resultMessage, 5e3);
+				rerender = true;
+			}
+		}
+		if (state.slots?.requestId && this.pendingAction?.requestId === state.slots.requestId) {
+			this.clearPendingAction();
+			rerender = true;
+		}
+		this.ensureMounted();
+		if (this.modal && rerender && !this.animating) this.renderModal();
+		else this.syncLoadingOverlay();
+	}
+	isModalOpen() {
+		return this.modal !== null;
+	}
+	closeForMatchFound() {
+		this.close();
+	}
+	accountConnected() {
+		return this.gatewayState.status === "connected" && this.gatewayState.identity !== null;
+	}
+	homepageVisible() {
+		const home = document.querySelector("#home");
+		return window.location.pathname === "/" && Boolean(home && getComputedStyle(home).display !== "none" && home.getClientRects().length > 0);
+	}
+	ensureMounted() {
+		if (!this.launcher) {
+			const launcher = element$1("button", "scd-slots-launcher");
+			launcher.id = "skribbl-duels-slots-launcher";
+			launcher.type = "button";
+			launcher.dataset.scdRuntimeId = this.options.runtimeId;
+			launcher.setAttribute("aria-label", "Open Skribbl Slots");
+			const logo = progressionAsset("slotsLogo");
+			if (logo) {
+				const image = element$1("img");
+				image.src = logo;
+				image.alt = "Skribbl Slots";
+				launcher.appendChild(image);
+			} else launcher.appendChild(element$1("span", "scd-slots-logo-fallback", "SKRIBBL SLOTS"));
+			launcher.addEventListener("click", () => this.open());
+			this.options.registerTooltip(launcher, "Open Skribbl Slots", "X");
+			this.launcher = launcher;
+		}
+		if (!this.launcher.isConnected) (document.body ?? document.documentElement).appendChild(this.launcher);
+		this.launcher.style.display = this.accountConnected() && this.homepageVisible() ? "grid" : "none";
+		if (!this.gatewayState.identity && this.gatewayState.status !== "connecting" && this.modal) this.close();
+	}
+	open() {
+		if (this.modal || !this.accountConnected()) return;
+		const overlay = element$1("div", "scd-slots-overlay");
+		overlay.id = "skribbl-duels-slots";
+		overlay.dataset.scdRuntimeId = this.options.runtimeId;
+		overlay.addEventListener("click", (event) => {
+			if (event.target === overlay) this.close();
+		});
+		this.modal = overlay;
+		(document.body ?? document.documentElement).appendChild(overlay);
+		document.documentElement.dataset.scdSlotsScrollLock = this.options.runtimeId;
+		if (document.body) document.body.dataset.scdSlotsScrollLock = this.options.runtimeId;
+		this.options.onModalVisibilityChanged();
+		this.renderModal();
+		if (!this.visibleState) this.beginRequest("open", () => this.options.gateway.openSkribblSlots());
+	}
+	close() {
+		this.clearPendingAction();
+		this.cancelAnimations();
+		this.modal?.remove();
+		this.modal = null;
+		this.helpOpen = false;
+		for (const node of [document.documentElement, document.body]) if (node?.dataset.scdSlotsScrollLock === this.options.runtimeId) delete node.dataset.scdSlotsScrollLock;
+		this.options.onModalVisibilityChanged();
+	}
+	beginRequest(kind, send) {
+		if (this.pendingAction || this.animating) return;
+		const timer = window.setTimeout(() => {
+			if (!this.pendingAction || this.pendingAction.timer !== timer) return;
+			this.pendingAction = null;
+			this.syncLoadingOverlay();
+			this.options.showToast("Gateway unavailable", "Skribbl Duels did not answer within 5 seconds. The current Slots machine was kept unchanged.", 6e3);
+		}, 5e3);
+		this.pendingAction = {
+			requestId: null,
+			kind,
+			timer,
+			send
+		};
+		this.trySendPendingAction();
+		this.syncLoadingOverlay();
+	}
+	trySendPendingAction() {
+		const pending = this.pendingAction;
+		if (!pending || pending.requestId !== null || !this.accountConnected()) return;
+		try {
+			pending.requestId = pending.send();
+		} catch {}
+	}
+	clearPendingAction() {
+		if (!this.pendingAction) return;
+		window.clearTimeout(this.pendingAction.timer);
+		this.pendingAction = null;
+		this.syncLoadingOverlay();
+	}
+	renderModal() {
+		const overlay = this.modal;
+		if (!overlay) return;
+		overlay.replaceChildren();
+		const shell = element$1("div", "scd-slots-modal");
+		shell.appendChild(this.bulbs());
+		const header = element$1("div", "scd-slots-header");
+		header.appendChild(this.options.createCoinPill(false));
+		const title = element$1("div", "scd-slots-title");
+		const logo = progressionAsset("slotsLogo");
+		if (logo) {
+			const image = element$1("img");
+			image.src = logo;
+			image.alt = "Skribbl Slots";
+			title.appendChild(image);
+		} else title.textContent = "SKRIBBL SLOTS";
+		const actions = element$1("div", "scd-slots-actions");
+		const help = this.headerIconButton("About and help", false);
+		help.addEventListener("click", () => {
+			this.helpOpen = !this.helpOpen;
+			this.renderModal();
+		});
+		const close = this.headerIconButton("Close Skribbl Slots", true);
+		close.addEventListener("click", () => this.close());
+		actions.append(help, close);
+		header.append(title, actions);
+		const content = element$1("div", "scd-slots-content");
+		if (this.helpOpen) content.appendChild(this.helpCard());
+		if (!this.visibleState) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the server-authoritative machine\u2026"));
+		else {
+			const machine = element$1("div", "scd-slots-machine");
+			const reels = element$1("div", "scd-slots-reels");
+			this.displayIcons.forEach((icon, index) => reels.appendChild(this.reel(icon, index)));
+			const controls = element$1("div", "scd-slots-controls");
+			controls.appendChild(this.spinButton());
+			controls.appendChild(this.heartProgress());
+			machine.append(reels, controls);
+			content.append(machine, element$1("div", `scd-slots-result${this.latestOutcome && isWin(this.latestOutcome) ? " win" : ""}`, this.resultMessage));
+		}
+		shell.append(header, content);
+		overlay.appendChild(shell);
+		this.syncBulbs();
+		this.syncLoadingOverlay();
+	}
+	bulbs() {
+		const row = element$1("div", "scd-slots-bulbs");
+		for (let index = 0; index < 7; index += 1) {
+			const image = element$1("img", "scd-slots-bulb");
+			image.alt = "";
+			image.dataset.index = String(index);
+			image.style.setProperty("--scd-bulb-turn", `${index % 2 === 0 ? -10 : 10}deg`);
+			row.appendChild(image);
+		}
+		return row;
+	}
+	advanceBulb() {
+		if (this.bulbsFlashing) return;
+		if (this.bulbIndex >= 6) this.bulbDirection = -1;
+		else if (this.bulbIndex <= 0) this.bulbDirection = 1;
+		this.bulbIndex += this.bulbDirection;
+		this.syncBulbs();
+	}
+	syncBulbs(forceOn = null) {
+		const bulbs = this.modal?.querySelectorAll(".scd-slots-bulb");
+		if (!bulbs) return;
+		const on = progressionAsset("slotBulbOn");
+		const off = progressionAsset("slotBulbOff");
+		bulbs.forEach((bulb, index) => {
+			const lit = forceOn === null ? index === this.bulbIndex : forceOn;
+			const source = lit ? on : off;
+			if (source) {
+				bulb.src = source;
+				bulb.style.display = "block";
+			} else {
+				bulb.removeAttribute("src");
+				bulb.style.display = "block";
+				bulb.classList.toggle("fallback-on", lit);
+			}
+		});
+	}
+	async flashBulbs(generation) {
+		this.bulbsFlashing = true;
+		for (let index = 0; index < 6; index += 1) {
+			if (generation !== this.animationGeneration) return;
+			this.syncBulbs(index % 2 === 0);
+			if (!await this.wait(85, generation)) return;
+		}
+		this.bulbsFlashing = false;
+		this.syncBulbs();
+	}
+	reel(icon, index) {
+		const reel = element$1("div", "scd-slot-reel");
+		reel.dataset.index = String(index);
+		const payline = element$1("div", "scd-slot-payline");
+		payline.appendChild(this.slotIcon(icon));
+		reel.appendChild(payline);
+		return reel;
+	}
+	slotIcon(icon) {
+		const wrapper = element$1("span", "scd-slot-icon");
+		wrapper.dataset.icon = icon;
+		const source = progressionAsset(SLOT_ASSETS[icon]);
+		if (source) {
+			const image = element$1("img");
+			image.src = source;
+			image.alt = SLOT_LABELS[icon];
+			wrapper.appendChild(image);
+		} else wrapper.appendChild(element$1("span", "scd-slot-icon-fallback", SLOT_FALLBACKS[icon]));
+		return wrapper;
+	}
+	setReelIcon(index, icon) {
+		this.displayIcons[index] = icon;
+		const payline = this.modal?.querySelector(`.scd-slot-reel[data-index="${index}"] .scd-slot-payline`);
+		if (payline) payline.replaceChildren(this.slotIcon(icon));
+	}
+	spinButton() {
+		const state = this.visibleState;
+		const free = state.freeSpins > 0;
+		const button = element$1("button", "scd-slots-spin");
+		button.type = "button";
+		button.disabled = this.animating || Boolean(this.pendingAction) || !state.canSpin;
+		button.appendChild(document.createTextNode(free ? "Free Spin " : `Spin for ${state.spinCost} `));
+		const icon = free && state.nextFreeSpinSource ? this.slotIcon(state.nextFreeSpinSource) : this.imageOrFallback(progressionAsset("coin"), "\u25CE", "Skribbl Coin");
+		icon.classList.add("scd-spin-cost-icon");
+		button.appendChild(icon);
+		button.addEventListener("click", () => {
+			this.beginRequest("spin", () => this.options.gateway.spinSkribblSlots(state.sessionId));
+		});
+		this.options.registerTooltip(button, free ? `${state.freeSpins} Free Spin${state.freeSpins === 1 ? "" : "s"} available` : "One authoritative spin costs one Skribbl Coin");
+		return button;
+	}
+	heartProgress() {
+		const state = this.visibleState;
+		const row = element$1("div", "scd-slots-heart-progress");
+		row.setAttribute("aria-label", `${state.heartProgress} of ${state.heartTarget} hearts collected`);
+		for (let index = 0; index < state.heartTarget; index += 1) {
+			const heart = this.slotIcon("heart");
+			if (index >= state.heartProgress) heart.classList.add("empty");
+			row.appendChild(heart);
+		}
+		this.options.registerTooltip(row, "Collect three Hearts across spins to earn one Free Spin");
+		return row;
+	}
+	imageOrFallback(source, fallback, alt) {
+		const wrapper = element$1("span", "scd-slot-icon");
+		if (source) {
+			const image = element$1("img");
+			image.src = source;
+			image.alt = alt;
+			wrapper.appendChild(image);
+		} else wrapper.textContent = fallback;
+		return wrapper;
+	}
+	headerIconButton(tooltip, close) {
+		const button = element$1("button", `scd-icon-button${close ? " scd-modal-close" : ""}`);
+		button.type = "button";
+		if (close) button.textContent = "\u00D7";
+		else {
+			const icon = element$1("span", "scd-icon");
+			icon.setAttribute("role", "img");
+			icon.setAttribute("aria-label", "About");
+			if (this.options.aboutIconUrl) {
+				const image = element$1("img", "scd-icon-image");
+				image.alt = "";
+				image.src = this.options.aboutIconUrl;
+				icon.appendChild(image);
+			} else icon.textContent = "?";
+			button.appendChild(icon);
+		}
+		this.options.registerTooltip(button, tooltip, "Y");
+		return button;
+	}
+	helpCard() {
+		const card = element$1("section", "scd-slots-help");
+		const intro = element$1("div", "scd-slots-help-intro");
+		const warningSource = progressionAsset("slotsWarning");
+		if (warningSource) {
+			const warning = element$1("img");
+			warning.src = warningSource;
+			warning.alt = "Important";
+			intro.appendChild(warning);
+		}
+		const copy = element$1("div");
+		copy.append(element$1("strong", "", "How Skribbl Slots works"), element$1("p", "", "Each server-authoritative spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice."), element$1("p", "", "Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the append-only Coin ledger."));
+		intro.appendChild(copy);
+		card.appendChild(intro);
+		const total = Object.values(GATEWAY_SLOT_BASE_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
+		const odds = element$1("div", "scd-slots-odds");
+		odds.appendChild(element$1("strong", "", `Transparent base reel weights \u00B7 ${total} total`));
+		const grid = element$1("div", "scd-slots-odds-grid");
+		for (const icon of GATEWAY_SLOT_ICON_IDS) {
+			const item = element$1("div", "scd-slots-odds-item");
+			item.append(this.slotIcon(icon), element$1("span", "", SLOT_LABELS[icon]), element$1("span", "scd-slots-muted", `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}`));
+			grid.appendChild(item);
+		}
+		odds.appendChild(grid);
+		card.appendChild(odds);
+		return card;
+	}
+	async animateOutcome(outcome) {
+		this.cancelAnimations();
+		const generation = ++this.animationGeneration;
+		this.animating = true;
+		this.resultMessage = "Spinning\u2026";
+		this.displayIcons = [...outcome.initialIcons];
+		this.renderModal();
+		await Promise.all(outcome.initialIcons.map((icon, index) => this.animateReel(index, icon, 760 + index * 220 + Math.floor(Math.random() * 180), generation)));
+		if (generation !== this.animationGeneration) return;
+		for (const step of outcome.effectSteps) if (!await this.animateEffect(step, generation)) return;
+		this.displayIcons = [...outcome.finalIcons];
+		this.displayIcons.forEach((icon, index) => this.setReelIcon(index, icon));
+		this.resultMessage = this.outcomeMessage(outcome);
+		this.animating = false;
+		this.renderModal();
+		if (isWin(outcome)) this.flashBulbs(generation);
+	}
+	async animateReel(index, finalIcon, duration, generation) {
+		const reel = this.modal?.querySelector(`.scd-slot-reel[data-index="${index}"]`);
+		reel?.classList.add("spinning");
+		const interval = window.setInterval(() => {
+			if (generation !== this.animationGeneration) return;
+			const icon = GATEWAY_SLOT_ICON_IDS[Math.floor(Math.random() * GATEWAY_SLOT_ICON_IDS.length)];
+			this.setReelIcon(index, icon);
+		}, 72 + index * 9);
+		this.animationTimers.add(interval);
+		await this.wait(duration, generation);
+		window.clearInterval(interval);
+		this.animationTimers.delete(interval);
+		if (generation !== this.animationGeneration) return;
+		this.setReelIcon(index, finalIcon);
+		reel?.classList.remove("spinning");
+		reel?.classList.add("stopped");
+	}
+	async animateEffect(step, generation) {
+		const source = this.modal?.querySelector(`.scd-slot-reel[data-index="${step.sourceIndex}"]`);
+		source?.classList.add("effect-active");
+		if (!await this.wait(1e3, generation)) return false;
+		const targets = step.targetIndices.map((index) => this.modal?.querySelector(`.scd-slot-reel[data-index="${index}"]`)).filter((node) => Boolean(node));
+		if (step.kind === "fill") {
+			for (const targetIndex of step.targetIndices) {
+				const target = this.modal?.querySelector(`.scd-slot-reel[data-index="${targetIndex}"]`);
+				target?.classList.add("effect-fill-target");
+				if (!await this.wait(210, generation)) return false;
+				this.setReelIcon(targetIndex, step.iconsAfter[targetIndex]);
+				if (!await this.wait(250, generation)) return false;
+				target?.classList.remove("effect-fill-target");
+				if (!await this.wait(90, generation)) return false;
+			}
+			source?.classList.remove("effect-active");
+			return this.wait(180, generation);
+		}
+		if (step.kind === "eraser") {
+			source?.classList.add("effect-eraser");
+			targets.forEach((target) => target.classList.add("effect-eraser-target"));
+			if (!await this.wait(460, generation)) return false;
+			targets.forEach((target) => target.classList.remove("effect-eraser-target"));
+			step.targetIndices.forEach((targetIndex) => this.setReelIcon(targetIndex, step.iconsAfter[targetIndex]));
+			targets.forEach((target) => target.classList.add("effect-eraser-cascade"));
+			if (!await this.wait(460, generation)) return false;
+			source?.classList.remove("effect-active", "effect-eraser");
+			targets.forEach((target) => target.classList.remove("effect-eraser-cascade"));
+			step.iconsAfter.forEach((icon, index) => this.setReelIcon(index, icon));
+			return this.wait(180, generation);
+		}
+		if (step.kind === "wizard") {
+			const destination = step.targetIndices.find((index) => index !== step.sourceIndex) ?? step.sourceIndex;
+			source?.style.setProperty("--scd-wizard-x", `${(destination - step.sourceIndex) * 110}%`);
+		}
+		source?.classList.add(`effect-${step.kind}`);
+		targets.forEach((target) => target.classList.add(`effect-${step.kind}-target`));
+		if (step.kind === "dice") for (let index = 0; index < 5; index += 1) {
+			if (!await this.wait(75, generation)) return false;
+			this.setReelIcon(step.sourceIndex, GATEWAY_SLOT_ICON_IDS[(index * 7 + step.sourceIndex) % GATEWAY_SLOT_ICON_IDS.length]);
+		}
+		else if (step.kind === "trash") {
+			step.targetIndices.forEach((targetIndex) => this.setReelIcon(targetIndex, step.iconsAfter[targetIndex]));
+			if (!await this.wait(460, generation)) return false;
+		} else {
+			if (!await this.wait(230, generation)) return false;
+			step.targetIndices.forEach((targetIndex) => this.setReelIcon(targetIndex, step.iconsAfter[targetIndex]));
+			if (!await this.wait(230, generation)) return false;
+		}
+		step.iconsAfter.forEach((icon, index) => this.setReelIcon(index, icon));
+		source?.classList.remove("effect-active", `effect-${step.kind}`);
+		source?.style.removeProperty("--scd-wizard-x");
+		targets.forEach((target) => target.classList.remove(`effect-${step.kind}-target`));
+		return this.wait(180, generation);
+	}
+	outcomeMessage(outcome) {
+		const rewards = [];
+		if (outcome.coinReward > 0) rewards.push(`+${outcome.coinReward} Skribbl Coin${outcome.coinReward === 1 ? "" : "s"}`);
+		if (outcome.awardedFreeSpins > 0) rewards.push(`+${outcome.awardedFreeSpins} Free Spin${outcome.awardedFreeSpins === 1 ? "" : "s"}`);
+		if (rewards.length > 0) return `You won ${rewards.join(" and ")}!`;
+		if (outcome.heartProgressAfter !== outcome.heartProgressBefore) return `Heart collected \u00B7 ${outcome.heartProgressAfter}/3 toward a Free Spin.`;
+		return "No match this time.";
+	}
+	cancelAnimations() {
+		this.animationGeneration += 1;
+		for (const timer of this.animationTimers) {
+			window.clearTimeout(timer);
+			window.clearInterval(timer);
+		}
+		this.animationTimers.clear();
+		this.animating = false;
+		this.bulbsFlashing = false;
+		if (this.latestOutcome) this.displayIcons = [...this.latestOutcome.finalIcons];
+	}
+	wait(milliseconds, generation) {
+		return new Promise((resolve) => {
+			const timer = window.setTimeout(() => {
+				this.animationTimers.delete(timer);
+				resolve(generation === this.animationGeneration);
+			}, milliseconds);
+			this.animationTimers.add(timer);
+		});
+	}
+	syncLoadingOverlay() {
+		const shell = this.modal?.querySelector(".scd-slots-modal");
+		if (!shell) return;
+		shell.querySelector(".scd-progression-load")?.remove();
+		if (!this.pendingAction) return;
+		const load = element$1("div", "scd-progression-load");
+		const container = element$1("div", "container");
+		const icon = element$1("div", "icon");
+		icon.appendChild(element$1("div", "graphic"));
+		container.appendChild(icon);
+		load.appendChild(container);
+		shell.appendChild(load);
+	}
+	ensureStyles() {
+		if (document.getElementById("skribbl-duels-slots-styles")) return;
+		const style = document.createElement("style");
+		style.id = "skribbl-duels-slots-styles";
+		style.textContent = `
+html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hidden !important;overscroll-behavior:none !important; }
+.scd-slots-launcher { position:fixed;right:18px;top:calc(25vh + 158px);z-index:2147483643;display:grid;place-items:center;width:min(300px,32vw);min-height:80px;border:0;padding:0;background:transparent;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .1s ease-in-out,transform .1s ease-in-out; }
+.scd-slots-launcher:hover { filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);transform:scale(1.06); }
+.scd-slots-launcher img { display:block;width:100%;height:auto;max-height:152px;object-fit:contain; }
+.scd-slots-logo-fallback { padding:10px 14px;border-radius:8px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0005; }
+.scd-slots-overlay { position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:42px 12px 12px;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);animation:scd-slots-fade .2s ease-out;font-family:'Nunito',sans-serif; }
+.scd-slots-modal { position:relative;width:min(940px,calc(100vw - 24px));max-height:calc(100vh - 54px);display:flex;flex-direction:column;overflow:visible;border-radius:10px;background:var(--COLOR_PANEL_BG,rgba(22,24,31,.97));color:var(--COLOR_PANEL_TEXT,#fff);box-shadow:0 0 50px rgba(0,0,0,.25);font-family:'Nunito',sans-serif; }
+.scd-slots-bulbs { position:absolute;z-index:4;left:5%;right:5%;top:-36px;display:flex;align-items:flex-end;justify-content:space-between;pointer-events:none; }
+.scd-slots-bulb { width:58px;height:58px;object-fit:contain;transform:rotate(var(--scd-bulb-turn));filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slots-bulb:not([src]) { border-radius:50%;background:#555;box-shadow:inset 0 0 0 5px #222; }
+.scd-slots-bulb:not([src]).fallback-on { background:#ffe822;box-shadow:0 0 18px #fff36a,inset 0 0 0 5px #b58e00; }
+.scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:hidden;border-radius:10px 10px 0 0; }
+.scd-slots-title { justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004; }
+.scd-slots-title img { display:block;width:min(520px,54vw);max-height:82px;object-fit:contain; }
+.scd-slots-actions { justify-self:end;display:flex;gap:6px; }
+.scd-slots-actions .scd-icon-button { width:42px;height:42px; }
+.scd-slots-actions .scd-icon { width:36px;height:36px; }
+.scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:10px 24px 24px;text-align:center; }
+.scd-slots-machine { width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px; }
+.scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px; }
+.scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background:#fff;box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
+.scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
+.scd-slot-reel::before { top:0; }
+.scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
+.scd-slot-payline { width:78%;height:78%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
+.scd-slot-icon { display:grid;place-items:center;min-width:0;min-height:0; }
+.scd-slot-icon img { display:block;width:100%;height:100%;max-width:128px;max-height:128px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slot-icon-fallback { display:grid;place-items:center;width:100%;height:100%;font-size:clamp(28px,7vw,86px);font-weight:900;color:#222;text-shadow:3px 3px 0 #0003; }
+.scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
+.scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
+.scd-slot-reel.effect-active { z-index:3;transform:scale(1.2);filter:drop-shadow(0 0 15px #fff9); }
+.scd-slot-reel.effect-fill-target .scd-slot-payline { animation:scd-slot-pop .46s ease; }
+.scd-slot-reel.effect-wizard { animation:scd-slot-wizard .46s ease; }
+.scd-slot-reel.effect-wizard-target .scd-slot-payline { animation:scd-slot-magic .46s ease; }
+.scd-slot-reel.effect-eraser-target .scd-slot-payline { animation:scd-slot-erase .46s ease; }
+.scd-slot-reel.effect-eraser-cascade .scd-slot-payline { animation:scd-slot-cascade .46s ease; }
+.scd-slot-reel.effect-trash-target .scd-slot-payline { animation:scd-slot-cascade .46s ease; }
+.scd-slot-reel.effect-dice-target .scd-slot-payline { animation:scd-slot-dice .15s linear infinite; }
+.scd-slots-controls { display:flex;flex-direction:column;align-items:center;gap:12px; }
+.scd-slots-spin { min-height:48px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:var(--BORDER_RADIUS,7px);padding:7px 14px;background:var(--COLOR_PANEL_BUTTON,#2a51d1);color:#fff;font:800 18px/1.1 'Nunito',sans-serif;cursor:pointer;text-shadow:2px 2px 0 #0003; }
+.scd-slots-spin:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
+.scd-slots-spin:disabled { opacity:.55;cursor:not-allowed; }
+.scd-spin-cost-icon { width:36px;height:36px; }
+.scd-spin-cost-icon img { width:36px;height:36px; }
+.scd-slots-heart-progress { display:flex;gap:5px; }
+.scd-slots-heart-progress .scd-slot-icon { width:30px;height:30px;transition:opacity .15s ease,transform .15s ease; }
+.scd-slots-heart-progress .scd-slot-icon.empty { opacity:.25;filter:grayscale(1); }
+.scd-slots-heart-progress .scd-slot-icon:hover { opacity:1;transform:scale(1.12); }
+.scd-slots-result { min-height:1.4em;font-weight:800;color:var(--COLOR_PANEL_TEXT_SUB,#ffffffb3); }
+.scd-slots-result.win { color:var(--COLOR_CHAT_TEXT_GUESSED,#6fd66a); }
+.scd-slots-help { width:100%;box-sizing:border-box;padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
+.scd-slots-help-intro { display:flex;align-items:flex-start;gap:12px; }
+.scd-slots-help-intro > img { width:64px;height:64px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slots-help p { margin:.55em 0 0; }
+.scd-slots-odds { margin-top:14px; }
+.scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
+.scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
+.scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
+.scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
+.scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
+.scd-slots-modal > .scd-progression-load { border-radius:10px;overflow:hidden; }
+.scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
+.scd-slots-overlay::-webkit-scrollbar-thumb,.scd-slots-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
+@keyframes scd-slots-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes scd-reel-spin { from { transform:translateY(-12%) scale(.92);filter:blur(1px); } to { transform:translateY(12%) scale(1.04);filter:blur(2px); } }
+@keyframes scd-reel-stop { 0% { transform:translateY(-8%); } 65% { transform:translateY(4%); } 100% { transform:translateY(0); } }
+@keyframes scd-slot-pop { 0%,100% { transform:scale(1); } 45% { transform:scale(.2);opacity:.3; } 72% { transform:scale(1.2);opacity:1; } }
+@keyframes scd-slot-wizard { 0%,100% { translate:0 0; } 40% { translate:var(--scd-wizard-x,110%) -35%; } 70% { translate:var(--scd-wizard-x,110%) 0; } }
+@keyframes scd-slot-magic { 0%,100% { filter:none; } 45% { filter:hue-rotate(160deg) brightness(1.7);transform:scale(.55) rotate(180deg); } }
+@keyframes scd-slot-erase { 0% { transform:translateY(0);opacity:1; } 50% { transform:translateY(-28%) rotate(-8deg);opacity:.5; } 100% { transform:translateY(30%);opacity:0; } }
+@keyframes scd-slot-cascade { from { transform:translateY(-140%);opacity:0; } to { transform:translateY(0);opacity:1; } }
+@keyframes scd-slot-dice { from { transform:rotate(0) scale(.9); } to { transform:rotate(90deg) scale(1.08); } }
+@media (max-width:720px) {
+  .scd-slots-header { grid-template-columns:auto 1fr auto; }
+  .scd-slots-title { font-size:1.2em; }
+  .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(240px,46vw); }
+  .scd-slots-machine { grid-template-columns:1fr; }
+  .scd-slots-reels { gap:6px; }
+  .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .scd-slots-bulb { width:42px;height:42px; }
+  .scd-slots-bulbs { top:-27px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .scd-slots-overlay,.scd-slot-reel,.scd-slot-payline,.scd-slots-bulb { animation:none !important;transition:none !important; }
 }
 `;
 		(document.head ?? document.documentElement).appendChild(style);
@@ -43329,7 +44265,8 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-profile-view-header .scd-modal-close { justify-self:end; }
 .scd-profile-view-body { overflow:auto;padding:12px; }
 .scd-duel-profile-layout { display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,2fr);gap:14px;align-items:start; }
-.scd-profile-identity { display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
+.scd-profile-identity { position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
+.scd-profile-identity > .scd-coin-pill { position:absolute;left:8px;top:8px;z-index:1; }
 .scd-profile-avatar { position:relative;width:124px !important;height:124px !important;display:grid;place-items:center;font-size:48px;font-weight:900; }
 .scd-profile-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:86%;height:86%; }
 .scd-profile-display-name { width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.45em;font-weight:900; }
@@ -43395,11 +44332,12 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-about-tutorial { position:relative;min-width:0;max-height:450px;display:flex;flex-direction:column;align-items:center;overflow:hidden; }
 .scd-about-tutorial-heading { position:relative;width:100%;min-height:36px;display:flex;align-items:center;justify-content:center;padding:0 42px;text-align:center; }
 .scd-about-tutorial-logo { position:absolute;left:0;top:50%;width:32px;height:32px;transform:translateY(-50%); }
+.scd-about-tutorial-logo:hover { transform:translateY(-50%) scale(1.1); }
 .scd-about-pages { width:100%;min-height:340px;display:grid; }
 .scd-about-page { display:none;grid-area:1/1;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;text-align:center; }
 .scd-about-page.active { display:flex; }
 .scd-about-page-visual { width:min(100%,300px);aspect-ratio:5/4;image-rendering:pixelated;animation:scd-about-image-introduce .3s ease-in-out 1; }
-.scd-about-tutorial .scd-icon:hover,.scd-about-tutorial button:not(:disabled):hover .scd-icon,.scd-about-page-visual:hover { transform:none; }
+.scd-about-tutorial button:not(:disabled):hover .scd-icon:not(.scd-about-tutorial-logo),.scd-about-page-visual:hover { transform:none; }
 .scd-about-page-title { font-size:1.08em; }
 .scd-about-page-description { width:100%;min-height:3.2em; }
 .scd-about-navigation { width:100%;height:25px; }
@@ -43773,6 +44711,7 @@ var DuelProductFoundation = class {
 	authClient = new SupabaseDiscordAuthClient();
 	gatewayClient;
 	skribbleUi;
+	slotsUi;
 	authState;
 	gatewayState;
 	unsubscribers = [];
@@ -43882,7 +44821,19 @@ var DuelProductFoundation = class {
 			gateway: this.gatewayClient,
 			getGatewayState: () => this.gatewayState,
 			showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
-			onModalVisibilityChanged: () => this.syncPageScrollLock()
+			onModalVisibilityChanged: () => this.syncPageScrollLock(),
+			aboutIconUrl: EMBEDDED_ICON_ASSETS["res/challenge-icons/about.gif"],
+			registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
+		});
+		this.slotsUi = new SkribblSlotsFeatureUi({
+			runtimeId: options.runtimeId,
+			gateway: this.gatewayClient,
+			getGatewayState: () => this.gatewayState,
+			createCoinPill: (compact) => this.skribbleUi.createCoinPill(compact),
+			showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
+			onModalVisibilityChanged: () => this.syncPageScrollLock(),
+			aboutIconUrl: EMBEDDED_ICON_ASSETS["res/challenge-icons/about.gif"],
+			registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
 		});
 	}
 	start() {
@@ -43893,6 +44844,7 @@ var DuelProductFoundation = class {
 		this.tooltips.start();
 		this.soundEffects.initialize();
 		this.skribbleUi.start();
+		this.slotsUi.start();
 		document.addEventListener("keydown", this.draftKeydown, true);
 		document.addEventListener("visibilitychange", this.visibilityRecovery, true);
 		document.addEventListener("skribblInitialized", this.typoInitialized, true);
@@ -43913,6 +44865,7 @@ var DuelProductFoundation = class {
 			const playerFound = state.match !== null && previous.match?.matchId !== state.match.matchId && (previous.queue !== null || previous.invite?.status === "waiting" || this.pendingInviteToken !== null || this.inviteAcceptanceSubmitted);
 			this.gatewayState = state;
 			this.skribbleUi.update(state);
+			this.slotsUi.update(state);
 			if (playerFound) {
 				this.soundEffects.play("matchFound");
 				this.closeProductModalsForMatchFound();
@@ -44002,9 +44955,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.65.0",
+			version: "0.66.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 12,
+			gatewayContractVersion: 13,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -44108,6 +45061,7 @@ var DuelProductFoundation = class {
 		window.removeEventListener("focus", this.visibilityRecovery, false);
 		this.gatewayClient.stop();
 		this.skribbleUi.stop();
+		this.slotsUi.stop();
 		this.authClient.stop();
 		this.launcher?.remove();
 		this.panel?.remove();
@@ -44151,7 +45105,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.65.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.66.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -44278,7 +45232,6 @@ var DuelProductFoundation = class {
 		this.panelAccount.addEventListener("click", () => this.openDuelProfile());
 		const title = element("div", "scd-modal-title", "Skribbl Duels");
 		const actions = element("div", "scd-modal-actions");
-		actions.appendChild(this.skribbleUi.createCoinPill());
 		const settings = element("button", "scd-icon-button");
 		settings.type = "button";
 		settings.appendChild(this.createIconAsset("res/challenge-icons/settings.gif", "\u2699", "Settings"));
@@ -44564,7 +45517,7 @@ var DuelProductFoundation = class {
 	}
 	syncPageScrollLock() {
 		const isVisible = (node) => Boolean(node?.isConnected && node.style.display !== "none");
-		const locked = isVisible(this.panel) || isVisible(this.stage) || isVisible(this.intro) || isVisible(this.profileColorPicker) || isVisible(this.duelProfileModal) || isVisible(this.profileDetailModal) || this.skribbleUi.isModalOpen();
+		const locked = isVisible(this.panel) || isVisible(this.stage) || isVisible(this.intro) || isVisible(this.profileColorPicker) || isVisible(this.duelProfileModal) || isVisible(this.profileDetailModal) || this.skribbleUi.isModalOpen() || this.slotsUi.isModalOpen();
 		for (const node of [document.documentElement, document.body]) {
 			if (!node) continue;
 			if (locked) node.dataset.scdScrollLockRuntime = this.options.runtimeId;
@@ -45410,6 +46363,7 @@ var DuelProductFoundation = class {
 		const body = element("div", "scd-profile-view-body");
 		const layout = element("div", "scd-duel-profile-layout");
 		const identityColumn = element("section", "scd-profile-identity");
+		identityColumn.appendChild(this.skribbleUi.createCoinPill(true));
 		const effectiveDisplayName = this.savedSelfDisplayName ?? identity.displayName;
 		identityColumn.appendChild(this.createParticipantAvatar(effectiveDisplayName, {
 			avatarSource: identity.avatarSource ?? "discord",
@@ -46578,7 +47532,7 @@ var DuelProductFoundation = class {
 		const layout = element("div", "scd-about-layout");
 		const copy = element("div", "scd-about-copy");
 		const connection = element("div", "scd-card");
-		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v12`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
+		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v13`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		copy.append(connection, freeze);
@@ -47728,6 +48682,7 @@ var DuelProductFoundation = class {
 	}
 	closeProductModalsForMatchFound() {
 		this.skribbleUi.closeForMatchFound();
+		this.slotsUi.closeForMatchFound();
 		this.stopAboutTutorial();
 		if (this.introTimer !== null) window.clearTimeout(this.introTimer);
 		this.introTimer = null;
@@ -47957,7 +48912,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.65.0";
+var BUILD_VERSION = "0.66.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

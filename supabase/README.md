@@ -45,6 +45,14 @@ Daily Skribble words and per-language Daily runs. Also configure the Gateway's
 server-only `SKRIBBLE_DAILY_SECRET`; `/readyz` reports progression unhealthy if
 the migration is missing.
 
+For v0.66.0, apply
+`202609170001_add_skribbl_slots_and_harden_functions.sql` after the Coin/Daily
+migration and before deploying Contract v13. It adds private persistent Slots
+state, an append-only spin audit and one service-role-only atomic spin RPC. It
+also fixes the mutable Coin-trigger search path and changes the authenticated
+profile RPC from `SECURITY DEFINER` to `SECURITY INVOKER`, with own-row RLS and
+the existing entitlement boundary enforced by a validating trigger.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

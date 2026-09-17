@@ -1,7 +1,67 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 12 as const;
+export const GATEWAY_CONTRACT_VERSION = 13 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
+
+export const GATEWAY_SLOT_ICON_IDS = [
+  'book', 'slimy', 'fill', 'wizard', 'eraser', 'trash', 'dice', 'heart',
+  'skribbl-coin', '7', 'trophy', 'crown', 'pen', 'skribbl-duels-logo',
+  'potion', 'drop', 'pizza', 'pumpkin', 'eggplant', 'pineapple', 'peach',
+  'ribbon', 'skull', 'poop'
+] as const;
+
+export type GatewaySlotIconId = typeof GATEWAY_SLOT_ICON_IDS[number];
+export type GatewayFreeSpinSource = 'book' | 'slimy' | 'heart';
+
+/** Integer entries in each independently sampled base reel (126 total). */
+export const GATEWAY_SLOT_BASE_WEIGHTS: Readonly<Record<GatewaySlotIconId, number>> = {
+  book: 7,
+  slimy: 3,
+  fill: 2,
+  wizard: 2,
+  eraser: 4,
+  trash: 1,
+  dice: 4,
+  heart: 8,
+  'skribbl-coin': 1,
+  '7': 2,
+  trophy: 3,
+  crown: 3,
+  pen: 4,
+  'skribbl-duels-logo': 4,
+  potion: 5,
+  drop: 5,
+  pizza: 7,
+  pumpkin: 7,
+  eggplant: 7,
+  pineapple: 9,
+  peach: 9,
+  ribbon: 9,
+  skull: 15,
+  poop: 15
+};
+
+export const GATEWAY_SLOT_COIN_REWARDS: Readonly<Partial<Record<GatewaySlotIconId, number>>> = {
+  'skribbl-coin': 10,
+  '7': 7,
+  trophy: 5,
+  crown: 5,
+  pen: 4,
+  'skribbl-duels-logo': 4,
+  potion: 3,
+  drop: 3,
+  pizza: 2,
+  pumpkin: 2,
+  eggplant: 2,
+  pineapple: 1,
+  peach: 1,
+  ribbon: 1
+};
+
+export const GATEWAY_SLOT_FREE_SPIN_REWARDS: Readonly<Partial<Record<GatewaySlotIconId, number>>> = {
+  book: 5,
+  slimy: 10
+};
 
 export interface GatewaySocketAuth {
   accessToken?: string;
@@ -169,10 +229,15 @@ export interface GatewaySkribbleGuessMessage {
   guess: string;
 }
 
-export interface GatewaySkribbleCelebrationReplayMessage {
-  type: 'SKRIBBLE_CELEBRATION_REPLAY';
+export interface GatewaySlotsOpenMessage {
+  type: 'SLOTS_OPEN';
   requestId: string;
-  dateKey: string;
+}
+
+export interface GatewaySlotsSpinMessage {
+  type: 'SLOTS_SPIN';
+  requestId: string;
+  sessionId: string;
 }
 
 export type GatewayClientMessage =
@@ -194,7 +259,8 @@ export type GatewayClientMessage =
   | GatewayDrawWithdrawMessage
   | GatewaySkribbleOpenMessage
   | GatewaySkribbleGuessMessage
-  | GatewaySkribbleCelebrationReplayMessage
+  | GatewaySlotsOpenMessage
+  | GatewaySlotsSpinMessage
   | GatewayPingMessage;
 
 export interface GatewayWelcomeMessage {
@@ -430,6 +496,8 @@ export interface GatewaySkribbleState {
   availability: 'ready' | 'unsupported';
   unavailableReason: string | null;
   status: 'playing' | 'solved' | 'lost';
+  /** Present only after the round ends; the Daily answer is never sent early. */
+  answer: string | null;
   maxAttempts: 10;
   minimumLength: 2;
   maximumLength: 32;
@@ -474,6 +542,63 @@ export interface GatewayCoinBalanceMessage {
   transaction: GatewayCoinTransactionSummary | null;
 }
 
+export type GatewaySlotEffectKind = 'fill' | 'wizard' | 'eraser' | 'trash' | 'dice';
+
+export interface GatewaySlotEffectStep {
+  kind: GatewaySlotEffectKind;
+  sourceIndex: number;
+  targetIndices: readonly number[];
+  iconsAfter: readonly [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId];
+}
+
+export interface GatewaySlotsState {
+  sessionId: string;
+  rulesVersion: number;
+  reelCount: 3;
+  spinCost: 1;
+  freeSpins: number;
+  nextFreeSpinSource: GatewayFreeSpinSource | null;
+  heartProgress: number;
+  heartTarget: 3;
+  canSpin: boolean;
+}
+
+export interface GatewaySlotsStateMessage {
+  type: 'SLOTS_STATE';
+  requestId: string;
+  state: GatewaySlotsState;
+}
+
+export interface GatewaySlotSpinOutcome {
+  spinId: string;
+  initialIcons: readonly [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId];
+  effectSteps: readonly GatewaySlotEffectStep[];
+  finalIcons: readonly [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId];
+  usedFreeSpin: boolean;
+  usedFreeSpinSource: GatewayFreeSpinSource | null;
+  coinCost: 0 | 1;
+  coinReward: number;
+  awardedFreeSpins: number;
+  freeSpinsBefore: number;
+  freeSpinsAfter: number;
+  nextFreeSpinSource: GatewayFreeSpinSource | null;
+  heartProgressBefore: number;
+  heartProgressAfter: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  occurredAt: number;
+}
+
+export interface GatewaySlotsSpinResultMessage {
+  type: 'SLOTS_SPIN_RESULT';
+  requestId: string;
+  accepted: boolean;
+  reason: 'accepted' | 'session-not-found' | 'insufficient-coins';
+  state: GatewaySlotsState;
+  outcome: GatewaySlotSpinOutcome | null;
+  coinRevision: number;
+}
+
 export interface GatewayErrorMessage {
   type: 'ERROR';
   code: string;
@@ -494,6 +619,8 @@ export type GatewayServerMessage =
   | GatewayTelemetryAckMessage
   | GatewaySkribbleStateMessage
   | GatewaySkribbleGuessResultMessage
+  | GatewaySlotsStateMessage
+  | GatewaySlotsSpinResultMessage
   | GatewayCoinBalanceMessage
   | GatewayPongMessage
   | GatewayErrorMessage;

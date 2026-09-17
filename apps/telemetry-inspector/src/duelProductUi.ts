@@ -95,6 +95,7 @@ import {
 import { SkribblChatStatDisplay } from './chatStatDisplay';
 import { isTypoRuntimeDetected } from './typoRuntimeDetection';
 import { SkribbleFeatureUi } from './skribbleUi';
+import { SkribblSlotsFeatureUi } from './slotsUi';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -846,7 +847,8 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-profile-view-header .scd-modal-close { justify-self:end; }
 .scd-profile-view-body { overflow:auto;padding:12px; }
 .scd-duel-profile-layout { display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,2fr);gap:14px;align-items:start; }
-.scd-profile-identity { display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
+.scd-profile-identity { position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
+.scd-profile-identity > .scd-coin-pill { position:absolute;left:8px;top:8px;z-index:1; }
 .scd-profile-avatar { position:relative;width:124px !important;height:124px !important;display:grid;place-items:center;font-size:48px;font-weight:900; }
 .scd-profile-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:86%;height:86%; }
 .scd-profile-display-name { width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1.45em;font-weight:900; }
@@ -912,11 +914,12 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-about-tutorial { position:relative;min-width:0;max-height:450px;display:flex;flex-direction:column;align-items:center;overflow:hidden; }
 .scd-about-tutorial-heading { position:relative;width:100%;min-height:36px;display:flex;align-items:center;justify-content:center;padding:0 42px;text-align:center; }
 .scd-about-tutorial-logo { position:absolute;left:0;top:50%;width:32px;height:32px;transform:translateY(-50%); }
+.scd-about-tutorial-logo:hover { transform:translateY(-50%) scale(1.1); }
 .scd-about-pages { width:100%;min-height:340px;display:grid; }
 .scd-about-page { display:none;grid-area:1/1;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:flex-start;gap:7px;text-align:center; }
 .scd-about-page.active { display:flex; }
 .scd-about-page-visual { width:min(100%,300px);aspect-ratio:5/4;image-rendering:pixelated;animation:scd-about-image-introduce .3s ease-in-out 1; }
-.scd-about-tutorial .scd-icon:hover,.scd-about-tutorial button:not(:disabled):hover .scd-icon,.scd-about-page-visual:hover { transform:none; }
+.scd-about-tutorial button:not(:disabled):hover .scd-icon:not(.scd-about-tutorial-logo),.scd-about-page-visual:hover { transform:none; }
 .scd-about-page-title { font-size:1.08em; }
 .scd-about-page-description { width:100%;min-height:3.2em; }
 .scd-about-navigation { width:100%;height:25px; }
@@ -1302,6 +1305,7 @@ export class DuelProductFoundation {
   private readonly authClient = new SupabaseDiscordAuthClient();
   private readonly gatewayClient: SocketIoGatewayClient;
   private readonly skribbleUi: SkribbleFeatureUi;
+  private readonly slotsUi: SkribblSlotsFeatureUi;
   private authState: AuthSnapshot;
   private gatewayState: GatewayConnectionSnapshot;
   private readonly unsubscribers: Array<() => void> = [];
@@ -1426,7 +1430,19 @@ export class DuelProductFoundation {
       gateway: this.gatewayClient,
       getGatewayState: () => this.gatewayState,
       showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
-      onModalVisibilityChanged: () => this.syncPageScrollLock()
+      onModalVisibilityChanged: () => this.syncPageScrollLock(),
+      aboutIconUrl: EMBEDDED_ICON_ASSETS['res/challenge-icons/about.gif'] ?? null,
+      registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
+    });
+    this.slotsUi = new SkribblSlotsFeatureUi({
+      runtimeId: options.runtimeId,
+      gateway: this.gatewayClient,
+      getGatewayState: () => this.gatewayState,
+      createCoinPill: compact => this.skribbleUi.createCoinPill(compact),
+      showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
+      onModalVisibilityChanged: () => this.syncPageScrollLock(),
+      aboutIconUrl: EMBEDDED_ICON_ASSETS['res/challenge-icons/about.gif'] ?? null,
+      registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
     });
   }
 
@@ -1438,6 +1454,7 @@ export class DuelProductFoundation {
     this.tooltips.start();
     this.soundEffects.initialize();
     this.skribbleUi.start();
+    this.slotsUi.start();
     document.addEventListener('keydown', this.draftKeydown, true);
     document.addEventListener('visibilitychange', this.visibilityRecovery, true);
     document.addEventListener('skribblInitialized', this.typoInitialized, true);
@@ -1475,6 +1492,7 @@ export class DuelProductFoundation {
           || this.inviteAcceptanceSubmitted);
       this.gatewayState = state;
       this.skribbleUi.update(state);
+      this.slotsUi.update(state);
       if (playerFound) {
         this.soundEffects.play('matchFound');
         this.closeProductModalsForMatchFound();
@@ -1572,7 +1590,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.65.0',
+      version: '0.66.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1688,6 +1706,7 @@ export class DuelProductFoundation {
     window.removeEventListener('focus', this.visibilityRecovery, false);
     this.gatewayClient.stop();
     this.skribbleUi.stop();
+    this.slotsUi.stop();
     this.authClient.stop();
     this.launcher?.remove();
     this.panel?.remove();
@@ -1731,7 +1750,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.65.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.66.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -1844,7 +1863,6 @@ export class DuelProductFoundation {
     this.panelAccount.addEventListener('click', () => this.openDuelProfile());
     const title = element('div', 'scd-modal-title', 'Skribbl Duels');
     const actions = element('div', 'scd-modal-actions');
-    actions.appendChild(this.skribbleUi.createCoinPill());
     const settings = element('button', 'scd-icon-button') as HTMLButtonElement;
     settings.type = 'button';
     settings.appendChild(this.createIconAsset('res/challenge-icons/settings.gif', '⚙', 'Settings'));
@@ -2203,7 +2221,8 @@ export class DuelProductFoundation {
       || isVisible(this.profileColorPicker)
       || isVisible(this.duelProfileModal)
       || isVisible(this.profileDetailModal)
-      || this.skribbleUi.isModalOpen();
+      || this.skribbleUi.isModalOpen()
+      || this.slotsUi.isModalOpen();
     for (const node of [document.documentElement, document.body]) {
       if (!node) continue;
       if (locked) {
@@ -3280,6 +3299,7 @@ export class DuelProductFoundation {
     const body = element('div', 'scd-profile-view-body');
     const layout = element('div', 'scd-duel-profile-layout');
     const identityColumn = element('section', 'scd-profile-identity');
+    identityColumn.appendChild(this.skribbleUi.createCoinPill(true));
     const effectiveDisplayName = this.savedSelfDisplayName ?? identity.displayName;
     identityColumn.appendChild(this.createParticipantAvatar(effectiveDisplayName, {
       avatarSource: identity.avatarSource ?? 'discord',
@@ -6335,6 +6355,7 @@ export class DuelProductFoundation {
 
   private closeProductModalsForMatchFound(): void {
     this.skribbleUi.closeForMatchFound();
+    this.slotsUi.closeForMatchFound();
     this.stopAboutTutorial();
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = null;

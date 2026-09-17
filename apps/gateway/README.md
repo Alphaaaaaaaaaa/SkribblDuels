@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v12 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v12 also owns the append-only Skribbl Coin balance and Daily Skribble validation/reward path.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v13 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v13 also owns the append-only Skribbl Coin balance, Daily Skribble validation/reward path and Skribbl Slots outcomes.
 
 ## Local server
 
@@ -8,7 +8,8 @@ The Gateway verifies the browser's Supabase access token, loads the matching rea
    `202608200001_create_duel_invites.sql`,
    `202608210001_create_gateway_abuse_controls.sql`, and finally
    `202608280001_add_duel_name_colors.sql`, and
-   `202609160001_create_skribbl_coin_ledger.sql` in that order.
+   `202609160001_create_skribbl_coin_ledger.sql`, and
+   `202609170001_add_skribbl_slots_and_harden_functions.sql` in that order.
 2. Copy `.env.example` to `.env` and set the server-only
    `SUPABASE_SERVICE_ROLE_KEY`. Add `REDIS_URL` and `OBSERVABILITY_TOKEN` for
    the production-equivalent multi-instance path. Set a stable, random
@@ -22,7 +23,7 @@ cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v12 resume
+change closes cluster sockets once and reuses the durable Contract v13 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require
@@ -113,11 +114,13 @@ unverifiable word-list challenges. The startup log lists both sets explicitly.
 
 Daily Skribble selects and persists one word per UTC date and available
 language using the server-only daily secret and official-list hash. Guesses are
-validated against that authoritative list and the answer is never included in
-client messages. The first account solve across all languages in a UTC day is
+validated against that authoritative list; the answer is disclosed only after
+the round ends. The first account solve across all languages in a UTC day is
 credited through the row-locked, idempotent Coin RPC; Practice never credits
-Coins. A one-Coin celebration replay is the initial cosmetic sink. See
-`docs/skribbl-coins-skribble-v0.65.0.md` for the ledger/recovery invariants.
+Coins. Skribbl Slots is the first repeatable sink: the Gateway generates every
+base reel and ordered effect, then one transaction commits the Coin cost,
+payline reward, Free Spins, Heart progress and immutable spin audit exactly
+once. See `docs/skribbl-slots-skribble-stability-v0.66.0.md`.
 
 The local health/readiness endpoints do not prove a browser connection because
 `skribbl.io` needs a publicly trusted HTTPS Gateway. Deploy first, then build

@@ -12,22 +12,31 @@ import type {
   GatewayServerMessage,
   GatewaySkribbleAttempt,
   GatewaySkribbleMark,
-  GatewaySkribbleState
+  GatewaySkribbleState,
+  GatewaySlotsState
 } from '@skribbl-duels/gateway-contracts';
 import type {
   GatewayProgressionPersistence,
   GatewaySkribbleDailyRun,
   GatewaySkribbleDailyWord
 } from './progressionPersistence';
+import {
+  generateSlotOutcome,
+  type GeneratedSlotOutcome,
+  SKRIBBL_SLOTS_HEART_TARGET,
+  SKRIBBL_SLOTS_REEL_COUNT,
+  SKRIBBL_SLOTS_RULES_VERSION,
+  SKRIBBL_SLOTS_SPIN_COST
+} from './slotRules';
 
 const SKRIBBLE_MAX_ATTEMPTS = 10;
 const SKRIBBLE_MIN_LENGTH = 2;
 const SKRIBBLE_MAX_LENGTH = 32;
-const SKRIBBLE_RULES_VERSION = 1;
+const SKRIBBLE_RULES_VERSION = 2;
 const PRACTICE_SESSION_TTL_MS = 2 * 60 * 60_000;
 
 type SkribbleClientMessage = Extract<GatewayClientMessage, {
-  type: 'SKRIBBLE_OPEN' | 'SKRIBBLE_GUESS' | 'SKRIBBLE_CELEBRATION_REPLAY';
+  type: 'SKRIBBLE_OPEN' | 'SKRIBBLE_GUESS' | 'SLOTS_OPEN' | 'SLOTS_SPIN';
 }>;
 
 interface ActiveSkribbleSession {
@@ -39,6 +48,7 @@ interface ActiveSkribbleSession {
   languageId: number;
   languageName: string;
   answer: string;
+  canonicalWords: Map<string, string>;
   attempts: GatewaySkribbleAttempt[];
   processedRequestIds: Set<string>;
   status: 'playing' | 'solved' | 'lost';
@@ -48,11 +58,18 @@ interface ActiveSkribbleSession {
   updatedAt: number;
 }
 
+interface ActiveSlotsSession {
+  sessionId: string;
+  accountId: string;
+  updatedAt: number;
+}
+
 export interface GatewayProgressionServiceOptions {
   persistence: GatewayProgressionPersistence;
   dailySecret: string;
   send(accountId: string, message: GatewayServerMessage): void;
   now?: () => number;
+  generateSlotOutcome?: () => GeneratedSlotOutcome;
 }
 
 function utcDate(now: number): { dateKey: string; nextDailyAt: number } {
@@ -107,6 +124,7 @@ function stateFrom(session: ActiveSkribbleSession): GatewaySkribbleState {
       ? null
       : `The official ${session.languageName} word list is not fetchable, so Skribble is unavailable for this language.`,
     status: session.status,
+    answer: session.status === 'playing' ? null : session.answer,
     maxAttempts: SKRIBBLE_MAX_ATTEMPTS,
     minimumLength: SKRIBBLE_MIN_LENGTH,
     maximumLength: SKRIBBLE_MAX_LENGTH,
@@ -119,6 +137,7 @@ function stateFrom(session: ActiveSkribbleSession): GatewaySkribbleState {
 
 export class GatewayProgressionService {
   private readonly sessions = new Map<string, ActiveSkribbleSession>();
+  private readonly slotsSessions = new Map<string, ActiveSlotsSession>();
   private readonly now: () => number;
 
   public constructor(private readonly options: GatewayProgressionServiceOptions) {
@@ -139,7 +158,11 @@ export class GatewayProgressionService {
       await this.guess(accountId, message.requestId, message.sessionId, message.guess);
       return;
     }
-    await this.replayCelebration(accountId, message.requestId, message.dateKey);
+    if (message.type === 'SLOTS_OPEN') {
+      await this.openSlots(accountId, message.requestId);
+      return;
+    }
+    await this.spinSlots(accountId, message.requestId, message.sessionId);
   }
 
   private async open(
@@ -158,6 +181,7 @@ export class GatewayProgressionService {
           return length >= SKRIBBLE_MIN_LENGTH && length <= SKRIBBLE_MAX_LENGTH;
         })
       : [];
+    const canonicalWords = new Map(words.map(word => [normalizeOfficialWord(word), word]));
     let answer = '';
     let attempts: GatewaySkribbleAttempt[] = [];
     let processedRequestIds = new Set<string>();
@@ -195,7 +219,13 @@ export class GatewayProgressionService {
       }
       canEarn = existingReward === null;
       if (runStatus === 'solved' && canEarn) {
-        const transaction = await this.rewardDailySolve(accountId, dateKey, languageId, now);
+        const transaction = await this.rewardDailySolve(
+          accountId,
+          dateKey,
+          languageId,
+          Math.max(1, attempts.length),
+          now
+        );
         rewardAmount = transaction?.amount ?? 0;
         rewarded = transaction !== null;
         canEarn = false;
@@ -228,6 +258,7 @@ export class GatewayProgressionService {
       languageId,
       languageName,
       answer,
+      canonicalWords,
       attempts,
       processedRequestIds,
       status: runStatus,
@@ -281,16 +312,17 @@ export class GatewayProgressionService {
       });
       return;
     }
+    const canonicalGuess = session.canonicalWords.get(normalizeOfficialWord(guess)) ?? guess;
 
     const submittedAt = this.now();
     const attempt: GatewaySkribbleAttempt = {
-      guess,
-      marks: scoreGuess(session.answer, guess),
+      guess: canonicalGuess,
+      marks: scoreGuess(session.answer, canonicalGuess),
       submittedAt
     };
     session.processedRequestIds.add(requestId);
     session.attempts.push(attempt);
-    const solved = normalizeOfficialWord(guess) === normalizeOfficialWord(session.answer);
+    const solved = normalizeOfficialWord(canonicalGuess) === normalizeOfficialWord(session.answer);
     session.status = solved
       ? 'solved'
       : session.attempts.length >= SKRIBBLE_MAX_ATTEMPTS
@@ -316,6 +348,7 @@ export class GatewayProgressionService {
           accountId,
           session.dateKey,
           session.languageId,
+          session.attempts.length,
           submittedAt
         );
         session.rewardAmount = rewardTransaction?.amount ?? 0;
@@ -334,37 +367,17 @@ export class GatewayProgressionService {
     if (rewardTransaction) await this.sendBalance(accountId, requestId, rewardTransaction);
   }
 
-  private async replayCelebration(accountId: string, requestId: string, dateKey: string): Promise<void> {
-    if (!await this.options.persistence.getDailySkribbleReward(accountId, dateKey)) {
-      throw new Error('A rewarded Daily Skribble solve is required before replaying its celebration.');
-    }
-    const transaction = await this.options.persistence.applyCoinTransaction({
-      accountId,
-      idempotencyKey: `skribble:celebration:${accountId}:${requestId}`,
-      amount: -1,
-      entryKind: 'sink',
-      sourceSinkType: 'skribble-celebration-replay',
-      sourceEntityId: dateKey,
-      rulesVersion: SKRIBBLE_RULES_VERSION,
-      occurredAt: this.now(),
-      reversalOfTransactionId: null
-    });
-    await this.sendBalance(accountId, requestId, transaction);
-  }
-
   private async rewardDailySolve(
     accountId: string,
     dateKey: string,
     languageId: number,
+    attempts: number,
     occurredAt: number
   ): Promise<GatewayCoinTransactionSummary | null> {
     const sourceEntityId = `${dateKey}:${languageId}`;
     const existing = await this.options.persistence.getDailySkribbleReward(accountId, dateKey);
     if (existing) return existing.sourceEntityId === sourceEntityId ? existing : null;
-    const rewardBytes = createHmac('sha256', this.options.dailySecret)
-      .update(`reward:${dateKey}:${accountId}`)
-      .digest();
-    const amount = 10 + (rewardBytes.readUInt8(0) % 16);
+    const amount = Math.max(10, 26 - Math.max(1, Math.min(SKRIBBLE_MAX_ATTEMPTS, attempts)));
     try {
       return await this.options.persistence.applyCoinTransaction({
         accountId,
@@ -411,7 +424,7 @@ export class GatewayProgressionService {
     const { dateKey, nextDailyAt } = utcDate(this.now());
     return {
       sessionId: randomUUID(), accountId, mode: 'practice', dateKey, nextDailyAt,
-      languageId: 0, languageName: 'English', answer: '', attempts: [],
+      languageId: 0, languageName: 'English', answer: '', canonicalWords: new Map(), attempts: [],
       processedRequestIds: new Set(),
       status: 'playing', rewardAmount: 0, rewarded: false, canEarn: false,
       updatedAt: this.now()
@@ -428,6 +441,99 @@ export class GatewayProgressionService {
       if (!oldest) break;
       this.sessions.delete(oldest);
     }
+    for (const [sessionId, session] of this.slotsSessions) {
+      if (session.updatedAt < cutoff) this.slotsSessions.delete(sessionId);
+    }
+    while (this.slotsSessions.size > 10_000) {
+      const oldest = this.slotsSessions.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.slotsSessions.delete(oldest);
+    }
+  }
+
+  private async openSlots(accountId: string, requestId: string): Promise<void> {
+    const session: ActiveSlotsSession = { sessionId: randomUUID(), accountId, updatedAt: this.now() };
+    this.slotsSessions.set(session.sessionId, session);
+    this.options.send(accountId, {
+      type: 'SLOTS_STATE',
+      requestId,
+      state: await this.slotsState(accountId, session.sessionId)
+    });
+  }
+
+  private async spinSlots(accountId: string, requestId: string, sessionId: string): Promise<void> {
+    const session = this.slotsSessions.get(sessionId);
+    if (!session || session.accountId !== accountId) {
+      const replacement: ActiveSlotsSession = {
+        sessionId: randomUUID(), accountId, updatedAt: this.now()
+      };
+      this.slotsSessions.set(replacement.sessionId, replacement);
+      const account = await this.options.persistence.getCoinAccount(accountId);
+      this.options.send(accountId, {
+        type: 'SLOTS_SPIN_RESULT', requestId, accepted: false, reason: 'session-not-found',
+        state: await this.slotsState(accountId, replacement.sessionId), outcome: null,
+        coinRevision: account.revision
+      });
+      return;
+    }
+    session.updatedAt = this.now();
+    const generated = this.options.generateSlotOutcome?.() ?? generateSlotOutcome();
+    try {
+      const committed = await this.options.persistence.commitSlotSpin({
+        accountId,
+        requestId,
+        spinId: generated.spinId,
+        initialIcons: generated.initialIcons,
+        effectSteps: generated.effectSteps,
+        finalIcons: generated.finalIcons,
+        coinReward: generated.coinReward,
+        baseFreeSpinReward: generated.baseFreeSpinReward,
+        heartCount: generated.heartCount,
+        rulesVersion: SKRIBBL_SLOTS_RULES_VERSION,
+        occurredAt: this.now()
+      });
+      const state: GatewaySlotsState = {
+        sessionId: session.sessionId,
+        rulesVersion: SKRIBBL_SLOTS_RULES_VERSION,
+        reelCount: SKRIBBL_SLOTS_REEL_COUNT,
+        spinCost: SKRIBBL_SLOTS_SPIN_COST,
+        freeSpins: committed.outcome.freeSpinsAfter,
+        nextFreeSpinSource: committed.outcome.nextFreeSpinSource,
+        heartProgress: committed.outcome.heartProgressAfter,
+        heartTarget: SKRIBBL_SLOTS_HEART_TARGET,
+        canSpin: committed.outcome.freeSpinsAfter > 0 || committed.outcome.balanceAfter > 0
+      };
+      this.options.send(accountId, {
+        type: 'SLOTS_SPIN_RESULT', requestId, accepted: true, reason: 'accepted',
+        state, outcome: committed.outcome, coinRevision: committed.coinRevision
+      });
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('SCD_SLOTS_INSUFFICIENT_COINS')) throw error;
+      const account = await this.options.persistence.getCoinAccount(accountId);
+      this.options.send(accountId, {
+        type: 'SLOTS_SPIN_RESULT', requestId, accepted: false, reason: 'insufficient-coins',
+        state: await this.slotsState(accountId, session.sessionId), outcome: null,
+        coinRevision: account.revision
+      });
+    }
+  }
+
+  private async slotsState(accountId: string, sessionId: string): Promise<GatewaySlotsState> {
+    const [slots, coins] = await Promise.all([
+      this.options.persistence.getSlotsAccount(accountId),
+      this.options.persistence.getCoinAccount(accountId)
+    ]);
+    return {
+      sessionId,
+      rulesVersion: SKRIBBL_SLOTS_RULES_VERSION,
+      reelCount: SKRIBBL_SLOTS_REEL_COUNT,
+      spinCost: SKRIBBL_SLOTS_SPIN_COST,
+      freeSpins: slots.freeSpins,
+      nextFreeSpinSource: slots.nextFreeSpinSource,
+      heartProgress: slots.heartProgress,
+      heartTarget: SKRIBBL_SLOTS_HEART_TARGET,
+      canSpin: slots.freeSpins > 0 || coins.balance > 0
+    };
   }
 }
 

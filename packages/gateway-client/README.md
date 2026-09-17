@@ -1,6 +1,6 @@
 # Gateway Client
 
-Socket.IO transport for the browser userscript. It places the current Supabase access token in the connection handshake, sends a token-free Contract v12 `HELLO`, validates server messages and exposes authenticated queue, invite, match, Daily Skribble and Coin state to the Duel UI. It also owns bounded private-chat history, telemetry batching/ACK flow and idempotent fallback Claim submission. Contract v11 projects the server-validated 0–27 name/Claim color index through identity and participant snapshots; Contract v12 adds the authoritative progression messages.
+Socket.IO transport for the browser userscript. It places the current Supabase access token in the connection handshake, sends a token-free Contract v13 `HELLO`, validates server messages and exposes authenticated queue, invite, match, Daily Skribble, Skribbl Slots and Coin state to the Duel UI. It also owns bounded private-chat history, telemetry batching/ACK flow and idempotent fallback Claim submission. Contract v13 adds the authoritative Slots outcome/effect stream and terminal Skribble answer disclosure.
 
 The client exposes validated queue and match snapshots plus `joinMatchmaking`, `leaveMatchmaking`, `setReady` and revision-checked `pickDraftChallenge`. Page eligibility remains a product-UI decision; the client emits the required `page: 'home'` declaration.
 

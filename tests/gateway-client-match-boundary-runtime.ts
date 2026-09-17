@@ -132,7 +132,7 @@ reloadedInternals.socket = {
 };
 reloadedInternals.receive({
   type: 'WELCOME',
-  contractVersion: 12,
+  contractVersion: 13,
   connectionId: 'reloaded-connection',
   identity: {
     accountId: 'alpha',

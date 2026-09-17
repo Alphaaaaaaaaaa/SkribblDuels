@@ -49,6 +49,7 @@
 | v0.63 Typo gate and About/UI metrics | Complete | Typo-only matchmaking, five-page About tutorial, unified `res/` assets, modal scroll containment, WPM reset and lower-is-better P90 Guess Time |
 | v0.64 Typo recovery and Ranked foundation | Complete | Persistent underscore/runtime-marker detection with retry, unavailable-action tooltips, tutorial inactivity handling and deterministic Elo v1 rules/tests |
 | v0.65 Coin/Daily progression pilot | Foundation complete | Contract v12, append-only idempotent Coin ledger, authoritative Daily Skribble, one bounded reward and one cosmetic sink |
+| v0.66 Slots and progression stability | Complete | Contract v13, authoritative idempotent three-reel sink, embedded arcade assets and stable Daily/Practice client state |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
@@ -113,18 +114,20 @@
 - Prevent repeated-opponent farming and certify every active Challenge in live
   two-client runs.
 
-### 6. Progression ecosystem pilot — foundation delivered in v0.65.0
+### 6. Progression ecosystem pilot — Slots delivered in v0.66.0
 
 - The append-only Coin ledger, row-locked idempotency, reversals, first
   account reward per UTC day and restart reconciliation are implemented.
 - Daily Skribble is the first server-validated earn source; Practice is
-  unrewarded and a one-Coin celebration replay is the first cosmetic sink.
-- Next progression work is intentionally downstream of the P0 Claim-reconnect
-  matrix: formal Achievement contracts, private inventory/history, then one
-  minimal Pet loop. Arcade Reel remains deferred until economy/odds rules and
-  youth-safety review are approved.
-- Missing Skribble logo/tile GIFs can be added through the reserved asset
-  registry without code changes.
+  unrewarded. v0.66 removes the replay sink and ships authoritative Skribbl
+  Slots with fixed transparent weights, immutable spin audits and an
+  approximately 9.1% tested combined base return.
+- Next progression work remains downstream of the P0 Claim-reconnect matrix:
+  formal Achievement contracts, private inventory/history, then one minimal
+  Pet loop. Revisit Slots odds and reward cosmetics only with ledger telemetry
+  and explicit youth-safety review.
+- All supplied Skribble and Slots GIFs are embedded from the organized
+  progression asset registry.
 
 ### 7. Product and release completion
 
@@ -168,4 +171,5 @@ Advancements, Mini-Games, Skribbl Coins, Pets and Chain Reaction direction is in
 deployment boundary are recorded in `docs/ui-polish-v0.62.0.md`; the current
 prioritized work remains in `docs/post-v0.62.0-roadmap.md`. The authoritative
 Coin/Daily vertical slice and v0.65 deployment order are recorded in
-`docs/skribbl-coins-skribble-v0.65.0.md`.
+`docs/skribbl-coins-skribble-v0.65.0.md`; the Contract v13 Slots/stability
+release is recorded in `docs/skribbl-slots-skribble-stability-v0.66.0.md`.

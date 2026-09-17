@@ -125,7 +125,8 @@ export function policyForMessage(message: GatewayClientMessage): GatewayRateLimi
       return { scope: 'claim', limit: 30, windowMs: 10_000 };
     case 'SKRIBBLE_OPEN':
     case 'SKRIBBLE_GUESS':
-    case 'SKRIBBLE_CELEBRATION_REPLAY':
+    case 'SLOTS_OPEN':
+    case 'SLOTS_SPIN':
       return { scope: 'progression', limit: 60, windowMs: 60_000 };
     default:
       return { scope: 'match-action', limit: 60, windowMs: 10_000 };

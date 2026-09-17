@@ -307,7 +307,8 @@ export class GatewayAuthorityController {
     const accountId = peer.identity.accountId;
     if (message.type === 'SKRIBBLE_OPEN'
         || message.type === 'SKRIBBLE_GUESS'
-        || message.type === 'SKRIBBLE_CELEBRATION_REPLAY') {
+        || message.type === 'SLOTS_OPEN'
+        || message.type === 'SLOTS_SPIN') {
       if (!this.progression) {
         this.options.sendToConnection(
           this.connections.get(accountId)?.connectionId ?? '',
@@ -328,12 +329,7 @@ export class GatewayAuthorityController {
           this.connections.get(accountId)?.connectionId ?? '',
           errorMessage(
             'PROGRESSION_ACTION_REJECTED',
-            error instanceof Error && (
-              error.message === 'Insufficient Skribbl Coins.'
-              || error.message.startsWith('A rewarded Daily Skribble solve is required')
-            )
-              ? error.message
-              : 'The progression action could not be completed. Please try again.',
+            'The progression action could not be completed. Please try again.',
             true,
             message.requestId
           )

@@ -61,6 +61,8 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     coins: null,
     skribble: null,
     lastSkribbleGuess: null,
+    slots: null,
+    lastSlotsSpin: null,
     error: null
   };
 }
@@ -311,9 +313,15 @@ export class SocketIoGatewayClient {
     return requestId;
   }
 
-  public replaySkribbleCelebration(dateKey: string): string {
-    const requestId = this.createRequestId('skribble-celebration');
-    this.emit({ type: 'SKRIBBLE_CELEBRATION_REPLAY', requestId, dateKey });
+  public openSkribblSlots(): string {
+    const requestId = this.createRequestId('slots-open');
+    this.emit({ type: 'SLOTS_OPEN', requestId });
+    return requestId;
+  }
+
+  public spinSkribblSlots(sessionId: string): string {
+    const requestId = this.createRequestId('slots-spin');
+    this.emit({ type: 'SLOTS_SPIN', requestId, sessionId });
     return requestId;
   }
 
@@ -448,6 +456,8 @@ export class SocketIoGatewayClient {
         coins: this.state.coins,
         skribble: this.state.skribble,
         lastSkribbleGuess: this.state.lastSkribbleGuess,
+        slots: this.state.slots,
+        lastSlotsSpin: this.state.lastSlotsSpin,
         error: null
       });
       // A navigation (most notably /credits for Bloodline) can interrupt the
@@ -508,6 +518,33 @@ export class SocketIoGatewayClient {
         ...this.state,
         skribble: { type: 'SKRIBBLE_STATE', requestId: value.requestId, state: structuredClone(value.state) },
         lastSkribbleGuess: structuredClone(value),
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'SLOTS_STATE') {
+      this.update({
+        ...this.state,
+        slots: structuredClone(value),
+        lastSlotsSpin: null,
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'SLOTS_SPIN_RESULT') {
+      this.update({
+        ...this.state,
+        slots: { type: 'SLOTS_STATE', requestId: value.requestId, state: structuredClone(value.state) },
+        lastSlotsSpin: structuredClone(value),
+        coins: value.outcome
+          ? {
+              type: 'COIN_BALANCE',
+              requestId: value.requestId,
+              balance: value.outcome.balanceAfter,
+              revision: value.coinRevision,
+              transaction: null
+            }
+          : this.state.coins,
         error: null
       });
       return;

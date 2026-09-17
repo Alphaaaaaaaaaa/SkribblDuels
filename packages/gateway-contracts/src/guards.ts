@@ -1,6 +1,7 @@
 import { isTelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 import {
   GATEWAY_CONTRACT_VERSION,
+  GATEWAY_SLOT_ICON_IDS,
   type GatewayAuthRequiredMessage,
   type GatewayClientCapability,
   type GatewayClientMessage,
@@ -9,6 +10,8 @@ import {
   type GatewayHelloMessage,
   type GatewayServerMessage
 } from './types';
+
+const SLOT_ICON_IDS = new Set<string>(GATEWAY_SLOT_ICON_IDS);
 
 const CLIENT_CAPABILITIES = new Set<GatewayClientCapability>([
   'skribbl-telemetry',
@@ -230,6 +233,9 @@ function skribbleState(value: unknown): boolean {
     && (state.availability === 'ready' || state.availability === 'unsupported')
     && (state.unavailableReason === null || nonEmptyString(state.unavailableReason, 512))
     && (state.status === 'playing' || state.status === 'solved' || state.status === 'lost')
+    && (state.status === 'playing'
+      ? state.answer === null
+      : nonEmptyCodePointString(state.answer, 32))
     && state.maxAttempts === 10
     && state.minimumLength === 2
     && state.maximumLength === 32
@@ -240,6 +246,91 @@ function skribbleState(value: unknown): boolean {
     && typeof state.rewarded === 'boolean'
     && nonNegativeInteger(state.rewardAmount)
     && Number(state.rewardAmount) <= 25);
+}
+
+function slotIcons(value: unknown): boolean {
+  return Array.isArray(value)
+    && value.length === 3
+    && value.every(icon => typeof icon === 'string' && SLOT_ICON_IDS.has(icon));
+}
+
+function slotsState(value: unknown): boolean {
+  const state = record(value);
+  return Boolean(state
+    && nonEmptyString(state.sessionId)
+    && nonNegativeInteger(state.rulesVersion)
+    && Number(state.rulesVersion) > 0
+    && state.reelCount === 3
+    && state.spinCost === 1
+    && nonNegativeInteger(state.freeSpins)
+    && Number(state.freeSpins) <= 10_000
+    && (state.nextFreeSpinSource === null
+      || state.nextFreeSpinSource === 'book'
+      || state.nextFreeSpinSource === 'slimy'
+      || state.nextFreeSpinSource === 'heart')
+    && (Number(state.freeSpins) > 0) === (state.nextFreeSpinSource !== null)
+    && nonNegativeInteger(state.heartProgress)
+    && Number(state.heartProgress) < 3
+    && state.heartTarget === 3
+    && typeof state.canSpin === 'boolean');
+}
+
+function slotEffectStep(value: unknown): boolean {
+  const step = record(value);
+  return Boolean(step
+    && (step.kind === 'fill' || step.kind === 'wizard' || step.kind === 'eraser'
+      || step.kind === 'trash' || step.kind === 'dice')
+    && nonNegativeInteger(step.sourceIndex)
+    && Number(step.sourceIndex) < 3
+    && Array.isArray(step.targetIndices)
+    && step.targetIndices.length >= 1
+    && step.targetIndices.length <= 3
+    && step.targetIndices.every(index => nonNegativeInteger(index) && Number(index) < 3)
+    && slotIcons(step.iconsAfter));
+}
+
+function slotOutcome(value: unknown): boolean {
+  const outcome = record(value);
+  return Boolean(outcome
+    && nonEmptyString(outcome.spinId)
+    && slotIcons(outcome.initialIcons)
+    && Array.isArray(outcome.effectSteps)
+    && outcome.effectSteps.length <= 18
+    && outcome.effectSteps.every(slotEffectStep)
+    && slotIcons(outcome.finalIcons)
+    && typeof outcome.usedFreeSpin === 'boolean'
+    && (outcome.usedFreeSpinSource === null
+      || outcome.usedFreeSpinSource === 'book'
+      || outcome.usedFreeSpinSource === 'slimy'
+      || outcome.usedFreeSpinSource === 'heart')
+    && (outcome.coinCost === 0 || outcome.coinCost === 1)
+    && outcome.usedFreeSpin === (outcome.coinCost === 0)
+    && outcome.usedFreeSpin === (outcome.usedFreeSpinSource !== null)
+    && nonNegativeInteger(outcome.coinReward)
+    && Number(outcome.coinReward) <= 10
+    && nonNegativeInteger(outcome.awardedFreeSpins)
+    && Number(outcome.awardedFreeSpins) <= 11
+    && nonNegativeInteger(outcome.freeSpinsBefore)
+    && Number(outcome.freeSpinsBefore) <= 10_000
+    && nonNegativeInteger(outcome.freeSpinsAfter)
+    && Number(outcome.freeSpinsAfter) <= 10_000
+    && (outcome.nextFreeSpinSource === null
+      || outcome.nextFreeSpinSource === 'book'
+      || outcome.nextFreeSpinSource === 'slimy'
+      || outcome.nextFreeSpinSource === 'heart')
+    && (Number(outcome.freeSpinsAfter) > 0) === (outcome.nextFreeSpinSource !== null)
+    && (!outcome.usedFreeSpin || Number(outcome.freeSpinsBefore) > 0)
+    && Number(outcome.freeSpinsAfter) === Number(outcome.freeSpinsBefore)
+      - (outcome.usedFreeSpin ? 1 : 0) + Number(outcome.awardedFreeSpins)
+    && nonNegativeInteger(outcome.heartProgressBefore)
+    && Number(outcome.heartProgressBefore) < 3
+    && nonNegativeInteger(outcome.heartProgressAfter)
+    && Number(outcome.heartProgressAfter) < 3
+    && nonNegativeInteger(outcome.balanceBefore)
+    && nonNegativeInteger(outcome.balanceAfter)
+    && Number(outcome.balanceAfter) === Number(outcome.balanceBefore)
+      - Number(outcome.coinCost) + Number(outcome.coinReward)
+    && finiteNumber(outcome.occurredAt));
 }
 
 function coinTransaction(value: unknown): boolean {
@@ -482,8 +573,10 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
       return nonEmptyString(message.requestId)
         && nonEmptyString(message.sessionId)
         && nonEmptyCodePointString(message.guess, 32);
-    case 'SKRIBBLE_CELEBRATION_REPLAY':
-      return nonEmptyString(message.requestId) && dateKey(message.dateKey);
+    case 'SLOTS_OPEN':
+      return nonEmptyString(message.requestId);
+    case 'SLOTS_SPIN':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.sessionId);
     case 'PING':
       return finiteNumber(message.sentAt);
     default:
@@ -579,6 +672,18 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
           || message.reason === 'session-ended'
           || message.reason === 'session-not-found')
         && skribbleState(message.state);
+    case 'SLOTS_STATE':
+      return nonEmptyString(message.requestId) && slotsState(message.state);
+    case 'SLOTS_SPIN_RESULT':
+      return nonEmptyString(message.requestId)
+        && typeof message.accepted === 'boolean'
+        && (message.reason === 'accepted'
+          || message.reason === 'session-not-found'
+          || message.reason === 'insufficient-coins')
+        && slotsState(message.state)
+        && (message.outcome === null || slotOutcome(message.outcome))
+        && message.accepted === (message.outcome !== null)
+        && nonNegativeInteger(message.coinRevision);
     case 'COIN_BALANCE':
       return (message.requestId === null || nonEmptyString(message.requestId))
         && nonNegativeInteger(message.balance)

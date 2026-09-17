@@ -1,6 +1,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type {
   GatewayCoinTransactionSummary,
+  GatewaySlotEffectStep,
+  GatewayFreeSpinSource,
+  GatewaySlotIconId,
+  GatewaySlotSpinOutcome,
   GatewaySkribbleAttempt
 } from '@skribbl-duels/gateway-contracts';
 
@@ -42,6 +46,32 @@ export interface GatewaySkribbleDailyRun {
   updatedAt: number;
 }
 
+export interface GatewaySlotsAccountSnapshot {
+  freeSpins: number;
+  nextFreeSpinSource: GatewayFreeSpinSource | null;
+  heartProgress: number;
+  revision: number;
+}
+
+export interface GatewaySlotCommitInput {
+  accountId: string;
+  requestId: string;
+  spinId: string;
+  initialIcons: readonly [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId];
+  effectSteps: readonly GatewaySlotEffectStep[];
+  finalIcons: readonly [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId];
+  coinReward: number;
+  baseFreeSpinReward: number;
+  heartCount: number;
+  rulesVersion: number;
+  occurredAt: number;
+}
+
+export interface GatewaySlotCommitResult {
+  outcome: GatewaySlotSpinOutcome;
+  coinRevision: number;
+}
+
 export interface GatewayProgressionPersistence {
   checkHealth?(): Promise<void>;
   getCoinAccount(accountId: string): Promise<GatewayCoinAccountSnapshot>;
@@ -50,6 +80,8 @@ export interface GatewayProgressionPersistence {
   getOrCreateDailyWord(candidate: GatewaySkribbleDailyWord): Promise<GatewaySkribbleDailyWord>;
   getDailyRun(accountId: string, dateKey: string, languageId: number): Promise<GatewaySkribbleDailyRun | null>;
   saveDailyRun(run: GatewaySkribbleDailyRun): Promise<void>;
+  getSlotsAccount(accountId: string): Promise<GatewaySlotsAccountSnapshot>;
+  commitSlotSpin(input: GatewaySlotCommitInput): Promise<GatewaySlotCommitResult>;
 }
 
 function finiteDate(value: unknown): number {
@@ -124,6 +156,90 @@ function dailyRun(value: unknown): GatewaySkribbleDailyRun | null {
   };
 }
 
+function slotsAccount(value: unknown): GatewaySlotsAccountSnapshot {
+  if (typeof value !== 'object' || value === null) {
+    return { freeSpins: 0, nextFreeSpinSource: null, heartProgress: 0, revision: 0 };
+  }
+  const row = value as Record<string, unknown>;
+  const bookFreeSpins = Number(row.book_free_spins ?? 0);
+  const slimyFreeSpins = Number(row.slimy_free_spins ?? 0);
+  const heartFreeSpins = Number(row.heart_free_spins ?? 0);
+  const nextFreeSpinSource = heartFreeSpins > 0
+    ? 'heart'
+    : bookFreeSpins > 0
+      ? 'book'
+      : slimyFreeSpins > 0
+        ? 'slimy'
+        : null;
+  const result = {
+    freeSpins: Number(row.free_spins ?? row.freeSpins ?? 0),
+    nextFreeSpinSource: nextFreeSpinSource as GatewayFreeSpinSource | null,
+    heartProgress: Number(row.heart_progress ?? row.heartProgress ?? 0),
+    revision: Number(row.revision ?? 0)
+  };
+  if (!Number.isSafeInteger(result.freeSpins) || result.freeSpins < 0
+      || !Number.isSafeInteger(bookFreeSpins) || bookFreeSpins < 0
+      || !Number.isSafeInteger(slimyFreeSpins) || slimyFreeSpins < 0
+      || !Number.isSafeInteger(heartFreeSpins) || heartFreeSpins < 0
+      || result.freeSpins !== bookFreeSpins + slimyFreeSpins + heartFreeSpins
+      || !Number.isSafeInteger(result.heartProgress) || result.heartProgress < 0 || result.heartProgress > 2
+      || !Number.isSafeInteger(result.revision) || result.revision < 0) {
+    throw new Error('Skribbl Slots persistence returned malformed account state.');
+  }
+  return result;
+}
+
+function slotCommit(value: unknown): GatewaySlotCommitResult {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Skribbl Slots persistence returned no spin result.');
+  }
+  const row = value as Record<string, unknown>;
+  const effectSteps = Array.isArray(row.effect_steps) ? row.effect_steps as GatewaySlotEffectStep[] : [];
+  const initialIcons = row.initial_icons as GatewaySlotIconId[];
+  const finalIcons = row.final_icons as GatewaySlotIconId[];
+  const usedFreeSpinSource = row.used_free_spin_source === null
+    ? null
+    : String(row.used_free_spin_source);
+  const nextFreeSpinSource = row.next_free_spin_source === null
+    ? null
+    : String(row.next_free_spin_source);
+  if (!Array.isArray(initialIcons) || initialIcons.length !== 3
+      || !Array.isArray(finalIcons) || finalIcons.length !== 3
+      || (usedFreeSpinSource !== null && usedFreeSpinSource !== 'book'
+        && usedFreeSpinSource !== 'slimy' && usedFreeSpinSource !== 'heart')
+      || (nextFreeSpinSource !== null && nextFreeSpinSource !== 'book'
+        && nextFreeSpinSource !== 'slimy' && nextFreeSpinSource !== 'heart')) {
+    throw new Error('Skribbl Slots persistence returned malformed reels.');
+  }
+  const outcome: GatewaySlotSpinOutcome = {
+    spinId: String(row.spin_id ?? ''),
+    initialIcons: [initialIcons[0]!, initialIcons[1]!, initialIcons[2]!],
+    effectSteps,
+    finalIcons: [finalIcons[0]!, finalIcons[1]!, finalIcons[2]!],
+    usedFreeSpin: Boolean(row.used_free_spin),
+    usedFreeSpinSource: usedFreeSpinSource as GatewayFreeSpinSource | null,
+    coinCost: Number(row.coin_cost) === 1 ? 1 : 0,
+    coinReward: Number(row.coin_reward),
+    awardedFreeSpins: Number(row.awarded_free_spins),
+    freeSpinsBefore: Number(row.free_spins_before),
+    freeSpinsAfter: Number(row.free_spins_after),
+    nextFreeSpinSource: nextFreeSpinSource as GatewayFreeSpinSource | null,
+    heartProgressBefore: Number(row.heart_progress_before),
+    heartProgressAfter: Number(row.heart_progress_after),
+    balanceBefore: Number(row.balance_before),
+    balanceAfter: Number(row.balance_after),
+    occurredAt: finiteDate(row.occurred_at)
+  };
+  const coinRevision = Number(row.coin_revision);
+  if (!outcome.spinId || !Number.isSafeInteger(outcome.coinReward)
+      || !Number.isSafeInteger(outcome.awardedFreeSpins)
+      || !Number.isSafeInteger(outcome.balanceBefore) || !Number.isSafeInteger(outcome.balanceAfter)
+      || !Number.isSafeInteger(coinRevision)) {
+    throw new Error('Skribbl Slots persistence returned a malformed spin result.');
+  }
+  return { outcome, coinRevision };
+}
+
 export class SupabaseGatewayProgressionPersistence implements GatewayProgressionPersistence {
   private readonly client: SupabaseClient;
 
@@ -134,11 +250,16 @@ export class SupabaseGatewayProgressionPersistence implements GatewayProgression
   }
 
   public async checkHealth(): Promise<void> {
-    const { error } = await this.client
+    const { error: coinError } = await this.client
       .from('skribbl_coin_accounts')
       .select('account_id', { head: true, count: 'exact' })
       .limit(1);
-    if (error) throw new Error(`Skribbl Coin persistence health check failed: ${error.message}`);
+    if (coinError) throw new Error(`Skribbl Coin persistence health check failed: ${coinError.message}`);
+    const { error: slotsError } = await this.client
+      .from('skribbl_slot_accounts')
+      .select('account_id', { head: true, count: 'exact' })
+      .limit(1);
+    if (slotsError) throw new Error(`Skribbl Slots persistence health check failed: ${slotsError.message}`);
   }
 
   public async getCoinAccount(accountId: string): Promise<GatewayCoinAccountSnapshot> {
@@ -237,5 +358,33 @@ export class SupabaseGatewayProgressionPersistence implements GatewayProgression
       updated_at: new Date(run.updatedAt).toISOString()
     }, { onConflict: 'account_id,date_key,language_id' });
     if (error) throw new Error(`Unable to persist Daily Skribble run: ${error.message}`);
+  }
+
+  public async getSlotsAccount(accountId: string): Promise<GatewaySlotsAccountSnapshot> {
+    const { data, error } = await this.client
+      .from('skribbl_slot_accounts')
+      .select('free_spins, book_free_spins, slimy_free_spins, heart_free_spins, heart_progress, revision')
+      .eq('account_id', accountId)
+      .maybeSingle();
+    if (error) throw new Error(`Unable to load Skribbl Slots state: ${error.message}`);
+    return slotsAccount(data);
+  }
+
+  public async commitSlotSpin(input: GatewaySlotCommitInput): Promise<GatewaySlotCommitResult> {
+    const { data, error } = await this.client.rpc('apply_skribbl_slot_spin', {
+      p_account_id: input.accountId,
+      p_request_id: input.requestId,
+      p_spin_id: input.spinId,
+      p_initial_icons: input.initialIcons,
+      p_effect_steps: input.effectSteps,
+      p_final_icons: input.finalIcons,
+      p_coin_reward: input.coinReward,
+      p_base_free_spin_reward: input.baseFreeSpinReward,
+      p_heart_count: input.heartCount,
+      p_rules_version: input.rulesVersion,
+      p_occurred_at: new Date(input.occurredAt).toISOString()
+    });
+    if (error) throw new Error(`Unable to commit Skribbl Slots spin: ${error.message}`);
+    return slotCommit(data);
   }
 }

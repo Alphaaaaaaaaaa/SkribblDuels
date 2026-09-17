@@ -15,7 +15,7 @@ const soundSource = await readFile(resolve(root, 'apps/telemetry-inspector/src/s
 const telemetrySource = await readFile(resolve(root, 'packages/telemetry-core/src/chat/textInputTelemetryAdapter.ts'), 'utf8');
 const challengeSource = await readFile(resolve(root, 'packages/challenge-definitions/src/definitions/certifiedWpm.ts'), 'utf8');
 const envExample = await readFile(resolve(root, 'apps/gateway/.env.example'), 'utf8');
-const coin = await readFile(resolve(root, 'res/skribbl-coin.gif'));
+const coin = await readFile(resolve(root, 'res/skribble-icons/skribbl-coin.gif'));
 
 assert.equal(DEFAULT_PRODUCT_UI_SETTINGS.launcher.visibility, 'always');
 assert.equal(normalizeProductUiSettings({ launcher: { visibility: 'active-match' } }).launcher.visibility, 'active-match');
@@ -23,7 +23,7 @@ assert.equal(normalizeProductUiSettings({ launcher: { visibility: 'sometimes' } 
 assert.match(productSource, /Only show during an active match/);
 assert.match(productSource, /visibility === 'active-match' && !activeMatch/);
 
-assert.match(productSource, /\.scd-about-tutorial \.scd-icon:hover[^\n]*transform:none/);
+assert.doesNotMatch(productSource, /\.scd-about-tutorial \.scd-icon:hover[^\n]*transform:none/);
 assert.match(productSource, /\.scd-about-page-visual:hover \{ transform:none; \}/);
 
 assert.match(productSource, /previousHomepageAuthority !== 'lobby'[\s\S]*this\.cancelMatchmaking\(\)/);
@@ -54,10 +54,10 @@ assert.match(skribbleSource, /Word not found inside provided \$\{result\.state\.
 assert.match(skribbleSource, /filter:brightness\(75%\) contrast\(200%\) saturate\(300%\) hue-rotate\(310deg\)/);
 assert.match(skribbleSource, /--scd-board-tile-size/);
 assert.match(skribbleSource, /Math\.max\(2, codePoints\(this\.draft\)\.length \+ 1\)/);
-assert.match(skribbleSource, /Practice rounds never award Skribbl Coins\./);
-assert.match(skribbleSource, /Replay celebration · 1 Coin/);
-assert.match(skribbleSource, /The Gateway checks every guess without sending the answer to the browser in advance\./);
-assert.match(skribbleSource, /Next official Skribble in/);
+assert.doesNotMatch(skribbleSource, /Practice rounds and celebration replays/);
+assert.doesNotMatch(skribbleSource, /Replay celebration/);
+assert.doesNotMatch(skribbleSource, /The Gateway checks every guess/);
+assert.match(skribbleSource, /Next Daily Skribble in/);
 assert.match(envExample, /^SKRIBBLE_DAILY_SECRET=$/m);
 
 const shareState: GatewaySkribbleState = {
@@ -70,6 +70,7 @@ const shareState: GatewaySkribbleState = {
   availability: 'ready',
   unavailableReason: null,
   status: 'solved',
+  answer: 'apple',
   maxAttempts: 10,
   minimumLength: 2,
   maximumLength: 32,

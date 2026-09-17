@@ -10,10 +10,12 @@ import type {
   GatewayQueueStatusMessage,
   GatewaySkribbleGuessResultMessage,
   GatewaySkribbleStateMessage,
+  GatewaySlotsSpinResultMessage,
+  GatewaySlotsStateMessage,
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.65.0' as const;
+export const GATEWAY_CLIENT_VERSION = '0.66.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'
@@ -39,6 +41,8 @@ export interface GatewayConnectionSnapshot {
   coins: GatewayCoinBalanceMessage | null;
   skribble: GatewaySkribbleStateMessage | null;
   lastSkribbleGuess: GatewaySkribbleGuessResultMessage | null;
+  slots: GatewaySlotsStateMessage | null;
+  lastSlotsSpin: GatewaySlotsSpinResultMessage | null;
   error: string | null;
 }
 

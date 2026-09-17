@@ -13,7 +13,7 @@ const hello = {
   capabilities: ['skribbl-telemetry']
 } as const;
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 12);
+assert.equal(GATEWAY_CONTRACT_VERSION, 13);
 assert.equal(isGatewayClientMessage(hello), true);
 assert.equal('accessToken' in hello, false);
 assert.equal(isGatewayClientMessage({ ...hello, clientVersion: '' }), false);
@@ -118,6 +118,10 @@ assert.equal(isGatewayClientMessage({
 assert.equal(isGatewayClientMessage({
   type: 'SKRIBBLE_GUESS', requestId: 'skr-guess-2', sessionId: 'session-1', guess: 'x'.repeat(33)
 }), false);
+assert.equal(isGatewayClientMessage({ type: 'SLOTS_OPEN', requestId: 'slots-open-1' }), true);
+assert.equal(isGatewayClientMessage({
+  type: 'SLOTS_SPIN', requestId: 'slots-spin-1', sessionId: 'slots-session-1'
+}), true);
 assert.equal(isGatewayServerMessage({
   type: 'WELCOME',
   contractVersion: GATEWAY_CONTRACT_VERSION,
@@ -253,9 +257,36 @@ assert.equal(isGatewayServerMessage({
   state: {
     sessionId: 'session-1', mode: 'daily', dateKey: '2026-09-16', nextDailyAt: 1_758_153_600_000,
     languageId: 0, languageName: 'English', availability: 'ready', unavailableReason: null,
-    status: 'playing', maxAttempts: 10, minimumLength: 2, maximumLength: 32,
+    status: 'playing', answer: null, maxAttempts: 10, minimumLength: 2, maximumLength: 32,
     attempts: [], canEarn: true, rewarded: false, rewardAmount: 0
   }
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'SLOTS_STATE',
+  requestId: 'slots-open-1',
+  state: {
+    sessionId: 'slots-session-1', rulesVersion: 1, reelCount: 3, spinCost: 1,
+    freeSpins: 0, nextFreeSpinSource: null, heartProgress: 0, heartTarget: 3, canSpin: true
+  }
+}), true);
+assert.equal(isGatewayServerMessage({
+  type: 'SLOTS_SPIN_RESULT',
+  requestId: 'slots-spin-1',
+  accepted: true,
+  reason: 'accepted',
+  state: {
+    sessionId: 'slots-session-1', rulesVersion: 1, reelCount: 3, spinCost: 1,
+    freeSpins: 0, nextFreeSpinSource: null, heartProgress: 1, heartTarget: 3, canSpin: true
+  },
+  outcome: {
+    spinId: 'spin-1', initialIcons: ['heart', 'skull', 'poop'], effectSteps: [],
+    finalIcons: ['heart', 'skull', 'poop'], usedFreeSpin: false, usedFreeSpinSource: null, coinCost: 1,
+    coinReward: 0, awardedFreeSpins: 0, freeSpinsBefore: 0, freeSpinsAfter: 0,
+    nextFreeSpinSource: null,
+    heartProgressBefore: 0, heartProgressAfter: 1, balanceBefore: 2, balanceAfter: 1,
+    occurredAt: 1_000
+  },
+  coinRevision: 1
 }), true);
 assert.equal(isGatewayServerMessage({ type: 'TELEMETRY_BATCH' }), false);
 

@@ -1439,6 +1439,13 @@ export class DuelProductFoundation {
       gateway: this.gatewayClient,
       getGatewayState: () => this.gatewayState,
       createCoinPill: compact => this.skribbleUi.createCoinPill(compact),
+      reserveCoinRewardAnimation: (owner, balanceBefore, balanceAfter) => {
+        this.skribbleUi.reserveCoinRewardAnimation(owner, balanceBefore, balanceAfter);
+      },
+      playCoinRewardAnimation: (owner, amount, source) => {
+        this.skribbleUi.playCoinRewardAnimation(owner, amount, source);
+      },
+      finishCoinRewardAnimation: owner => this.skribbleUi.finishCoinRewardAnimation(owner),
       showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
       onModalVisibilityChanged: () => this.syncPageScrollLock(),
       aboutIconUrl: EMBEDDED_ICON_ASSETS['res/challenge-icons/about.gif'] ?? null,
@@ -1491,8 +1498,8 @@ export class DuelProductFoundation {
           || this.pendingInviteToken !== null
           || this.inviteAcceptanceSubmitted);
       this.gatewayState = state;
-      this.skribbleUi.update(state);
       this.slotsUi.update(state);
+      this.skribbleUi.update(state);
       if (playerFound) {
         this.soundEffects.play('matchFound');
         this.closeProductModalsForMatchFound();
@@ -1590,7 +1597,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.66.1',
+      version: '0.66.2',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1750,7 +1757,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.66.1') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.66.2') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {

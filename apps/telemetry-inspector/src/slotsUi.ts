@@ -18,6 +18,9 @@ interface SkribblSlotsUiOptions {
   gateway: SocketIoGatewayClient;
   getGatewayState(): GatewayConnectionSnapshot;
   createCoinPill(compact?: boolean): HTMLDivElement;
+  reserveCoinRewardAnimation(owner: string, balanceBefore: number, balanceAfter: number): void;
+  playCoinRewardAnimation(owner: string, amount: number, source: HTMLElement): void;
+  finishCoinRewardAnimation(owner: string): void;
   showToast(title: string, message: string, timeout?: number): void;
   onModalVisibilityChanged(): void;
   aboutIconUrl: string | null;
@@ -117,6 +120,7 @@ export class SkribblSlotsFeatureUi {
   private modal: HTMLDivElement | null = null;
   private gatewayState: GatewayConnectionSnapshot;
   private visibleState: GatewaySlotsState | null = null;
+  private presentedState: GatewaySlotsState | null = null;
   private visibleFingerprint = '';
   private displayIcons: [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId] = [
     'skribbl-coin', '7', 'crown'
@@ -134,10 +138,12 @@ export class SkribblSlotsFeatureUi {
   private bulbIndex = 0;
   private bulbDirection: 1 | -1 = 1;
   private bulbsFlashing = false;
+  private activeCoinRewardOwner: string | null = null;
 
   public constructor(private readonly options: SkribblSlotsUiOptions) {
     this.gatewayState = options.getGatewayState();
     this.visibleState = this.gatewayState.slots?.state ?? null;
+    this.presentedState = this.visibleState ? structuredClone(this.visibleState) : null;
     this.visibleFingerprint = slotsFingerprint(this.visibleState);
     const outcome = this.gatewayState.lastSlotsSpin?.accepted
       ? this.gatewayState.lastSlotsSpin.outcome
@@ -171,17 +177,22 @@ export class SkribblSlotsFeatureUi {
   public update(state: GatewayConnectionSnapshot): void {
     this.gatewayState = state;
     this.trySendPendingAction();
+    const result = state.lastSlotsSpin;
+    const resultIsNew = Boolean(result && result.requestId !== this.lastSpinRequestId);
+    const animateResult = Boolean(
+      resultIsNew && result?.accepted && result.outcome && this.modal
+    );
     const incoming = state.slots?.state ?? null;
     const fingerprint = slotsFingerprint(incoming);
     let rerender = false;
     if (incoming && fingerprint !== this.visibleFingerprint) {
       this.visibleState = structuredClone(incoming);
       this.visibleFingerprint = fingerprint;
+      if (!animateResult && !this.animating) this.presentedState = structuredClone(incoming);
       rerender = true;
     }
 
-    const result = state.lastSlotsSpin;
-    if (result && result.requestId !== this.lastSpinRequestId) {
+    if (result && resultIsNew) {
       this.lastSpinRequestId = result.requestId;
       if (this.pendingAction?.requestId === result.requestId) this.clearPendingAction();
       this.visibleState = structuredClone(result.state);
@@ -189,13 +200,25 @@ export class SkribblSlotsFeatureUi {
       if (result.accepted && result.outcome) {
         this.latestOutcome = structuredClone(result.outcome);
         if (this.modal) {
-          this.renderModal();
-          void this.animateOutcome(result.outcome);
+          const rewardOwner = result.outcome.coinReward > 0
+            ? `slots:${result.outcome.spinId}`
+            : null;
+          if (rewardOwner) {
+            this.activeCoinRewardOwner = rewardOwner;
+            this.options.reserveCoinRewardAnimation(
+              rewardOwner,
+              result.outcome.balanceAfter - result.outcome.coinReward,
+              result.outcome.balanceAfter
+            );
+          }
+          void this.animateOutcome(result.outcome, rewardOwner);
         } else {
+          this.presentedState = structuredClone(result.state);
           this.displayIcons = [...result.outcome.finalIcons];
           this.resultMessage = this.outcomeMessage(result.outcome);
         }
       } else {
+        this.presentedState = structuredClone(result.state);
         this.resultMessage = result.reason === 'insufficient-coins'
           ? 'You need one Skribbl Coin or a Free Spin.'
           : 'This Slots session expired. A fresh machine is ready.';
@@ -275,6 +298,10 @@ export class SkribblSlotsFeatureUi {
 
   private close(): void {
     this.clearPendingAction();
+    if (this.activeCoinRewardOwner) {
+      this.options.finishCoinRewardAnimation(this.activeCoinRewardOwner);
+      this.activeCoinRewardOwner = null;
+    }
     this.cancelAnimations();
     this.modal?.remove();
     this.modal = null;
@@ -349,19 +376,20 @@ export class SkribblSlotsFeatureUi {
 
     const content = element('div', 'scd-slots-content');
     if (this.helpOpen) content.appendChild(this.helpCard());
-    if (!this.visibleState) {
+    const state = this.presentedState ?? this.visibleState;
+    if (!state) {
       content.appendChild(element('div', 'scd-slots-muted', 'Preparing the machine…'));
     } else {
       const machine = element('div', 'scd-slots-machine');
       const reels = element('div', 'scd-slots-reels');
       this.displayIcons.forEach((icon, index) => reels.appendChild(this.reel(icon, index)));
       const controls = element('div', 'scd-slots-controls');
-      controls.appendChild(this.spinButton());
-      controls.appendChild(this.heartProgress());
+      controls.appendChild(this.spinButton(state));
+      controls.appendChild(this.heartProgress(state));
       machine.append(reels, controls);
       content.append(
         machine,
-        element('div', `scd-slots-result${this.latestOutcome && isWin(this.latestOutcome) ? ' win' : ''}`, this.resultMessage)
+        element('div', `scd-slots-result${!this.animating && this.latestOutcome && isWin(this.latestOutcome) ? ' win' : ''}`, this.resultMessage)
       );
     }
     shell.append(header, content);
@@ -416,13 +444,18 @@ export class SkribblSlotsFeatureUi {
 
   private async flashBulbs(generation: number): Promise<void> {
     this.bulbsFlashing = true;
-    for (let index = 0; index < 6; index += 1) {
-      if (generation !== this.animationGeneration) return;
-      this.syncBulbs(index % 2 === 0);
-      if (!await this.wait(85, generation)) return;
+    try {
+      for (let index = 0; index < 18; index += 1) {
+        if (generation !== this.animationGeneration) return;
+        this.syncBulbs(index % 2 === 0);
+        if (!await this.wait(85, generation)) return;
+      }
+    } finally {
+      if (generation === this.animationGeneration) {
+        this.bulbsFlashing = false;
+        this.syncBulbs();
+      }
     }
-    this.bulbsFlashing = false;
-    this.syncBulbs();
   }
 
   private reel(icon: GatewaySlotIconId, index: number): HTMLElement {
@@ -453,8 +486,7 @@ export class SkribblSlotsFeatureUi {
     if (payline) payline.replaceChildren(this.slotIcon(icon));
   }
 
-  private spinButton(): HTMLButtonElement {
-    const state = this.visibleState!;
+  private spinButton(state: GatewaySlotsState): HTMLButtonElement {
     const free = state.freeSpins > 0;
     const button = element('button', 'scd-slots-spin') as HTMLButtonElement;
     button.type = 'button';
@@ -475,8 +507,7 @@ export class SkribblSlotsFeatureUi {
     return button;
   }
 
-  private heartProgress(): HTMLElement {
-    const state = this.visibleState!;
+  private heartProgress(state: GatewaySlotsState): HTMLElement {
     const row = element('div', 'scd-slots-heart-progress');
     row.setAttribute('aria-label', `${state.heartProgress} of ${state.heartTarget} hearts collected`);
     for (let index = 0; index < state.heartTarget; index += 1) {
@@ -555,7 +586,10 @@ export class SkribblSlotsFeatureUi {
     return card;
   }
 
-  private async animateOutcome(outcome: GatewaySlotSpinOutcome): Promise<void> {
+  private async animateOutcome(
+    outcome: GatewaySlotSpinOutcome,
+    rewardOwner: string | null
+  ): Promise<void> {
     this.cancelAnimations();
     const generation = ++this.animationGeneration;
     this.animating = true;
@@ -573,8 +607,14 @@ export class SkribblSlotsFeatureUi {
     this.displayIcons.forEach((icon, index) => this.setReelIcon(index, icon));
     this.resultMessage = this.outcomeMessage(outcome);
     this.animating = false;
+    this.presentedState = this.visibleState ? structuredClone(this.visibleState) : null;
     this.renderModal();
     if (isWin(outcome)) void this.flashBulbs(generation);
+    if (rewardOwner) {
+      const source = this.modal?.querySelector<HTMLElement>('.scd-slots-reels');
+      if (source) this.options.playCoinRewardAnimation(rewardOwner, outcome.coinReward, source);
+      else this.options.finishCoinRewardAnimation(rewardOwner);
+    }
   }
 
   private async animateReel(
@@ -727,7 +767,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-bulb:not([src]).fallback-on { background:#ffe822;box-shadow:0 0 18px #fff36a,inset 0 0 0 5px #b58e00; }
 .scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:visible;border-radius:10px 10px 0 0; }
 .scd-slots-title { position:relative;z-index:6;width:200px;height:82px;display:grid;place-items:center;justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004;pointer-events:none; }
-.scd-slots-title img { display:block;width:200px;height:100px;max-width:none;object-fit:contain;transform:scale(2);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slots-title img { display:block;width:200px;height:100px;max-width:none;object-fit:contain;transform:scale(1.8);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-actions { justify-self:end;display:flex;gap:6px; }
 .scd-slots-actions .scd-icon-button { width:42px;height:42px; }
 .scd-slots-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
@@ -738,10 +778,10 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
 .scd-slot-reel::before { top:0; }
 .scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
-.scd-slot-payline { width:78%;height:78%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
+.scd-slot-payline { width:59%;height:59%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
 .scd-slot-icon { display:grid;place-items:center;min-width:0;min-height:0; }
 .scd-slot-payline > .scd-slot-icon { width:100%;height:100%; }
-.scd-slot-icon img { display:block;width:100%;height:100%;max-width:256px;max-height:256px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slot-icon img { display:block;width:100%;height:100%;max-width:192px;max-height:192px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slot-icon-fallback { display:grid;place-items:center;width:100%;height:100%;font-size:clamp(28px,7vw,86px);font-weight:900;color:#222;text-shadow:3px 3px 0 #0003; }
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
@@ -773,7 +813,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
 .scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
 .scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
-.scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:fill; }
+.scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:contain; }
 .scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
 .scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
 .scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
@@ -791,7 +831,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
   .scd-slots-header { grid-template-columns:auto 1fr auto; }
   .scd-slots-title { font-size:1.2em; }
   .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(200px,42vw);min-height:80px; }
-  .scd-slots-title img { transform:scale(1.5); }
+  .scd-slots-title img { transform:scale(1.35); }
   .scd-slots-machine { grid-template-columns:1fr; }
   .scd-slots-reels { gap:6px; }
   .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }

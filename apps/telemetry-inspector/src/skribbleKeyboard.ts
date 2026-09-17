@@ -104,11 +104,18 @@ export function createSkribbleKeyboardRows(languageId: number, words: readonly s
   const baseRows = selected.rows.map(row => [...row]);
   const base = new Set(baseRows.flat());
   const counts = new Map<string, number>();
+  let containsDigit = false;
+  let containsZero = false;
 
   for (const word of words) {
     for (const character of normalizedCharacters(word, selected.locale)) {
       const units = languageId === 14 ? decomposeHangul(character) : [character];
       for (const unit of units) {
+        if (/^[0-9]$/u.test(unit)) {
+          containsDigit = true;
+          containsZero ||= unit === '0';
+          continue;
+        }
         if (/\s/u.test(unit) || base.has(unit)) continue;
         counts.set(unit, (counts.get(unit) ?? 0) + 1);
       }
@@ -118,7 +125,10 @@ export function createSkribbleKeyboardRows(languageId: number, words: readonly s
   const extras = [...counts]
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], selected.locale))
     .map(([character]) => character);
-  return [...baseRows, ...chunk(extras, languageId === 14 ? 12 : 14)];
+  const digitRows = containsDigit
+    ? [['1', '2', '3', '4', '5', '6', '7', '8', '9', ...(containsZero ? ['0'] : [])]]
+    : [];
+  return [...digitRows, ...baseRows, ...chunk(extras, languageId === 14 ? 12 : 14)];
 }
 
 export function getSkribbleKeyboardMark(

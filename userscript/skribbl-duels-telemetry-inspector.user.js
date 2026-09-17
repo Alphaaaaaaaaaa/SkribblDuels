@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.66.1
+// @version      0.66.2
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -16078,7 +16078,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.66.1";
+var GATEWAY_CLIENT_VERSION = "0.66.2";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -42299,6 +42299,12 @@ var EMBEDDED_PROGRESSION_ASSETS = {
 	"coin": "data:image/gif;base64,R0lGODlhKAAoAJEAAPuyNth7FwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAKAAoAAAC65yPqcvtD6OcUtiLLXW5+3144jd5wImmZ1dh6SigGeTKsPVez2VjwR9Y1QCYBk94+akAv6GOcSRagMtpoFZURJNKle96fCKw1qA308RJNWP1upvrpGPrtppb3VrvbINeYBZHBsgnYGcDh4REN1V4+Ca4iOYYUhg46AGG9DjVwxjGRenHd8mDCSQ64NIp6fYF9ml4CBrzB4hKV8cJuLZWyzW3mAAa7AsM26Nl2ggDBJsrttvsHOW7sDri/Jyre+16TD20CWULk9fnzW2csWTNId7ePkPDHn+WFXGjL1uyLwIyyh86gAQLGjxosAAAIfkEBRQAAwAsAAAAACgAKAAAAvGcj6nL7Q+jnFHYizFluXu7Dd/oTR2Apmr6VdcKeGv3YDN5g87LZsEvQ2k4FpUvkAJmeoIGL3b5wX7KIrS5sF0FUqOFGuANE88oMvetCnUIrRnmUV8VZW53bcWE82yDO43GpIRHZgV1h1fHxYd1UIf4shTFWCjQc7aV6EPZZviVqKm3R9hpuQZ6ukXF6ehpKlkkOjhX2hMaa6Y25ueKhMsHtvfax8s4enUVLEZcjCesqczYWHvbAaZIZLr1sfpEm+WaG234DR4uu+Q1ba69HcS0TucNr6XuMg8Dt7vzkT9CQSIgMwgCS4RgR+OgwoUMIRQAADs=",
 	"skribbleLogo": "data:image/gif;base64,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",
 	"skribbleReturn": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACqISPqcvtD6OctNqLs968exOEwVeJIymZJ/qoK8u4L5zIIa2ogmCbpL7j9W4dYHA3nF2Mx2ZQpWE6p0KiRUqd+q6mrLdqpWC/TxFmTK5mpL3mdtlFDt1hrkg+xytLXTMiDrZhs3CnxyFDGFJWdwaVo7jo4fgHGSnpRxlw9IYDGIgDYMT5I7OJWdRmygiXpHq65uI1Khjr+oqadIuSBNrr+wscLDxMXGxRAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACroSPqcvtD6OctNqLs948hd9dHxhSI1lGJ5o6K9suLxwjqzDXxy3g85ji9X6rzqmHTCJ/m6PymXxlnNCqr2gZWbdXYJbKfWIrwrDyhCkvX2LvF9yFo6fa9e/sfn/sOznNdJRnACaoN+exx9ckpVC3ZnSIGIAXEmmTOPQnUghAqLkZ0OiYGaozONqlwxbFyTHDamlIZBcrK0RUCRfXqkHEaOpbajpMXGx8jJysvJxSAAA7",
+	"skribbleBackspace": "data:image/gif;base64,R0lGODlhMAAgAJEAANmgZu7DmgAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAMAAgAAACvpyPqcvtD6OctB6Bs9686+mFYhdtQ4Cm6squ2dO18py+jQZk9M7aC57DzEa6GuaGASiFMmIR5VMklcGm7rlRRRPTpaClMX452iOjW3Uxy8V1YItAu8M97LeMpKbfT3bYzZdHtZbl93dnJOil5mGoprhnSPR4JqAHKBlCKSWHyPMZ+NPVB7pjxnmJWWpV6fWyOjPwIRrkZOshequLywmk9wscLByUazl8jJwqOpDcLGzSuysNJzs9bYGdrb09UAAAIfkECRQAAwAsAAAAADAAIAAAAs+cj6nL7Q+jnLQigbPevGfphWIXbUOApurKqsPncO1Mu1icAVjNzzejAegEtdEm9VvkhLuWUYZKKm7CIUuWWR2jggamOiQiNeNmAHruAgVgK9dcJqLTXja4maVt4dLL9y6W5yPIpzZlB/gGp0hGaJjwlxgnloaH1ndAVfVCGfemRca1NgDG6fQUSqeEWLU4aTS21ubWU6t62CZoy4NpEMnkugvauwSMegwD+YeMDLzKMRstPT30HESNTU18nd0dvc3qjR2yxmze63vObMFuUQAAOw==",
+	"skribbleEnter": "data:image/gif;base64,R0lGODlhMAAgAJEAANmgZu7DmgAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAMAAgAAACu5yPqcvtD6OctB6Bs9686+mFYhdtQ4Cm6squ2dO18py+jQZk9M7aC57D8FpCF+aGASiLPWazKUAqlwKiTuZE+RTJaXZDywa2iS61puGJyQhzcAxWV5tSb3UkstbPcDxHz+DGlDaEFRUoMPWGJlYIt7eocuWIhphoZ0UpechlNqk5c/RzSTUHGspZdmlyyjLwMRrkN+sxSntb2wmkyNvr+xtkSwpMXEw1OmCs/Guii/vM9goNbVFtfY09UAAAIfkECRQAAwAsAAAAADAAIAAAAsScj6nL7Q+jnLQigbPevGfphWIXbUOApurKqsPncO1Mu1icAVjNzzejAegEPR+R9VvkhLtWhtZcJRU34dB4dGZV0wTGOtwGNLUoV9D4gs3kshjVvQjAV/jT/R6jlWprc+ShBTRH9we4YTRIV4dYJMg3APay1eiYEmdQZTWJdGepp1iYp/dpF7o2Wnq5R0XoZ6baecoEG2uHuUR7uGvSSsgL/Msqx7FofIw8xLeR3NyMG+QsfQztOu0cMhi8jZnJHWwRblEAADs=",
+	"skribbleSpacebar": "data:image/gif;base64,R0lGODlhoAAgAJEAANmgZu7DmgAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GIieU5omm6sq27gvH8gw79I3n+s67DDoICIfEovGITCqXzKbzCT2aFKqo9YrNarfEKeIEMHHH5LLZ6TWAw6Wz+w3XpgcmgL0dz+v3xnnJfifAN4gmSFgo8CUAyHaIhTcG6ajktwgoOVlYhpnZV6LIyNlJaRhZOiqVePB3eYpKuun6OvS5ahk4y9RTlVtUq3bb2Ju0mzLcpQocKnvcrPdLFyzqTO32W9darR13zcrGvB0ul+z9LX5uahs4hd4eFd39XTxPX2/vA3+vv8+/C7zGKKDAgQQLGjyIMKHChQwbsvkXzKHEiRQrWrz4MNoAjCAcO3r8uBBIvn4kS5pcAfGkypX6Rrh8CTOmzJk0azIoAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GYieU5omm6sq27gvH8vw29I3n+s67DDoICIfEovGITCqXzKbzCTUOTIpU9IrNarfc4lSQOAFK3bL5jIaWEOKxIA2Py7vrgwmAJ8/3/P6xbrCG5+ZXaCgH+DXo9nZ4pefomFiySBip1lgGeZk0KVC5ybkUukUqSgR4t2h6asSK9Xqa+gma2dppyxUrOltpeYvbgwLsChYItvhFHCxssoxq/DWQvPtsndZbe73dl72ayx1+5p1XLX6OaUc76IzurnVyvM7YXG9/j78iX57f7/9Po5w8FL4KGjyIMKHChQwbOnyIsI4KiBQrWryIMaPALySqNHr8CDIkQ4mURJo8iZIiC3UAW7p8qY8lzJk08424iTOnzgIAOw==",
+	"skribbleSpacebarCorrect": "data:image/gif;base64,R0lGODlhoAAgAJEAAJnlUEtpLwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GIieU5omm6sq27gvH8gw79I3n+s67DDoACIfEovGITCqXzKbzCT2aFKqo9YrNarfEKeIUMHHH5LLZ6TWAw6Wz+w3XpgemgL0dz+v3xnnJfifAN4gmSFgo8CUAyHaIhTcG6ajktwgoOVlYhpnZV6LIyNlJaRhZOiqVePB3eYpKuun6OvS5ahk4y9RTlVtUq3bb2Ju0mzLcpQocKnvcrPdLFyzqTO32W9darR13zcrGvB0ul+z9LX5uahs4hd4eFd39XTxPX2/vA3+vv8+/C7zGKKDAgQQLGjyIMKHChQwbsvkXzKHEiRQrWrz4MNoAjCAcO3r8uBBIvn4kS5pcAfGkypX6Rrh8CTOmzJk0azIoAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GYieU5omm6sq27gvH8vw29I3n+s67DDoACIfEovGITCqXzKbzCTUOTIpU9IrNarfc4lSQOAVK3bL5jIaWEOKxIA2Py7vrgymAJ8/3/P6xbrCG5+ZXaCgH+DXo9nZ4pefomFiySBip1lgGeZk0KVC5ybkUukUqSgR4t2h6asSK9Xqa+gma2dppyxUrOltpeYvbgwLsChYItvhFHCxssoxq/DWQvPtsndZbe73dl72ayx1+5p1XLX6OaUc76IzurnVyvM7YXG9/j78iX57f7/9Po5w8FL4KGjyIMKHChQwbOnyIsI4KiBQrWryIMaPALySqNHr8CDIkQ4mURJo8iZIiC3UAW7p8qY8lzJk08424iTOnzgIAOw==",
+	"skribbleSpacebarIncorrect": "data:image/gif;base64,R0lGODlhoAAgAJEAAIB3nZuttwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GIieU5omm6sq27gvH8gw79I3n+s67DDoICIfEovGITCqXzKbzCT2aFKqo9YrNarfEKeIEMHHH5LLZ6TWAw6Wz+w3XpgcmgL0dz+v3xnnJfifAN4gmSFgo8CUAyHaIhTcG6ajktwgoOVlYhpnZV6LIyNlJaRhZOiqVePB3eYpKuun6OvS5ahk4y9RTlVtUq3bb2Ju0mzLcpQocKnvcrPdLFyzqTO32W9darR13zcrGvB0ul+z9LX5uahs4hd4eFd39XTxPX2/vA3+vv8+/C7zGKKDAgQQLGjyIMKHChQwbsvkXzKHEiRQrWrz4MNoAjCAcO3r8uBBIvn4kS5pcAfGkypX6Rrh8CTOmzJk0azIoAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GYieU5omm6sq27gvH8vw29I3n+s67DDoICIfEovGITCqXzKbzCTUOTIpU9IrNarfc4lSQOAFK3bL5jIaWEOKxIA2Py7vrgwmAJ8/3/P6xbrCG5+ZXaCgH+DXo9nZ4pefomFiySBip1lgGeZk0KVC5ybkUukUqSgR4t2h6asSK9Xqa+gma2dppyxUrOltpeYvbgwLsChYItvhFHCxssoxq/DWQvPtsndZbe73dl72ayx1+5p1XLX6OaUc76IzurnVyvM7YXG9/j78iX57f7/9Po5w8FL4KGjyIMKHChQwbOnyIsI4KiBQrWryIMaPALySqNHr8CDIkQ4mURJo8iZIiC3UAW7p8qY8lzJk08424iTOnzgIAOw==",
+	"skribbleSpacebarSemicorrect": "data:image/gif;base64,R0lGODlhoAAgAJEAAP/PZ/qJAAAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GIieU5omm6sq27gvH8gw79I3n+s67DDoACIfEovGITCqXzKbzCT2aFKqo9YrNarfEKeIUMHHH5LLZ6TWAw6Wz+w3XpgemgL0dz+v3xnnJfifAN4gmSFgo8CUAyHaIhTcG6ajktwgoOVlYhpnZV6LIyNlJaRhZOiqVePB3eYpKuun6OvS5ahk4y9RTlVtUq3bb2Ju0mzLcpQocKnvcrPdLFyzqTO32W9darR13zcrGvB0ul+z9LX5uahs4hd4eFd39XTxPX2/vA3+vv8+/C7zGKKDAgQQLGjyIMKHChQwbsvkXzKHEiRQrWrz4MNoAjCAcO3r8uBBIvn4kS5pcAfGkypX6Rrh8CTOmzJk0azIoAAAh+QQJFAADACwAAAAAoAAgAAAC/5yPqcvtD6OctNqLs968+w+GYieU5omm6sq27gvH8vw29I3n+s67DDoACIfEovGITCqXzKbzCTUOTIpU9IrNarfc4lSQOAVK3bL5jIaWEOKxIA2Py7vrgymAJ8/3/P6xbrCG5+ZXaCgH+DXo9nZ4pefomFiySBip1lgGeZk0KVC5ybkUukUqSgR4t2h6asSK9Xqa+gma2dppyxUrOltpeYvbgwLsChYItvhFHCxssoxq/DWQvPtsndZbe73dl72ayx1+5p1XLX6OaUc76IzurnVyvM7YXG9/j78iX57f7/9Po5w8FL4KGjyIMKHChQwbOnyIsI4KiBQrWryIMaPALySqNHr8CDIkQ4mURJo8iZIiC3UAW7p8qY8lzJk08424iTOnzgIAOw==",
 	"emptyTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///9mgZu7Dmv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADk0i63P4wykmrJSDrzTftYChxxGCe6KlBYOqq2bMJ2vuuzUxntoszGoGQ10v9FhnhEFA0xnIA5a6JOiqSSiJ1YMVEs8yt6Qn8LsVjgAN7RpOR5qlbDZVqt+9r/E7NB8FoXHRwZjVzdWBhYn5fJFRejDshkySElJcelmxSnJ1LZZueomBlBKOnkm+Yq0esmBewsbIKCQAh+QQJFAAEACwAAAAAIAAgAAADmEi63P4wykmrVSDrzfXsYChxxGCeqEl4T5e+6Aq0mpDB+JA5m2ADOdiuUfPdgqkhY+f7IZMzIqD5Az5NykWG6rzqossp9XjNysRN8tO85aqRbHTaWgZjZlSZ9ysl5N9BcVxddVKDgDmCY4g4inN0gSx3ciGVG2FilpVGdiGDn26dHaCknJhtpaRZRamLHVKasXaTsiIXtw4JADs=",
 	"correctTile": "data:image/gif;base64,R0lGODlhIAAgALMAAAAAAP///wsQBxchD5nlUEtpLxsnDwoOBQ4UBv///wAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAJACwCAAMAHAAbAAAEkjDJKYG9OGNKMfpgKFpc4iVEqq4qQk4WCCBs3b7mjBQubdcuQEVX4H1+wBexeESygpVd0eh8KqVMXzUFNWGpW64rOgWHCWNvuXlOz9basPvLlgvV0/p2Dj9zhTF9fmNLRnF7gHQzfmiJWT0oVQkyah8eIpiWGZmcnUExH2Wio6KfoaSoo58Jqa2Gpp6xGrO0tRIRACH5BAkUAAkALAEAAwAcABwAAASpMMlJgb04Xzrx+WAYbtz1JUSqrmlyWBWAzAdrry7QyUiB1LfgS2KZFXzAoG2YKB6RyhtTlnj+oktds2c1JLGEKdf6xYqfxys4NeShoeuwTvaGr9tjcly+rT4TandzCH5HgGVReHWBYIpvjGaDj5CJkmgIAIhSHxd5M5kioQcGBp9OPggDM6usrUY+na11s48Zq7S4abF5ubOYp72XroOuxa0aRBrKyzASEQA7",
 	"semicorrectTile": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///wICAP/PZ/qJAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwCAAMAHAAbAAADdVi6Cv4wQsakvbTEMrr/3lNJYBk6C0Q8pilqD7E6bfnGMl2DNyDngB0PBfvNhJ+eUYccKH/MJtGxDDY7Ux/Ues1Wr1hAQwsEO8XFrRmFK4PZVCBXKo7L13XtBgmDzy6AgYKDEkaGh4aFiIuHE4yPf4SSk5IKCQAh+QQJFAAFACwBAAMAHAAcAAADe1i6DP4wPrakvbTEMrr/neY0EWh+YvUQzukOo+gQLPCe8Uq3N5gDBVqt5wOKhDUbsfNDDpcw4wzJW450wirxCnA+rcApVQlOIUXQqFmIhnK92t7bGb/Ns/XXfZc3WcYXgRF8gn9Jhl6JeIiKioyNjhCQiRiFlhMylxgKCQA7",
@@ -42319,7 +42325,7 @@ var EMBEDDED_PROGRESSION_ASSETS = {
 	"slotSeven": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///9mgZu7Dmv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADoUi63P4wykmrJSDrzTftYChxxGCe6KlBYOqq2bMJ2vuuzUxncDvgDI1gyOt1TMBFZkgE2JDFpGLJLNqsUgyAuXvWoAAHtel1omK5bdXs+sLEavKN/U5zrWc8FH6nw+Z8a216e0FjXSmEhUpjbk95dmt+jz9hhk0rlANaaIw7IaAkjKGkolMcXKmqqZ2ccauwfYYEsbWfraW5SbqlF76/wAoJACH5BAkUAAQALAAAAAAgACAAAAOnSLrc/jDKSatVIOvN9exgKHHEYJ6oSXhPl77oCrSakMH4kDmbYAOoENC0a9R8t5NQOTPOfL+cLjnlAaC/IYxadWKjW26Rkflyg1pic3GEntXpLvtqjqtfYwwd+9bg13oEWDJ/YU6CUIRodnJ6X2BMOHkyj285k2V8lpKAlJqMf3ltWUJCZJmlQkiAIY+udaccr7OrsZm0s6K3uG4gTqnAnTLBphfGDgkAOw==",
 	"slotTrophy": "data:image/gif;base64,R0lGODlhMAAwAJEAAAAAAP////uyNv///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAMAAwAAAC+ZyPqcvtD6OctNqLs06g+/9tC0iW4GamaVYK7gvD5RUa8X0PXkXa+P/SdSgmoKvzmzlURiTOtBwaPkBPEsrYHayDG9VbEwJG0mkoBnpqzWPFmoRGOuPv9XY3kwGOe/pJTNYmtaMGNnZid1fG1gVmyAgY2KbYqEcn2RAmVqg3iZDoZmcVF6TJ5plVN/YCJwBqmqnKmua6KIb6EDaq5vlHpLX7eIorURM8O9TDUnSprMGMrCTS0ukr8vlV63yNTYXFHboCHis+Lrlt3v2drjiKPt7KBwpO65ceb2j7nN0Ea3FipBqxCfgC3hoYgRqvdTxUOLT27+FDduAKAAAh+QQJFAADACwAAAAAMAAwAAAC/ZyPqcvtD6OctDqAs7ZV+49xF0iCIgIK6qqWIfex8iyY1GfQ+jpsEz7YCYOZW0yI2RUjJGEtSbMxSsiMjjSlXjVb6cHn6VpnveXyey6/ZKkZMJ1Wh9jJMd1jOPvk9iegBcWCpYbyQtgX2CfAZxinl6e4ElnU6BhHGPV3B5CwV2gIyZnpBirX4IlJR8qJVqrgWUR698n6gBcq2WaGOqKXGAbIycu0y6oUMiyBF5sJdMIYuHkp0ibt+lydO/3cipjM3Q11C947SG5rfn7qop41eX0OvFpLfnQMb2Ffhf8j7xSMbc2/WdSYDSSYb87BeTBcOEyn7KHEb+UmsmvXrgAAOw==",
 	"slotCrown": "data:image/gif;base64,R0lGODlhGAAYAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAGAAYAIEAAAAAAAD7sjYAAAACWISPFpvtt9ibKgZaL7R68mxRnCUIkRiZaXk+q7qwkkPKgd01b8nD23jr9UIA4E5I3MWEw9mRiZTUoMxW8Qklgqg87S+YtSamzRlt2fW6YkAMaOT+muMZTAEAIfkECRQAAAAsAAAAABgAGACBAAAAAAAA+7I2AAAAAlqEjxeR7bbiQ1LFNWEFF+duCZvTYYs4NmcpoMx0ulGbUrHcus+c97THeWl8xEqJR/y9jrekLhhwSiUXadLYtF5sUatMCO06tyRkj7wzyzKaGIjdfsMt6DmdXQAAOw==",
-	"slotPen": "data:image/gif;base64,R0lGODlhGgAqAPcAAAAAACIgNEUoPGY5MY9WO99xJtmgZu7DmvvyNpnlUGq+MDeUbktpL1JLJDI8OT8/dDBggltu4WOb/1/N5Mvb/P///5utt4R+h2lqallWUnZCiqwyMtlXY9d7uo+XSopvMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh/wtBU0VQUklURTEuMAAh+QQJFAAAACwAAAAAGgAqAAAIzwABCBxIsKDBgwgHggCRsCHBhRAdNoRIUaJBihgZWhQYsUNGjQ4pdhjpEWNIkSRHmkz4MWXJhSw/LhwJIGJMEAUKyLR5kGJOnTInQvwZsaJQmEBx1uTZc2hOp0ybLnwKFeZRolOTnsxqNOrFrEmpgryJFafWo2arjkXoNOzStVLLJoVbsO3QtxIjhi2AFy1GsXQf7jx7c6fXrwwNKP6Yd6Hix28D13X82EBkixArGzDamPLmw2wpfra6cedGhYxPc8yoGjXn1itbu5ZNu/bpgAAh+QQJFAAAACwAAAAAGgAqAAAI1wABCBxIsKDBgwgJggCRsKHChQwdNoQIUeJBihgtDqQoMKPGih1CepQIMaTJDhwdYgRxEmXFhBUxmgTw8iLEAgVkulwIcyFOnCtrGqT4MyjPngyBxkxp06dSEDhpHkV48ylUqVOHVs3pFOtEp1yhRhVacGvYomQfJg0rNuzXtlvTqgWAFm5WrW3Pen0rtupeqkb7yu0YeOzdsks5MgXM0IABoyQhOn68MvLCyQawRlQpefJfzpcnD24KQvRovJcXW4SscWPQ1q5Hwq4MO/bh1qprS9XNO2FAADs=",
+	"slotPen": "data:image/gif;base64,R0lGODlhKgAqAPIAAAAAAN9xJtmgZtd7ugAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACH/C0ltYWdlTWFnaWNrDmdhbW1hPTAuNDU0NTQ1ACH/C2FzZXByaXRlMS4wACwAAAAAKgAqAAADp0i63P4wSgjAvHjVnTvdnCeCpCVm3FCaZwQOsEq23xbHM92st1zpjJVtQAgBFZtAQGgEgpRL4VGTVHJAU+ovCggUm84q1/rLfitkNNd8hlbBYTX2zBa/y2a7HD99jtd1amN0gV1pXCx9gkmEeVtVjYoraYlHTF1wOpc5jhYCnytsZ5+kZ5WSpJ+moqOpc6IgpK+wsbO0oaxanLmmmbe+v6e8kcPFxhEJACH5BAkUAAQAIf8LSW1hZ2VNYWdpY2sOZ2FtbWE9MC40NTQ1NDUAIf8LYXNlcHJpdGUxLjAALAAAAAAqACoAAAOvSLrc/jDKCMC8eNWaO92cJxJgOWagYp7TRgzwykIbbA/p7JTAjbs6DadkI4WCoECA+DvqNkolD4iESqeWoIpzHeaqlajVmNVal1By+XkeU8HisJKsJUfRgLhz5urmu3V2XXqBfYOAdWd4AXSFVm57fFh/X2xYc2+WFjxqgXQCAlieaqChnJ4gpQKdo6mlja0bqpmOFaWVqKm4saejDKK+v73BW7vBMsRCkclGzM4LCQA7",
 	"slotDuelsLogo": "data:image/gif;base64,R0lGODlhKAAoAKIAAIB3nZutt/uyNuh8AAAAAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAKAAoAAAD/1i63P4wykmrhSTry7XPyyd2XxCAivhdmukCaJEBrrtRXg3AREjsNdNN0nrtYjNgzUPM6HY8H5S2jDmKpulQMw0OGdjANAr+davXYvJolZnPwm3Lw/6632wbKndKMtNrPAR6PWp+dmWBWCV0f02KTn0zjYgYdHVxP1yOFpeCmZOVOFyYKm0ka5sjHIBvqqesiVCrsZakIyoVTCp1prANvr2CHgLFv4kCH7OvGcXJxz4Exr6hzc/QKRrOuCLT2NHWA1/E4isTIgPp5T13BOm5j+4e73sZ9PbrEfPrq/j86dce7PMFDt00QMXy6VuhAeCpcKISsbtDD5DCWrQKflvISQdirY8gKSQAACH5BAUUAAUALAAAAAAoACgAAAP/WLrc/jDKSRu5ON/Ki/5EV11AYJ4BNoLbQpao2Uqs6hJAHqfzk8WA3gsW61kwwGDoltMVjZ4fqinENYkno3RKXSqGuQvKFhUnw9WrkjDebGVWtLesRsI1z7jSAUa37Vl9UBlXgDw4gRh1czdggI6EXVBfipJ3cnprk5SZZoeRmIw+lWuJehodoHakHyJlcYo8mpsUqoggrhmcJJW6uTWKwTNkERgCAhqaa2uvtFHHyKwfs6jFF9DRp8DQzhkDx4TA19yiRwQD3wID4uPk5Y0Y6Ou+r9jVox/y80vx6fvvu9B5E+jmArpj/4jBU0fQ4L4o+v794zNOHgtODc8dVPiMHqGuasAOZjOXkUYNkVpw/XLIsZkrePRe1rons+aCBAA7",
 	"slotPotion": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///8SC6nZFr////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADh0i63P4wykmrvThfwLv/2CeKlhec6Ll0JacS4Aq0LOwp91Y3eeY6Ox/gJdPIAiCO0TbqhTyDKOkJiA4EWOtAqetgs1bnhLNtTsfk8ijMjXSi2NNXoJXO3Om4fF4P8qpXenNgWn44eYN8dXZ3DGlwiXSLbECPk5eMlSKYZg9mnzFooEukpaZLCQAh+QQFFAAEACwAAAAAIAAgAAADkUi63P4wykmrvdiBzTnuYLhZ4hacgeJVHOoGowqQwCmDN13fHdGzvRhjpZtBhB9TqoG8tGxDY8ZXImaqvyRnwO1mgYCuYMwNOTvjcafcPGI33YH1sZWL4mypBj4Yn9JpeHZ6UWIogIF4c1RhfQJ/iAKCg1F8jpGJcV91YpiCOJWTol5fPJajZm5vJUWrU6+wGQkAOw==",
 	"slotDrop": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///wBImYPQ9gCf5P///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAIAAgAAADfFi63P4wykmrfSDfmvWWnfdhITCSmdCdTUeoIusSb3zOtb3huSlntCDM9+kIgsHVKEUbIIdF5mCKVF6YhKmzSrRItUiClQNoUsPjCe6M1kF44aQbFQ8LYN7UvX7H5/t7NIB+ZACDh2kgRod9iYohgyFLJZRzhZQsmZqbLAkAIfkECRQABQAsAAAAACAAIAAAA4NYutz+MMpJFwA1q4t15Z0XgaHokJd5cgSnNiwhpO92EfhMv7Hs8hcBLvcz9Yg7URA3GOpUHOFgOixqloRpE2fNLLVbbulzy1KHrTGlF64m1wC03O0pz9HvSVA4F/jzEnt+Tn5/aoGChYpdeomKhoeIAI+FjHBRi5aXKJpXnDWgoaIeCQA7",
@@ -42959,15 +42965,37 @@ function createSkribbleKeyboardRows(languageId, words) {
 	const baseRows = selected.rows.map((row) => [...row]);
 	const base = new Set(baseRows.flat());
 	const counts = /* @__PURE__ */ new Map();
+	let containsDigit = false;
+	let containsZero = false;
 	for (const word of words) for (const character of normalizedCharacters(word, selected.locale)) {
 		const units = languageId === 14 ? decomposeHangul(character) : [character];
 		for (const unit of units) {
+			if (/^[0-9]$/u.test(unit)) {
+				containsDigit = true;
+				containsZero ||= unit === "0";
+				continue;
+			}
 			if (/\s/u.test(unit) || base.has(unit)) continue;
 			counts.set(unit, (counts.get(unit) ?? 0) + 1);
 		}
 	}
 	const extras = [...counts].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], selected.locale)).map(([character]) => character);
-	return [...baseRows, ...chunk(extras, languageId === 14 ? 12 : 14)];
+	return [
+		...containsDigit ? [[
+			"1",
+			"2",
+			"3",
+			"4",
+			"5",
+			"6",
+			"7",
+			"8",
+			"9",
+			...containsZero ? ["0"] : []
+		]] : [],
+		...baseRows,
+		...chunk(extras, languageId === 14 ? 12 : 14)
+	];
 }
 function getSkribbleKeyboardMark(attempts, key, languageId) {
 	const locale = preset(languageId).locale;
@@ -43099,10 +43127,13 @@ var SkribbleFeatureUi = class {
 	coinNodes = /* @__PURE__ */ new Set();
 	visualCoinBalance = 0;
 	coinAnimationGeneration = 0;
+	coinAnimationOwner = null;
+	coinAnimationStarted = false;
 	coinAnimationFinalBalance = null;
 	coinAnimationTimers = /* @__PURE__ */ new Set();
 	mountTimer = null;
 	countdownTimer = null;
+	selectedLanguageId = languageId();
 	keyboardWordListLoad = null;
 	resize = () => {
 		if (this.modal) this.renderModal();
@@ -43117,8 +43148,11 @@ var SkribbleFeatureUi = class {
 	start() {
 		this.ensureStyles();
 		this.ensureMounted();
-		this.ensureKeyboardWordList(languageId(), SKRIBBL_LANGUAGE_NAME_BY_ID[languageId()] ?? null);
-		this.mountTimer = window.setInterval(() => this.ensureMounted(), 700);
+		this.ensureKeyboardWordList(this.selectedLanguageId, SKRIBBL_LANGUAGE_NAME_BY_ID[this.selectedLanguageId] ?? null);
+		this.mountTimer = window.setInterval(() => {
+			this.ensureMounted();
+			this.reconcileLanguageSelection();
+		}, 700);
 		this.countdownTimer = window.setInterval(() => this.updateCountdown(), 1e3);
 		window.addEventListener("resize", this.resize, false);
 	}
@@ -43172,8 +43206,8 @@ var SkribbleFeatureUi = class {
 		const transaction = state.coins?.transaction;
 		if (transaction && transaction.transactionId !== this.lastTransactionId) {
 			this.lastTransactionId = transaction.transactionId;
-			if (transaction.sourceSinkType === "skribble-daily-solve" && transaction.amount > 0) this.animateCoinReward(transaction.amount, transaction.balanceBefore, transaction.balanceAfter);
-			else this.visualCoinBalance = transaction.balanceAfter;
+			if (transaction.sourceSinkType === "skribble-daily-solve" && transaction.amount > 0) this.animateCoinReward(`skribble:${transaction.transactionId}`, transaction.amount, transaction.balanceBefore, transaction.balanceAfter);
+			else if (this.coinAnimationFinalBalance === null) this.visualCoinBalance = transaction.balanceAfter;
 		} else if (this.coinAnimationFinalBalance === null && state.coins?.balance !== previousCoins?.balance) this.visualCoinBalance = state.coins?.balance ?? 0;
 		this.refreshCoinNodes();
 		this.ensureMounted();
@@ -43197,6 +43231,23 @@ var SkribbleFeatureUi = class {
 		this.options.registerTooltip(pill, "Skribbl Coin is the currency of Skribbl Duels", "Y");
 		this.coinNodes.add(pill);
 		return pill;
+	}
+	reserveCoinRewardAnimation(owner, balanceBefore, balanceAfter) {
+		if (this.coinAnimationOwner === owner && this.coinAnimationFinalBalance === balanceAfter) return;
+		this.finishCoinAnimation();
+		this.coinAnimationOwner = owner;
+		this.coinAnimationStarted = false;
+		this.visualCoinBalance = balanceBefore;
+		this.coinAnimationFinalBalance = balanceAfter;
+		this.refreshCoinNodes();
+	}
+	playCoinRewardAnimation(owner, amount, source) {
+		if (owner !== this.coinAnimationOwner || this.coinAnimationStarted) return;
+		this.coinAnimationStarted = true;
+		this.playReservedCoinAnimation(amount, source);
+	}
+	finishCoinRewardAnimation(owner) {
+		if (owner === this.coinAnimationOwner) this.finishCoinAnimation();
 	}
 	isModalOpen() {
 		return this.modal !== null;
@@ -43292,8 +43343,18 @@ var SkribbleFeatureUi = class {
 	requestRound(mode) {
 		this.invalidMessage = null;
 		const selectedLanguageId = languageId();
+		this.selectedLanguageId = selectedLanguageId;
 		this.ensureKeyboardWordList(selectedLanguageId, SKRIBBL_LANGUAGE_NAME_BY_ID[selectedLanguageId] ?? null);
 		this.beginRequest(mode === "daily" ? "open-daily" : "open-practice", () => this.options.gateway.openSkribble(selectedLanguageId, mode));
+	}
+	reconcileLanguageSelection() {
+		const selectedLanguageId = languageId();
+		if (selectedLanguageId !== this.selectedLanguageId) {
+			this.selectedLanguageId = selectedLanguageId;
+			this.ensureKeyboardWordList(selectedLanguageId, SKRIBBL_LANGUAGE_NAME_BY_ID[selectedLanguageId] ?? null);
+		}
+		if (!this.accountConnected() || this.pendingAction || this.visibleState?.mode !== "daily" || this.visibleState.languageId === selectedLanguageId) return;
+		this.requestRound("daily");
 	}
 	ensureKeyboardWordList(language, languageName) {
 		if (getOfficialWords(language).length > 0 || this.keyboardWordListLoad?.languageId === language) return;
@@ -43406,20 +43467,26 @@ var SkribbleFeatureUi = class {
 			keyboard.appendChild(row);
 		}
 		const controls = element$2("div", "scd-skribble-keyboard-controls");
-		controls.append(this.keyboardButton("\u232B", "backspace", "empty", state, "wide", "Backspace"), this.keyboardButton("Space", "space", getSkribbleKeyboardMark(state.attempts, " ", state.languageId), state, "extra-wide", "Space"), this.keyboardButton("\u21B5", "enter", "empty", state, "wide", "Enter"));
+		const spaceMark = getSkribbleKeyboardMark(state.attempts, " ", state.languageId);
+		controls.append(this.keyboardButton("", "backspace", "empty", state, "wide", "Backspace", "skribbleBackspace"), this.keyboardButton("", "space", spaceMark, state, "extra-wide", "Space", {
+			empty: "skribbleSpacebar",
+			incorrect: "skribbleSpacebarIncorrect",
+			semicorrect: "skribbleSpacebarSemicorrect",
+			correct: "skribbleSpacebarCorrect"
+		}[spaceMark]), this.keyboardButton("", "enter", "empty", state, "wide", "Enter", "skribbleEnter"));
 		keyboard.appendChild(controls);
 		return keyboard;
 	}
-	keyboardButton(label, value, mark, state, widthClass = "", ariaLabel = label) {
+	keyboardButton(label, value, mark, state, widthClass = "", ariaLabel = label, assetOverride = null) {
 		const button = element$2("button", `scd-skribble-key${widthClass ? ` ${widthClass}` : ""}`);
 		button.type = "button";
 		button.disabled = state.status !== "playing" || Boolean(this.pendingAction);
 		button.dataset.value = value;
 		button.dataset.mark = mark;
 		button.setAttribute("aria-label", ariaLabel);
-		const source = progressionAsset(mark === "empty" ? "emptyTile" : mark === "semicorrect" ? "semicorrectTile" : `${mark}Tile`);
+		const source = progressionAsset(assetOverride ?? (mark === "empty" ? "emptyTile" : mark === "semicorrect" ? "semicorrectTile" : `${mark}Tile`));
 		if (source) button.style.backgroundImage = `url(${JSON.stringify(source)})`;
-		button.appendChild(element$2("span", "scd-skribble-key-label", label));
+		if (label) button.appendChild(element$2("span", "scd-skribble-key-label", label));
 		button.addEventListener("pointerdown", (event) => event.preventDefault());
 		button.addEventListener("click", () => this.useKeyboardValue(value, state));
 		return button;
@@ -43618,23 +43685,34 @@ var SkribbleFeatureUi = class {
 			tile.style.animationDelay = `${tiles.length * 45 + 720 + index * 80}ms`;
 		});
 	}
-	animateCoinReward(amount, balanceBefore, balanceAfter) {
-		this.finishCoinAnimation();
-		this.visualCoinBalance = balanceBefore;
-		this.coinAnimationFinalBalance = balanceAfter;
-		this.refreshCoinNodes();
+	animateCoinReward(owner, amount, balanceBefore, balanceAfter) {
+		this.reserveCoinRewardAnimation(owner, balanceBefore, balanceAfter);
 		const source = this.modal?.querySelector(".scd-skribble-row.won");
+		if (!source) {
+			this.finishCoinRewardAnimation(owner);
+			return;
+		}
+		this.playCoinRewardAnimation(owner, amount, source);
+	}
+	playReservedCoinAnimation(amount, source) {
 		const coinSource = progressionAsset("coin");
-		if (!source || !coinSource || !this.modal) {
+		const balanceAfter = this.coinAnimationFinalBalance;
+		if (!coinSource || balanceAfter === null || amount <= 0) {
 			this.finishCoinAnimation();
 			return;
 		}
 		const generation = ++this.coinAnimationGeneration;
 		const sourceRect = source.getBoundingClientRect();
+		let settled = 0;
+		const settle = () => {
+			if (generation !== this.coinAnimationGeneration) return;
+			settled += 1;
+			if (settled >= amount) this.finishCoinAnimation();
+		};
 		for (let index = 0; index < amount; index += 1) {
 			const timer = window.setTimeout(() => {
 				this.coinAnimationTimers.delete(timer);
-				if (generation !== this.coinAnimationGeneration || !this.modal) return;
+				if (generation !== this.coinAnimationGeneration) return;
 				const coin = element$2("img", "scd-skribble-coin-particle");
 				coin.src = coinSource;
 				coin.alt = "";
@@ -43685,6 +43763,7 @@ var SkribbleFeatureUi = class {
 					const target = [...this.coinNodes].find((node) => node.isConnected)?.getBoundingClientRect();
 					if (!target) {
 						coin.remove();
+						settle();
 						return;
 					}
 					const current = coin.getBoundingClientRect();
@@ -43703,9 +43782,12 @@ var SkribbleFeatureUi = class {
 						if (generation !== this.coinAnimationGeneration) return;
 						this.visualCoinBalance = Math.min(balanceAfter, this.visualCoinBalance + 1);
 						this.refreshCoinNodes();
-						if (this.visualCoinBalance >= balanceAfter) this.finishCoinAnimation();
+						settle();
 					});
-				}).catch(() => coin.remove());
+				}).catch(() => {
+					coin.remove();
+					settle();
+				});
 			}, index * 65);
 			this.coinAnimationTimers.add(timer);
 		}
@@ -43717,6 +43799,8 @@ var SkribbleFeatureUi = class {
 		document.querySelectorAll(".scd-skribble-coin-particle").forEach((node) => node.remove());
 		if (this.coinAnimationFinalBalance !== null) this.visualCoinBalance = this.coinAnimationFinalBalance;
 		else this.visualCoinBalance = this.gatewayState.coins?.balance ?? this.visualCoinBalance;
+		this.coinAnimationOwner = null;
+		this.coinAnimationStarted = false;
 		this.coinAnimationFinalBalance = null;
 		this.refreshCoinNodes();
 	}
@@ -43774,15 +43858,15 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
 .scd-skribble-keyboard { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:auto;padding-top:8px;user-select:none;touch-action:manipulation; }
 .scd-skribble-keyboard-row { --scd-key-count:10;--scd-key-max-width:420px;width:min(100%,var(--scd-key-max-width));display:grid;grid-template-columns:repeat(var(--scd-key-count),minmax(0,1fr));gap:2px; }
-.scd-skribble-keyboard-controls { width:min(100%,520px);display:flex;justify-content:center;gap:3px; }
+.scd-skribble-keyboard-controls { width:min(100%,520px);display:grid;grid-template-columns:3fr 10fr 3fr;align-items:center;justify-content:center;gap:3px; }
 .scd-skribble-key { position:relative;min-width:0;aspect-ratio:1/1;display:grid;place-items:center;border:0;padding:0;background-color:transparent;background-position:center;background-repeat:no-repeat;background-size:100% 100%;color:#111;cursor:pointer;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25));transition:scale .12s ease-in-out,filter .12s ease-in-out; }
 .scd-skribble-key:hover:not(:disabled) { scale:1.1;z-index:2;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)) brightness(1.06); }
 .scd-skribble-key:active:not(:disabled) { scale:.96; }
 .scd-skribble-key:disabled { cursor:default; }
 .scd-skribble-key-label { position:relative;transform:translate(4px,-2px);max-width:calc(100% - 5px);overflow:hidden;font:900 clamp(8px,calc(var(--scd-board-tile-size,32px) * .43),15px)/1 'Nunito',sans-serif;text-overflow:ellipsis;text-shadow:1px 1px 0 #fff5; }
-.scd-skribble-key.wide,.scd-skribble-key.extra-wide { width:auto;min-height:36px;aspect-ratio:auto;background-size:100% 100%; }
-.scd-skribble-key.wide { flex:1.35 1 72px; }
-.scd-skribble-key.extra-wide { flex:3.5 1 180px; }
+.scd-skribble-key.wide,.scd-skribble-key.extra-wide { width:100%;height:auto;min-height:0;background-size:contain; }
+.scd-skribble-key.wide { aspect-ratio:3/2; }
+.scd-skribble-key.extra-wide { aspect-ratio:5/1; }
 .scd-skribble-key.wide .scd-skribble-key-label,.scd-skribble-key.extra-wide .scd-skribble-key-label { transform:none; }
 .scd-skribble-help { width:100%;box-sizing:border-box;padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
 .scd-skribble-help p { margin:.55em 0 0; }
@@ -43923,6 +44007,7 @@ var SkribblSlotsFeatureUi = class {
 	modal = null;
 	gatewayState;
 	visibleState = null;
+	presentedState = null;
 	visibleFingerprint = "";
 	displayIcons = [
 		"skribbl-coin",
@@ -43942,10 +44027,12 @@ var SkribblSlotsFeatureUi = class {
 	bulbIndex = 0;
 	bulbDirection = 1;
 	bulbsFlashing = false;
+	activeCoinRewardOwner = null;
 	constructor(options) {
 		this.options = options;
 		this.gatewayState = options.getGatewayState();
 		this.visibleState = this.gatewayState.slots?.state ?? null;
+		this.presentedState = this.visibleState ? structuredClone(this.visibleState) : null;
 		this.visibleFingerprint = slotsFingerprint(this.visibleState);
 		const outcome = this.gatewayState.lastSlotsSpin?.accepted ? this.gatewayState.lastSlotsSpin.outcome : null;
 		if (outcome) {
@@ -43974,16 +44061,19 @@ var SkribblSlotsFeatureUi = class {
 	update(state) {
 		this.gatewayState = state;
 		this.trySendPendingAction();
+		const result = state.lastSlotsSpin;
+		const resultIsNew = Boolean(result && result.requestId !== this.lastSpinRequestId);
+		const animateResult = Boolean(resultIsNew && result?.accepted && result.outcome && this.modal);
 		const incoming = state.slots?.state ?? null;
 		const fingerprint = slotsFingerprint(incoming);
 		let rerender = false;
 		if (incoming && fingerprint !== this.visibleFingerprint) {
 			this.visibleState = structuredClone(incoming);
 			this.visibleFingerprint = fingerprint;
+			if (!animateResult && !this.animating) this.presentedState = structuredClone(incoming);
 			rerender = true;
 		}
-		const result = state.lastSlotsSpin;
-		if (result && result.requestId !== this.lastSpinRequestId) {
+		if (result && resultIsNew) {
 			this.lastSpinRequestId = result.requestId;
 			if (this.pendingAction?.requestId === result.requestId) this.clearPendingAction();
 			this.visibleState = structuredClone(result.state);
@@ -43991,13 +44081,19 @@ var SkribblSlotsFeatureUi = class {
 			if (result.accepted && result.outcome) {
 				this.latestOutcome = structuredClone(result.outcome);
 				if (this.modal) {
-					this.renderModal();
-					this.animateOutcome(result.outcome);
+					const rewardOwner = result.outcome.coinReward > 0 ? `slots:${result.outcome.spinId}` : null;
+					if (rewardOwner) {
+						this.activeCoinRewardOwner = rewardOwner;
+						this.options.reserveCoinRewardAnimation(rewardOwner, result.outcome.balanceAfter - result.outcome.coinReward, result.outcome.balanceAfter);
+					}
+					this.animateOutcome(result.outcome, rewardOwner);
 				} else {
+					this.presentedState = structuredClone(result.state);
 					this.displayIcons = [...result.outcome.finalIcons];
 					this.resultMessage = this.outcomeMessage(result.outcome);
 				}
 			} else {
+				this.presentedState = structuredClone(result.state);
 				this.resultMessage = result.reason === "insufficient-coins" ? "You need one Skribbl Coin or a Free Spin." : "This Slots session expired. A fresh machine is ready.";
 				this.options.showToast("Skribbl Slots", this.resultMessage, 5e3);
 				rerender = true;
@@ -44064,6 +44160,10 @@ var SkribblSlotsFeatureUi = class {
 	}
 	close() {
 		this.clearPendingAction();
+		if (this.activeCoinRewardOwner) {
+			this.options.finishCoinRewardAnimation(this.activeCoinRewardOwner);
+			this.activeCoinRewardOwner = null;
+		}
 		this.cancelAnimations();
 		this.modal?.remove();
 		this.modal = null;
@@ -44129,16 +44229,17 @@ var SkribblSlotsFeatureUi = class {
 		header.append(title, actions);
 		const content = element$1("div", "scd-slots-content");
 		if (this.helpOpen) content.appendChild(this.helpCard());
-		if (!this.visibleState) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the machine\u2026"));
+		const state = this.presentedState ?? this.visibleState;
+		if (!state) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the machine\u2026"));
 		else {
 			const machine = element$1("div", "scd-slots-machine");
 			const reels = element$1("div", "scd-slots-reels");
 			this.displayIcons.forEach((icon, index) => reels.appendChild(this.reel(icon, index)));
 			const controls = element$1("div", "scd-slots-controls");
-			controls.appendChild(this.spinButton());
-			controls.appendChild(this.heartProgress());
+			controls.appendChild(this.spinButton(state));
+			controls.appendChild(this.heartProgress(state));
 			machine.append(reels, controls);
-			content.append(machine, element$1("div", `scd-slots-result${this.latestOutcome && isWin(this.latestOutcome) ? " win" : ""}`, this.resultMessage));
+			content.append(machine, element$1("div", `scd-slots-result${!this.animating && this.latestOutcome && isWin(this.latestOutcome) ? " win" : ""}`, this.resultMessage));
 		}
 		shell.append(header, content);
 		overlay.appendChild(shell);
@@ -44188,13 +44289,18 @@ var SkribblSlotsFeatureUi = class {
 	}
 	async flashBulbs(generation) {
 		this.bulbsFlashing = true;
-		for (let index = 0; index < 6; index += 1) {
-			if (generation !== this.animationGeneration) return;
-			this.syncBulbs(index % 2 === 0);
-			if (!await this.wait(85, generation)) return;
+		try {
+			for (let index = 0; index < 18; index += 1) {
+				if (generation !== this.animationGeneration) return;
+				this.syncBulbs(index % 2 === 0);
+				if (!await this.wait(85, generation)) return;
+			}
+		} finally {
+			if (generation === this.animationGeneration) {
+				this.bulbsFlashing = false;
+				this.syncBulbs();
+			}
 		}
-		this.bulbsFlashing = false;
-		this.syncBulbs();
 	}
 	reel(icon, index) {
 		const reel = element$1("div", "scd-slot-reel");
@@ -44221,8 +44327,7 @@ var SkribblSlotsFeatureUi = class {
 		const payline = this.modal?.querySelector(`.scd-slot-reel[data-index="${index}"] .scd-slot-payline`);
 		if (payline) payline.replaceChildren(this.slotIcon(icon));
 	}
-	spinButton() {
-		const state = this.visibleState;
+	spinButton(state) {
 		const free = state.freeSpins > 0;
 		const button = element$1("button", "scd-slots-spin");
 		button.type = "button";
@@ -44237,8 +44342,7 @@ var SkribblSlotsFeatureUi = class {
 		this.options.registerTooltip(button, free ? `${state.freeSpins} Free Spin${state.freeSpins === 1 ? "" : "s"} available` : "One spin costs one Skribbl Coin");
 		return button;
 	}
-	heartProgress() {
-		const state = this.visibleState;
+	heartProgress(state) {
 		const row = element$1("div", "scd-slots-heart-progress");
 		row.setAttribute("aria-label", `${state.heartProgress} of ${state.heartTarget} hearts collected`);
 		for (let index = 0; index < state.heartTarget; index += 1) {
@@ -44305,7 +44409,7 @@ var SkribblSlotsFeatureUi = class {
 		card.appendChild(odds);
 		return card;
 	}
-	async animateOutcome(outcome) {
+	async animateOutcome(outcome, rewardOwner) {
 		this.cancelAnimations();
 		const generation = ++this.animationGeneration;
 		this.animating = true;
@@ -44319,8 +44423,14 @@ var SkribblSlotsFeatureUi = class {
 		this.displayIcons.forEach((icon, index) => this.setReelIcon(index, icon));
 		this.resultMessage = this.outcomeMessage(outcome);
 		this.animating = false;
+		this.presentedState = this.visibleState ? structuredClone(this.visibleState) : null;
 		this.renderModal();
 		if (isWin(outcome)) this.flashBulbs(generation);
+		if (rewardOwner) {
+			const source = this.modal?.querySelector(".scd-slots-reels");
+			if (source) this.options.playCoinRewardAnimation(rewardOwner, outcome.coinReward, source);
+			else this.options.finishCoinRewardAnimation(rewardOwner);
+		}
 	}
 	async animateReel(index, finalIcon, duration, generation) {
 		const reel = this.modal?.querySelector(`.scd-slot-reel[data-index="${index}"]`);
@@ -44453,7 +44563,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-bulb:not([src]).fallback-on { background:#ffe822;box-shadow:0 0 18px #fff36a,inset 0 0 0 5px #b58e00; }
 .scd-slots-header { min-height:92px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(280px,2fr) minmax(130px,1fr);align-items:center;gap:10px;padding:12px;overflow:visible;border-radius:10px 10px 0 0; }
 .scd-slots-title { position:relative;z-index:6;width:200px;height:82px;display:grid;place-items:center;justify-self:center;font-size:2em;font-weight:900;letter-spacing:.08em;text-shadow:2px 2px 0 #0004;pointer-events:none; }
-.scd-slots-title img { display:block;width:200px;height:100px;max-width:none;object-fit:contain;transform:scale(2);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slots-title img { display:block;width:200px;height:100px;max-width:none;object-fit:contain;transform:scale(1.8);filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-actions { justify-self:end;display:flex;gap:6px; }
 .scd-slots-actions .scd-icon-button { width:42px;height:42px; }
 .scd-slots-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
@@ -44464,10 +44574,10 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
 .scd-slot-reel::before { top:0; }
 .scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
-.scd-slot-payline { width:78%;height:78%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
+.scd-slot-payline { width:59%;height:59%;display:grid;place-items:center;transition:transform .2s ease,opacity .2s ease; }
 .scd-slot-icon { display:grid;place-items:center;min-width:0;min-height:0; }
 .scd-slot-payline > .scd-slot-icon { width:100%;height:100%; }
-.scd-slot-icon img { display:block;width:100%;height:100%;max-width:256px;max-height:256px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
+.scd-slot-icon img { display:block;width:100%;height:100%;max-width:192px;max-height:192px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slot-icon-fallback { display:grid;place-items:center;width:100%;height:100%;font-size:clamp(28px,7vw,86px);font-weight:900;color:#222;text-shadow:3px 3px 0 #0003; }
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
@@ -44499,7 +44609,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
 .scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
 .scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
-.scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:fill; }
+.scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:contain; }
 .scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
 .scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
 .scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
@@ -44517,7 +44627,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
   .scd-slots-header { grid-template-columns:auto 1fr auto; }
   .scd-slots-title { font-size:1.2em; }
   .scd-slots-launcher { right:8px;top:calc(22vh + 130px);width:min(200px,42vw);min-height:80px; }
-  .scd-slots-title img { transform:scale(1.5); }
+  .scd-slots-title img { transform:scale(1.35); }
   .scd-slots-machine { grid-template-columns:1fr; }
   .scd-slots-reels { gap:6px; }
   .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -45626,6 +45736,13 @@ var DuelProductFoundation = class {
 			gateway: this.gatewayClient,
 			getGatewayState: () => this.gatewayState,
 			createCoinPill: (compact) => this.skribbleUi.createCoinPill(compact),
+			reserveCoinRewardAnimation: (owner, balanceBefore, balanceAfter) => {
+				this.skribbleUi.reserveCoinRewardAnimation(owner, balanceBefore, balanceAfter);
+			},
+			playCoinRewardAnimation: (owner, amount, source) => {
+				this.skribbleUi.playCoinRewardAnimation(owner, amount, source);
+			},
+			finishCoinRewardAnimation: (owner) => this.skribbleUi.finishCoinRewardAnimation(owner),
 			showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
 			onModalVisibilityChanged: () => this.syncPageScrollLock(),
 			aboutIconUrl: EMBEDDED_ICON_ASSETS["res/challenge-icons/about.gif"],
@@ -45660,8 +45777,8 @@ var DuelProductFoundation = class {
 			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName || previous.identity?.nameColorIndex !== state.identity?.nameColorIndex;
 			const playerFound = state.match !== null && previous.match?.matchId !== state.match.matchId && (previous.queue !== null || previous.invite?.status === "waiting" || this.pendingInviteToken !== null || this.inviteAcceptanceSubmitted);
 			this.gatewayState = state;
-			this.skribbleUi.update(state);
 			this.slotsUi.update(state);
+			this.skribbleUi.update(state);
 			if (playerFound) {
 				this.soundEffects.play("matchFound");
 				this.closeProductModalsForMatchFound();
@@ -45751,7 +45868,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.66.1",
+			version: "0.66.2",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 13,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -45901,7 +46018,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.66.1") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.66.2") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -49708,7 +49825,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.66.1";
+var BUILD_VERSION = "0.66.2";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

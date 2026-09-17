@@ -1,9 +1,33 @@
-# Skribbl Duels v0.66.1
+# Skribbl Duels v0.66.2
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v13, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.66.2
+
+- Keeps server-confirmed Slots results visually staged until every reel and
+  special effect has finished. Heart progress and the green win treatment no
+  longer reveal an outcome while “Spinning…” is still shown; win bulbs flash
+  for roughly one additional second.
+- Reuses Skribble's collectible Coin particles for every Slots Coin reward.
+  The shared balance first reflects the paid spin, then increments by one as
+  each reward particle reaches a visible Coin display. Closing the modal still
+  settles the full authoritative balance immediately.
+- Refines the arcade proportions: the modal Slots logo is ten percent smaller,
+  reel artwork is twenty-five percent smaller, and Pen is centered on a square
+  transparent canvas instead of being distorted.
+- Adds the supplied animated Space, Backspace and Enter artwork. Space switches
+  between its supplied gray, yellow and green feedback variants like every
+  normal key. Word lists containing digits receive a dedicated 1–9 top row
+  (plus 0 when present), so numbers no longer mix with punctuation. Daily
+  Skribble automatically follows same-tab changes to Skribbl's `lang` setting
+  while Practice remains intact.
+
+v0.66.2 remains compatible with Gateway Contract v13 and adds no migration or
+Railway variable. See `docs/slots-result-keyboard-polish-v0.66.2.md` for the
+state-ordering and deployment notes.
 
 ## v0.66.1
 

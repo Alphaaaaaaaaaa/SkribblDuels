@@ -20,6 +20,19 @@ for (const character of ['ä', 'ö', 'ü', 'ß', '-', '.']) {
 }
 assert.ok(!germanKeys.includes(' '), 'Space belongs to the dedicated wide control.');
 
+const numeric = createSkribbleKeyboardRows(0, ['route 2.3/1']);
+assert.deepEqual(
+  numeric[0],
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+  'Any numeric word-list entry must add a dedicated 1–9 top row.'
+);
+assert.ok(numeric.slice(1).flat().includes('.'));
+assert.ok(numeric.slice(1).flat().includes('/'));
+assert.ok(!numeric.slice(1).flat().some(character => /^[0-9]$/u.test(character)), 'Digits must not leak into punctuation rows.');
+const numericWithZero = createSkribbleKeyboardRows(0, ['formula 10']);
+assert.deepEqual(numericWithZero[0], ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+assert.notDeepEqual(createSkribbleKeyboardRows(0, ['plain words'])[0], numeric[0]);
+
 const french = createSkribbleKeyboardRows(7, ['arc-en-ciel', "l'été"]);
 assert.deepEqual(french[0]!.slice(0, 6), ['a', 'z', 'e', 'r', 't', 'y']);
 assert.ok(french.flat().includes("'"));

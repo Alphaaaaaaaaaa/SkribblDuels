@@ -108,10 +108,13 @@ export class SkribbleFeatureUi {
   private readonly coinNodes = new Set<HTMLElement>();
   private visualCoinBalance = 0;
   private coinAnimationGeneration = 0;
+  private coinAnimationOwner: string | null = null;
+  private coinAnimationStarted = false;
   private coinAnimationFinalBalance: number | null = null;
   private readonly coinAnimationTimers = new Set<number>();
   private mountTimer: number | null = null;
   private countdownTimer: number | null = null;
+  private selectedLanguageId = languageId();
   private keyboardWordListLoad: { languageId: number; task: Promise<void> } | null = null;
   private readonly resize = (): void => {
     if (this.modal) this.renderModal();
@@ -127,8 +130,14 @@ export class SkribbleFeatureUi {
   public start(): void {
     this.ensureStyles();
     this.ensureMounted();
-    this.ensureKeyboardWordList(languageId(), SKRIBBL_LANGUAGE_NAME_BY_ID[languageId()] ?? null);
-    this.mountTimer = window.setInterval(() => this.ensureMounted(), 700);
+    this.ensureKeyboardWordList(
+      this.selectedLanguageId,
+      SKRIBBL_LANGUAGE_NAME_BY_ID[this.selectedLanguageId] ?? null
+    );
+    this.mountTimer = window.setInterval(() => {
+      this.ensureMounted();
+      this.reconcileLanguageSelection();
+    }, 700);
     this.countdownTimer = window.setInterval(() => this.updateCountdown(), 1_000);
     window.addEventListener('resize', this.resize, false);
   }
@@ -200,8 +209,13 @@ export class SkribbleFeatureUi {
     if (transaction && transaction.transactionId !== this.lastTransactionId) {
       this.lastTransactionId = transaction.transactionId;
       if (transaction.sourceSinkType === 'skribble-daily-solve' && transaction.amount > 0) {
-        this.animateCoinReward(transaction.amount, transaction.balanceBefore, transaction.balanceAfter);
-      } else {
+        this.animateCoinReward(
+          `skribble:${transaction.transactionId}`,
+          transaction.amount,
+          transaction.balanceBefore,
+          transaction.balanceAfter
+        );
+      } else if (this.coinAnimationFinalBalance === null) {
         this.visualCoinBalance = transaction.balanceAfter;
       }
     } else if (this.coinAnimationFinalBalance === null && state.coins?.balance !== previousCoins?.balance) {
@@ -231,6 +245,30 @@ export class SkribbleFeatureUi {
     this.options.registerTooltip(pill, 'Skribbl Coin is the currency of Skribbl Duels', 'Y');
     this.coinNodes.add(pill);
     return pill;
+  }
+
+  public reserveCoinRewardAnimation(
+    owner: string,
+    balanceBefore: number,
+    balanceAfter: number
+  ): void {
+    if (this.coinAnimationOwner === owner && this.coinAnimationFinalBalance === balanceAfter) return;
+    this.finishCoinAnimation();
+    this.coinAnimationOwner = owner;
+    this.coinAnimationStarted = false;
+    this.visualCoinBalance = balanceBefore;
+    this.coinAnimationFinalBalance = balanceAfter;
+    this.refreshCoinNodes();
+  }
+
+  public playCoinRewardAnimation(owner: string, amount: number, source: HTMLElement): void {
+    if (owner !== this.coinAnimationOwner || this.coinAnimationStarted) return;
+    this.coinAnimationStarted = true;
+    this.playReservedCoinAnimation(amount, source);
+  }
+
+  public finishCoinRewardAnimation(owner: string): void {
+    if (owner === this.coinAnimationOwner) this.finishCoinAnimation();
   }
 
   public isModalOpen(): boolean {
@@ -351,6 +389,7 @@ export class SkribbleFeatureUi {
   private requestRound(mode: 'daily' | 'practice'): void {
     this.invalidMessage = null;
     const selectedLanguageId = languageId();
+    this.selectedLanguageId = selectedLanguageId;
     this.ensureKeyboardWordList(
       selectedLanguageId,
       SKRIBBL_LANGUAGE_NAME_BY_ID[selectedLanguageId] ?? null
@@ -358,6 +397,22 @@ export class SkribbleFeatureUi {
     this.beginRequest(mode === 'daily' ? 'open-daily' : 'open-practice', () => (
       this.options.gateway.openSkribble(selectedLanguageId, mode)
     ));
+  }
+
+  private reconcileLanguageSelection(): void {
+    const selectedLanguageId = languageId();
+    if (selectedLanguageId !== this.selectedLanguageId) {
+      this.selectedLanguageId = selectedLanguageId;
+      this.ensureKeyboardWordList(
+        selectedLanguageId,
+        SKRIBBL_LANGUAGE_NAME_BY_ID[selectedLanguageId] ?? null
+      );
+    }
+    if (!this.accountConnected()
+        || this.pendingAction
+        || this.visibleState?.mode !== 'daily'
+        || this.visibleState.languageId === selectedLanguageId) return;
+    this.requestRound('daily');
   }
 
   private ensureKeyboardWordList(language: number, languageName: string | null): void {
@@ -516,17 +571,25 @@ export class SkribbleFeatureUi {
     }
 
     const controls = element('div', 'scd-skribble-keyboard-controls');
+    const spaceMark = getSkribbleKeyboardMark(state.attempts, ' ', state.languageId);
+    const spacebarAsset: Readonly<Record<SkribbleKeyboardMark, ProgressionAssetId>> = {
+      empty: 'skribbleSpacebar',
+      incorrect: 'skribbleSpacebarIncorrect',
+      semicorrect: 'skribbleSpacebarSemicorrect',
+      correct: 'skribbleSpacebarCorrect'
+    };
     controls.append(
-      this.keyboardButton('⌫', 'backspace', 'empty', state, 'wide', 'Backspace'),
+      this.keyboardButton('', 'backspace', 'empty', state, 'wide', 'Backspace', 'skribbleBackspace'),
       this.keyboardButton(
-        'Space',
+        '',
         'space',
-        getSkribbleKeyboardMark(state.attempts, ' ', state.languageId),
+        spaceMark,
         state,
         'extra-wide',
-        'Space'
+        'Space',
+        spacebarAsset[spaceMark]
       ),
-      this.keyboardButton('↵', 'enter', 'empty', state, 'wide', 'Enter')
+      this.keyboardButton('', 'enter', 'empty', state, 'wide', 'Enter', 'skribbleEnter')
     );
     keyboard.appendChild(controls);
     return keyboard;
@@ -538,7 +601,8 @@ export class SkribbleFeatureUi {
     mark: SkribbleKeyboardMark,
     state: GatewaySkribbleState,
     widthClass = '',
-    ariaLabel = label
+    ariaLabel = label,
+    assetOverride: ProgressionAssetId | null = null
   ): HTMLButtonElement {
     const button = element(
       'button',
@@ -549,14 +613,14 @@ export class SkribbleFeatureUi {
     button.dataset.value = value;
     button.dataset.mark = mark;
     button.setAttribute('aria-label', ariaLabel);
-    const assetId: ProgressionAssetId = mark === 'empty'
+    const assetId: ProgressionAssetId = assetOverride ?? (mark === 'empty'
       ? 'emptyTile'
       : mark === 'semicorrect'
         ? 'semicorrectTile'
-        : `${mark}Tile` as ProgressionAssetId;
+        : `${mark}Tile` as ProgressionAssetId);
     const source = progressionAsset(assetId);
     if (source) button.style.backgroundImage = `url(${JSON.stringify(source)})`;
-    button.appendChild(element('span', 'scd-skribble-key-label', label));
+    if (label) button.appendChild(element('span', 'scd-skribble-key-label', label));
     button.addEventListener('pointerdown', event => event.preventDefault());
     button.addEventListener('click', () => this.useKeyboardValue(value, state));
     return button;
@@ -789,23 +853,40 @@ export class SkribbleFeatureUi {
       });
   }
 
-  private animateCoinReward(amount: number, balanceBefore: number, balanceAfter: number): void {
-    this.finishCoinAnimation();
-    this.visualCoinBalance = balanceBefore;
-    this.coinAnimationFinalBalance = balanceAfter;
-    this.refreshCoinNodes();
+  private animateCoinReward(
+    owner: string,
+    amount: number,
+    balanceBefore: number,
+    balanceAfter: number
+  ): void {
+    this.reserveCoinRewardAnimation(owner, balanceBefore, balanceAfter);
     const source = this.modal?.querySelector<HTMLElement>('.scd-skribble-row.won');
+    if (!source) {
+      this.finishCoinRewardAnimation(owner);
+      return;
+    }
+    this.playCoinRewardAnimation(owner, amount, source);
+  }
+
+  private playReservedCoinAnimation(amount: number, source: HTMLElement): void {
     const coinSource = progressionAsset('coin');
-    if (!source || !coinSource || !this.modal) {
+    const balanceAfter = this.coinAnimationFinalBalance;
+    if (!coinSource || balanceAfter === null || amount <= 0) {
       this.finishCoinAnimation();
       return;
     }
     const generation = ++this.coinAnimationGeneration;
     const sourceRect = source.getBoundingClientRect();
+    let settled = 0;
+    const settle = (): void => {
+      if (generation !== this.coinAnimationGeneration) return;
+      settled += 1;
+      if (settled >= amount) this.finishCoinAnimation();
+    };
     for (let index = 0; index < amount; index += 1) {
       const timer = window.setTimeout(() => {
         this.coinAnimationTimers.delete(timer);
-        if (generation !== this.coinAnimationGeneration || !this.modal) return;
+        if (generation !== this.coinAnimationGeneration) return;
         const coin = element('img', 'scd-skribble-coin-particle') as HTMLImageElement;
         coin.src = coinSource;
         coin.alt = '';
@@ -836,6 +917,7 @@ export class SkribbleFeatureUi {
           const target = [...this.coinNodes].find(node => node.isConnected)?.getBoundingClientRect();
           if (!target) {
             coin.remove();
+            settle();
             return;
           }
           const current = coin.getBoundingClientRect();
@@ -851,9 +933,12 @@ export class SkribbleFeatureUi {
             if (generation !== this.coinAnimationGeneration) return;
             this.visualCoinBalance = Math.min(balanceAfter, this.visualCoinBalance + 1);
             this.refreshCoinNodes();
-            if (this.visualCoinBalance >= balanceAfter) this.finishCoinAnimation();
+            settle();
           });
-        }).catch(() => coin.remove());
+        }).catch(() => {
+          coin.remove();
+          settle();
+        });
       }, index * 65);
       this.coinAnimationTimers.add(timer);
     }
@@ -866,6 +951,8 @@ export class SkribbleFeatureUi {
     document.querySelectorAll<HTMLElement>('.scd-skribble-coin-particle').forEach(node => node.remove());
     if (this.coinAnimationFinalBalance !== null) this.visualCoinBalance = this.coinAnimationFinalBalance;
     else this.visualCoinBalance = this.gatewayState.coins?.balance ?? this.visualCoinBalance;
+    this.coinAnimationOwner = null;
+    this.coinAnimationStarted = false;
     this.coinAnimationFinalBalance = null;
     this.refreshCoinNodes();
   }
@@ -925,15 +1012,15 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
 .scd-skribble-keyboard { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:auto;padding-top:8px;user-select:none;touch-action:manipulation; }
 .scd-skribble-keyboard-row { --scd-key-count:10;--scd-key-max-width:420px;width:min(100%,var(--scd-key-max-width));display:grid;grid-template-columns:repeat(var(--scd-key-count),minmax(0,1fr));gap:2px; }
-.scd-skribble-keyboard-controls { width:min(100%,520px);display:flex;justify-content:center;gap:3px; }
+.scd-skribble-keyboard-controls { width:min(100%,520px);display:grid;grid-template-columns:3fr 10fr 3fr;align-items:center;justify-content:center;gap:3px; }
 .scd-skribble-key { position:relative;min-width:0;aspect-ratio:1/1;display:grid;place-items:center;border:0;padding:0;background-color:transparent;background-position:center;background-repeat:no-repeat;background-size:100% 100%;color:#111;cursor:pointer;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25));transition:scale .12s ease-in-out,filter .12s ease-in-out; }
 .scd-skribble-key:hover:not(:disabled) { scale:1.1;z-index:2;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.3)) brightness(1.06); }
 .scd-skribble-key:active:not(:disabled) { scale:.96; }
 .scd-skribble-key:disabled { cursor:default; }
 .scd-skribble-key-label { position:relative;transform:translate(4px,-2px);max-width:calc(100% - 5px);overflow:hidden;font:900 clamp(8px,calc(var(--scd-board-tile-size,32px) * .43),15px)/1 'Nunito',sans-serif;text-overflow:ellipsis;text-shadow:1px 1px 0 #fff5; }
-.scd-skribble-key.wide,.scd-skribble-key.extra-wide { width:auto;min-height:36px;aspect-ratio:auto;background-size:100% 100%; }
-.scd-skribble-key.wide { flex:1.35 1 72px; }
-.scd-skribble-key.extra-wide { flex:3.5 1 180px; }
+.scd-skribble-key.wide,.scd-skribble-key.extra-wide { width:100%;height:auto;min-height:0;background-size:contain; }
+.scd-skribble-key.wide { aspect-ratio:3/2; }
+.scd-skribble-key.extra-wide { aspect-ratio:5/1; }
 .scd-skribble-key.wide .scd-skribble-key-label,.scd-skribble-key.extra-wide .scd-skribble-key-label { transform:none; }
 .scd-skribble-help { width:100%;box-sizing:border-box;padding:12px;border-radius:8px;background:var(--COLOR_PANEL_LO,rgba(0,0,0,.16));text-align:left; }
 .scd-skribble-help p { margin:.55em 0 0; }

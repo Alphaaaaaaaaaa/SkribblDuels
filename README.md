@@ -1,9 +1,25 @@
-# Skribbl Duels v0.66.2
+# Skribbl Duels v0.66.3
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v13, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.66.3
+
+- Applies the standard Skribbl drop shadow to embedded Hub and Profile icon
+  artwork, including Settings and About/Help.
+- Makes Return to Daily a transparent icon action with a drop shadow instead
+  of a panel-colored secondary button.
+- Enlarges the shared Skribble/Slots Coin collection particles from 20 px to
+  24 px while preserving center alignment and final balance settlement.
+- Fits Skribble rows against the board's measured post-layout width and removes
+  the flex/grid minimum-width constraint. Even 32-character words now remain
+  inside the modal with a small inline safety margin.
+
+v0.66.3 is a client-only presentation patch compatible with Gateway Contract
+v13. It adds no migration or Railway variable. See
+`docs/final-ui-polish-v0.66.3.md` for verification and deployment notes.
 
 ## v0.66.2
 

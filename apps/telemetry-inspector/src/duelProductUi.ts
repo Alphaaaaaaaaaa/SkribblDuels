@@ -679,7 +679,7 @@ class CompletionChatAdapter {
 #skribbl-duels-intro button, #skribbl-duels-board button, #skribbl-duels-profile button, #skribbl-duels-profile-detail button { pointer-events:auto; }
 .scd-icon { display:block;object-fit:contain;transition:transform .1s ease-in-out; }
 .scd-icon:hover, button:not(:disabled):hover .scd-icon { transform:scale(1.1); }
-.scd-icon-image { display:block;width:100%;height:100%;object-fit:contain; }
+.scd-icon-image { display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-icon-button { display:grid;place-items:center;border:0;background:transparent;padding:0;cursor:pointer; }
 .scd-icon-fallback { display:grid;place-items:center;font-weight:900; }
 .button-skribbl-duels { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:40px;margin-top:10px;border:0;border-radius:var(--BORDER_RADIUS,7px);background:var(--SCD_ACCENT);color:white;font-size:1.2em;font-weight:700;text-shadow:2px 2px 0 #0000002b;transition:background-color 80ms;cursor:pointer; }
@@ -1597,7 +1597,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.66.2',
+      version: '0.66.3',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1757,7 +1757,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.66.2') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.66.3') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {

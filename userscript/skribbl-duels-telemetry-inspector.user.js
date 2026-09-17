@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.66.2
+// @version      0.66.3
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -16078,7 +16078,7 @@ function configuredValue$1(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue$1("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.66.2";
+var GATEWAY_CLIENT_VERSION = "0.66.3";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -43089,6 +43089,14 @@ function languageId() {
 function codePoints(value) {
 	return Array.from(value.normalize("NFKC"));
 }
+var SKRIBBLE_BOARD_TILE_GAP = 2;
+var SKRIBBLE_BOARD_INLINE_SAFETY = 10;
+var SKRIBBLE_COIN_PARTICLE_SIZE = 24;
+function calculateSkribbleTileSize(availableWidth, tileCount) {
+	const count = Math.max(1, Math.floor(tileCount));
+	const exactSize = ((Number.isFinite(availableWidth) ? Math.max(0, availableWidth - SKRIBBLE_BOARD_INLINE_SAFETY) : 0) - (count - 1) * SKRIBBLE_BOARD_TILE_GAP) / count;
+	return Math.max(4, Math.min(32, Math.floor(exactSize * 100) / 100));
+}
 function stateFingerprint(state) {
 	if (!state) return "";
 	return JSON.stringify({
@@ -43397,6 +43405,7 @@ var SkribbleFeatureUi = class {
 		header.append(title, actions);
 		const content = element$2("div", "scd-skribble-content");
 		const state = this.visibleState;
+		let boardToFit = null;
 		if (this.helpOpen) content.appendChild(this.helpCard());
 		if (!state) content.appendChild(element$2("div", "scd-skribble-muted", "Preparing your Daily Skribble\u2026"));
 		else if (state.availability === "unsupported") content.append(element$2("strong", "", `${state.languageName} is not available`), element$2("p", "scd-skribble-warning", state.unavailableReason ?? "This official word list could not be fetched."));
@@ -43407,10 +43416,10 @@ var SkribbleFeatureUi = class {
 			content.appendChild(modeBar);
 			const board = element$2("div", "scd-skribble-board");
 			const inputWidth = state.status === "playing" ? Math.min(state.maximumLength, Math.max(2, codePoints(this.draft).length + 1)) : 0;
-			const widestRow = Math.max(2, inputWidth, state.status === "lost" ? codePoints("You lost!").length : 0, ...state.attempts.map((attempt) => codePoints(attempt.guess).length));
-			const availableWidth = Math.max(180, Math.min(944, window.innerWidth - 60));
-			const tileSize = Math.max(4, Math.min(32, (availableWidth - (widestRow - 1) * 2) / widestRow));
-			board.style.setProperty("--scd-board-tile-size", `${tileSize}px`);
+			boardToFit = {
+				element: board,
+				widestRow: Math.max(2, inputWidth, state.status === "lost" ? codePoints("You lost!").length : 0, ...state.attempts.map((attempt) => codePoints(attempt.guess).length))
+			};
 			state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(state, attempt, index, state.status === "solved" && index === state.attempts.length - 1)));
 			if (state.status === "playing") board.appendChild(this.inputRow(state));
 			if (state.status === "lost") board.appendChild(this.lossMessageRow());
@@ -43421,6 +43430,12 @@ var SkribbleFeatureUi = class {
 		}
 		shell.append(header, content);
 		overlay.appendChild(shell);
+		if (boardToFit) {
+			const measuredWidth = boardToFit.element.clientWidth;
+			const fallbackWidth = Math.max(128, Math.min(944, window.innerWidth - 60));
+			const tileSize = calculateSkribbleTileSize(measuredWidth > 0 ? measuredWidth : fallbackWidth, boardToFit.widestRow);
+			boardToFit.element.style.setProperty("--scd-board-tile-size", `${tileSize}px`);
+		}
 		this.syncLoadingOverlay();
 		if (previousInputFocused && state?.status === "playing") queueMicrotask(() => {
 			const input = overlay.querySelector(".scd-skribble-native-input");
@@ -43716,8 +43731,8 @@ var SkribbleFeatureUi = class {
 				const coin = element$2("img", "scd-skribble-coin-particle");
 				coin.src = coinSource;
 				coin.alt = "";
-				coin.style.left = `${sourceRect.left + sourceRect.width / 2 - 10}px`;
-				coin.style.top = `${sourceRect.top + sourceRect.height / 2 - 10}px`;
+				coin.style.left = `${sourceRect.left + sourceRect.width / 2 - SKRIBBLE_COIN_PARTICLE_SIZE / 2}px`;
+				coin.style.top = `${sourceRect.top + sourceRect.height / 2 - SKRIBBLE_COIN_PARTICLE_SIZE / 2}px`;
 				document.body.appendChild(coin);
 				const dx = (Math.random() - .5) * Math.min(360, window.innerWidth * .45);
 				const up = 70 + Math.random() * 150;
@@ -43841,8 +43856,8 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-mode-bar { position:relative;width:100%;min-height:40px;display:flex;align-items:center;justify-content:center; }
 .scd-skribble-mode-bar .scd-skribble-return { position:absolute;left:0; }
 .scd-skribble-mode { font-weight:800;opacity:.86; }
-.scd-skribble-board { width:100%;display:flex;flex-direction:column;align-items:center;gap:6px; }
-.scd-skribble-row { --scd-row-tile-count:2;width:100%;display:grid;grid-template-columns:repeat(var(--scd-row-tile-count),var(--scd-board-tile-size,32px));gap:2px;justify-content:center; }
+.scd-skribble-board { width:100%;min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:6px; }
+.scd-skribble-row { --scd-row-tile-count:2;width:100%;min-width:0;max-width:100%;display:grid;grid-template-columns:repeat(var(--scd-row-tile-count),var(--scd-board-tile-size,32px));gap:2px;justify-content:center; }
 .scd-skribble-tile { position:relative;width:var(--scd-board-tile-size,32px);aspect-ratio:1/1;justify-self:center;display:grid;place-items:center;border-radius:3px;background-position:center;background-size:100% 100%;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .16s ease-in-out,opacity .16s ease-in-out,scale .16s ease-in-out; }
 .scd-skribble-tile:hover { scale:1.12;z-index:2; }
 .scd-skribble-character { position:relative;transform:translate(4px,-2px);max-width:100%;overflow:hidden;color:#111;font:900 clamp(5px,calc(var(--scd-board-tile-size,32px) * .5),16px)/1 'Nunito',sans-serif;text-shadow:1px 1px 0 #fff5; }
@@ -43880,13 +43895,14 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-practice:hover { background:#1671c5; }
 .scd-skribble-secondary { background:var(--COLOR_PANEL_BUTTON,#2a51d1); }
 .scd-skribble-secondary:hover:not(:disabled) { background:var(--COLOR_PANEL_BUTTON_HOVER,#1e44be); }
-.scd-skribble-return { width:40px;padding:3px;display:grid;place-items:center; }
+.scd-skribble-secondary.scd-skribble-return,.scd-skribble-secondary.scd-skribble-return:hover:not(:disabled) { background:transparent; }
+.scd-skribble-return { width:40px;padding:3px;display:grid;place-items:center;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-skribble-return img { width:32px;height:32px;object-fit:contain; }
 .scd-progression-load { position:fixed;z-index:2147483647;inset:0;animation:scd-load-opacity .3s ease-in-out;background-color:rgba(0,0,0,.75); }
 .scd-progression-load .container { position:absolute;left:50%;top:50%;animation:scd-load-position .3s ease-in-out; }
 .scd-progression-load .icon { position:absolute;width:128px;height:128px; }
 .scd-progression-load .graphic { position:absolute;left:-50%;top:-50%;width:100%;height:100%;background:url('/img/load.gif') center/contain no-repeat;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-skribble-spin .8s ease-in-out infinite; }
-.scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:20px;height:20px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
+.scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:24px;height:24px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
 .scd-skribble-overlay::-webkit-scrollbar,.scd-skribble-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-skribble-overlay::-webkit-scrollbar-thumb,.scd-skribble-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
 @keyframes scd-skribble-fade { from { opacity:0; } to { opacity:1; } }
@@ -45003,7 +45019,7 @@ var CompletionChatAdapter = class {
 #skribbl-duels-intro button, #skribbl-duels-board button, #skribbl-duels-profile button, #skribbl-duels-profile-detail button { pointer-events:auto; }
 .scd-icon { display:block;object-fit:contain;transition:transform .1s ease-in-out; }
 .scd-icon:hover, button:not(:disabled):hover .scd-icon { transform:scale(1.1); }
-.scd-icon-image { display:block;width:100%;height:100%;object-fit:contain; }
+.scd-icon-image { display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-icon-button { display:grid;place-items:center;border:0;background:transparent;padding:0;cursor:pointer; }
 .scd-icon-fallback { display:grid;place-items:center;font-weight:900; }
 .button-skribbl-duels { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:40px;margin-top:10px;border:0;border-radius:var(--BORDER_RADIUS,7px);background:var(--SCD_ACCENT);color:white;font-size:1.2em;font-weight:700;text-shadow:2px 2px 0 #0000002b;transition:background-color 80ms;cursor:pointer; }
@@ -45868,7 +45884,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.66.2",
+			version: "0.66.3",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 13,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -46018,7 +46034,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.66.2") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.66.3") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -49825,7 +49841,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.66.2";
+var BUILD_VERSION = "0.66.3";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

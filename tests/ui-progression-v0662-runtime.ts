@@ -34,7 +34,7 @@ assert.match(skribble, /this\.requestRound\('daily'\)/);
 
 assert.match(slots, /private presentedState: GatewaySlotsState \| null/);
 assert.match(slots, /!this\.animating && this\.latestOutcome && isWin/);
-assert.match(slots, /for \(let index = 0; index < 18; index \+= 1\)/);
+assert.match(slots, /for \(let index = 0; index < 30; index \+= 1\)/);
 assert.match(slots, /this\.presentedState = this\.visibleState \? structuredClone\(this\.visibleState\) : null;/);
 assert.match(slots, /playCoinRewardAnimation\(rewardOwner, outcome\.coinReward, source\)/);
 assert.match(slots, /\.scd-slots-title img[^\n]*transform:scale\(1\.8\)/);

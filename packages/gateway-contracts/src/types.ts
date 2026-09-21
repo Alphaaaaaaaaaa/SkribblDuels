@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 13 as const;
+export const GATEWAY_CONTRACT_VERSION = 14 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export const GATEWAY_SLOT_ICON_IDS = [
@@ -42,20 +42,20 @@ export const GATEWAY_SLOT_BASE_WEIGHTS: Readonly<Record<GatewaySlotIconId, numbe
 };
 
 export const GATEWAY_SLOT_COIN_REWARDS: Readonly<Partial<Record<GatewaySlotIconId, number>>> = {
-  'skribbl-coin': 10,
-  '7': 7,
-  trophy: 5,
-  crown: 5,
-  pen: 4,
-  'skribbl-duels-logo': 4,
-  potion: 3,
-  drop: 3,
-  pizza: 2,
-  pumpkin: 2,
-  eggplant: 2,
-  pineapple: 1,
-  peach: 1,
-  ribbon: 1
+  'skribbl-coin': 100,
+  '7': 77,
+  trophy: 50,
+  crown: 50,
+  pen: 40,
+  'skribbl-duels-logo': 40,
+  potion: 30,
+  drop: 30,
+  pizza: 20,
+  pumpkin: 20,
+  eggplant: 20,
+  pineapple: 10,
+  peach: 10,
+  ribbon: 10
 };
 
 export const GATEWAY_SLOT_FREE_SPIN_REWARDS: Readonly<Partial<Record<GatewaySlotIconId, number>>> = {

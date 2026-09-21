@@ -1,5 +1,7 @@
 import {
   GATEWAY_SLOT_BASE_WEIGHTS,
+  GATEWAY_SLOT_COIN_REWARDS,
+  GATEWAY_SLOT_FREE_SPIN_REWARDS,
   GATEWAY_SLOT_ICON_IDS,
   type GatewaySlotEffectStep,
   type GatewaySlotIconId,
@@ -445,10 +447,10 @@ export class SkribblSlotsFeatureUi {
   private async flashBulbs(generation: number): Promise<void> {
     this.bulbsFlashing = true;
     try {
-      for (let index = 0; index < 18; index += 1) {
+      for (let index = 0; index < 30; index += 1) {
         if (generation !== this.animationGeneration) return;
         this.syncBulbs(index % 2 === 0);
-        if (!await this.wait(85, generation)) return;
+        if (!await this.wait(100, generation)) return;
       }
     } finally {
       if (generation === this.animationGeneration) {
@@ -574,10 +576,17 @@ export class SkribblSlotsFeatureUi {
     const grid = element('div', 'scd-slots-odds-grid');
     for (const icon of GATEWAY_SLOT_ICON_IDS) {
       const item = element('div', 'scd-slots-odds-item');
+      const coinReward = GATEWAY_SLOT_COIN_REWARDS[icon];
+      const freeSpinReward = GATEWAY_SLOT_FREE_SPIN_REWARDS[icon];
+      const reward = coinReward
+        ? ` · ${coinReward} Coin${coinReward === 1 ? '' : 's'}`
+        : freeSpinReward
+          ? ` · ${freeSpinReward} Free Spins`
+          : '';
       item.append(
         this.slotIcon(icon),
         element('span', '', SLOT_LABELS[icon]),
-        element('span', 'scd-slots-muted', `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}`)
+        element('span', 'scd-slots-muted', `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}${reward}`)
       );
       grid.appendChild(item);
     }
@@ -605,6 +614,7 @@ export class SkribblSlotsFeatureUi {
     }
     this.displayIcons = [...outcome.finalIcons];
     this.displayIcons.forEach((icon, index) => this.setReelIcon(index, icon));
+    if (!await this.animateCollectedHearts(outcome, generation)) return;
     this.resultMessage = this.outcomeMessage(outcome);
     this.animating = false;
     this.presentedState = this.visibleState ? structuredClone(this.visibleState) : null;
@@ -615,6 +625,33 @@ export class SkribblSlotsFeatureUi {
       if (source) this.options.playCoinRewardAnimation(rewardOwner, outcome.coinReward, source);
       else this.options.finishCoinRewardAnimation(rewardOwner);
     }
+  }
+
+  private async animateCollectedHearts(
+    outcome: GatewaySlotSpinOutcome,
+    generation: number
+  ): Promise<boolean> {
+    const heartIndices = outcome.finalIcons
+      .map((icon, index) => icon === 'heart' ? index : -1)
+      .filter(index => index >= 0);
+    let progress = outcome.heartProgressBefore;
+    for (const reelIndex of heartIndices) {
+      const reel = this.modal?.querySelector<HTMLElement>(
+        `.scd-slot-reel[data-index="${reelIndex}"]`
+      );
+      reel?.classList.add('effect-active', 'effect-heart');
+      if (!await this.wait(1_000, generation)) return false;
+      progress = (progress + 1) % 3;
+      if (this.presentedState) {
+        this.presentedState = {
+          ...this.presentedState,
+          heartProgress: progress
+        };
+      }
+      this.renderModal();
+      if (!await this.wait(160, generation)) return false;
+    }
+    return generation === this.animationGeneration;
   }
 
   private async animateReel(
@@ -786,6 +823,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
 .scd-slot-reel.effect-active { z-index:3;transform:scale(1.2);filter:drop-shadow(0 0 15px #fff9); }
+.scd-slot-reel.effect-heart { transform:scale(1.28);filter:drop-shadow(0 0 18px #ff7eb8); }
 .scd-slot-reel.effect-fill-target .scd-slot-payline { animation:scd-slot-pop .46s ease; }
 .scd-slot-reel.effect-wizard { animation:scd-slot-wizard .46s ease; }
 .scd-slot-reel.effect-wizard-target .scd-slot-payline { animation:scd-slot-magic .46s ease; }

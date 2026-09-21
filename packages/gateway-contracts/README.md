@@ -6,7 +6,11 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
-Contract v13 adds authenticated Skribbl Slots open/spin actions, ordered effect
+Contract v14 raises authoritative Slots reward bounds for rules v2. Effect
+replacement pools and final reward calculation remain Gateway-only; browser
+messages cannot select their outcome.
+
+Contract v13 added authenticated Skribbl Slots open/spin actions, ordered effect
 steps, final payline outcomes, Free Spins and Heart progress. It also discloses
 the Skribble answer only after a solved/lost terminal state and removes the old
 celebration-replay sink. The browser can request an action but cannot choose

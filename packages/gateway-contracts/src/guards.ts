@@ -307,7 +307,7 @@ function slotOutcome(value: unknown): boolean {
     && outcome.usedFreeSpin === (outcome.coinCost === 0)
     && outcome.usedFreeSpin === (outcome.usedFreeSpinSource !== null)
     && nonNegativeInteger(outcome.coinReward)
-    && Number(outcome.coinReward) <= 10
+    && Number(outcome.coinReward) <= 100
     && nonNegativeInteger(outcome.awardedFreeSpins)
     && Number(outcome.awardedFreeSpins) <= 11
     && nonNegativeInteger(outcome.freeSpinsBefore)

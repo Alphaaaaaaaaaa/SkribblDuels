@@ -15,7 +15,7 @@ import type {
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.66.3' as const;
+export const GATEWAY_CLIENT_VERSION = '0.67.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'

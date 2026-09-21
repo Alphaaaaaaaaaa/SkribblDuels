@@ -148,7 +148,7 @@ export class SupabaseDiscordAuthClient {
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: true,
-            flowType: 'implicit',
+            flowType: 'pkce',
             storageKey: SUPABASE_AUTH_STORAGE_KEY
           }
         }
@@ -205,8 +205,7 @@ export class SupabaseDiscordAuthClient {
     const { error } = await client.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        redirectTo: SUPABASE_AUTH_REDIRECT_URL,
-        scopes: 'identify'
+        redirectTo: SUPABASE_AUTH_REDIRECT_URL
       }
     });
     if (error) {

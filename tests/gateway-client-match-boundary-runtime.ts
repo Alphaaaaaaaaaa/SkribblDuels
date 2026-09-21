@@ -8,6 +8,7 @@ import type {
   GatewayMatchSnapshotMessage,
   GatewayTelemetryEnvelope
 } from '@skribbl-duels/gateway-contracts';
+import { GATEWAY_CONTRACT_VERSION } from '@skribbl-duels/gateway-contracts';
 
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, 'sessionStorage', {
@@ -132,7 +133,7 @@ reloadedInternals.socket = {
 };
 reloadedInternals.receive({
   type: 'WELCOME',
-  contractVersion: 13,
+  contractVersion: GATEWAY_CONTRACT_VERSION,
   connectionId: 'reloaded-connection',
   identity: {
     accountId: 'alpha',

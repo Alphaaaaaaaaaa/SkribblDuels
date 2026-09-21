@@ -67,7 +67,9 @@ function codePoints(value: string): string[] {
 
 const SKRIBBLE_BOARD_TILE_GAP = 2;
 const SKRIBBLE_BOARD_INLINE_SAFETY = 10;
-const SKRIBBLE_COIN_PARTICLE_SIZE = 24;
+const SKRIBBLE_COIN_PARTICLE_SIZE = 28;
+const SKRIBBLE_LOSS_PAIR_INTERVAL_MS = 100;
+const SKRIBBLE_LOSS_FALL_DURATION_MS = 720;
 
 export function calculateSkribbleTileSize(availableWidth: number, tileCount: number): number {
   const count = Math.max(1, Math.floor(tileCount));
@@ -118,6 +120,8 @@ export class SkribbleFeatureUi {
   private pendingAction: PendingAction | null = null;
   private lastTransactionId: string | null = null;
   private readonly lostSessions = new Set<string>();
+  private readonly collapsedLossSessions = new Set<string>();
+  private lossAnimationTimer: number | null = null;
   private readonly coinNodes = new Set<HTMLElement>();
   private visualCoinBalance = 0;
   private coinAnimationGeneration = 0;
@@ -162,6 +166,8 @@ export class SkribbleFeatureUi {
     this.countdownTimer = null;
     window.removeEventListener('resize', this.resize, false);
     this.clearPendingAction();
+    if (this.lossAnimationTimer !== null) window.clearTimeout(this.lossAnimationTimer);
+    this.lossAnimationTimer = null;
     this.finishCoinAnimation();
     this.close();
     this.launcher?.remove();
@@ -239,11 +245,6 @@ export class SkribbleFeatureUi {
     if (this.modal && rerender) this.renderModal();
     else this.syncLoadingOverlay();
 
-    const skribble = this.visibleState;
-    if (skribble?.status === 'lost' && !this.lostSessions.has(skribble.sessionId)) {
-      this.lostSessions.add(skribble.sessionId);
-      requestAnimationFrame(() => this.animateLoss());
-    }
   }
 
   public createCoinPill(compact = true): HTMLDivElement {
@@ -474,7 +475,6 @@ export class SkribbleFeatureUi {
 
     const content = element('div', 'scd-skribble-content');
     const state = this.visibleState;
-    let boardToFit: { element: HTMLDivElement; widestRow: number } | null = null;
     if (this.helpOpen) content.appendChild(this.helpCard());
     if (!state) {
       content.appendChild(element('div', 'scd-skribble-muted', 'Preparing your Daily Skribble…'));
@@ -493,40 +493,31 @@ export class SkribbleFeatureUi {
       ));
       content.appendChild(modeBar);
       const board = element('div', 'scd-skribble-board');
-      const inputWidth = state.status === 'playing'
-        ? Math.min(state.maximumLength, Math.max(2, codePoints(this.draft).length + 1))
-        : 0;
-      const widestRow = Math.max(
-        2,
-        inputWidth,
-        state.status === 'lost' ? codePoints('You lost!').length : 0,
-        ...state.attempts.map(attempt => codePoints(attempt.guess).length)
-      );
-      boardToFit = { element: board, widestRow };
-      state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(
-        state,
-        attempt,
-        index,
-        state.status === 'solved' && index === state.attempts.length - 1
-      )));
+      const lossCollapsed = state.status === 'lost'
+        && this.collapsedLossSessions.has(state.sessionId);
+      if (lossCollapsed) board.classList.add('collapsed-loss');
+      if (!lossCollapsed) {
+        state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(
+          state,
+          attempt,
+          index,
+          state.status === 'solved' && index === state.attempts.length - 1
+        )));
+      }
       if (state.status === 'playing') board.appendChild(this.inputRow(state));
-      if (state.status === 'lost') board.appendChild(this.lossMessageRow());
+      if (state.status === 'lost') board.appendChild(this.lossMessageRow(lossCollapsed));
       content.appendChild(board);
       if (this.invalidMessage) content.appendChild(element('div', 'scd-skribble-warning', this.invalidMessage));
       if (state.status !== 'playing') content.appendChild(this.ending(state));
-      content.appendChild(this.keyboard(state));
+      if (state.status === 'playing') content.appendChild(this.keyboard(state));
+      if (state.status === 'solved' || lossCollapsed) {
+        shell.classList.add('finished');
+        content.classList.add('finished');
+      }
     }
     shell.append(header, content);
     overlay.appendChild(shell);
-    if (boardToFit) {
-      const measuredWidth = boardToFit.element.clientWidth;
-      const fallbackWidth = Math.max(128, Math.min(944, window.innerWidth - 60));
-      const tileSize = calculateSkribbleTileSize(
-        measuredWidth > 0 ? measuredWidth : fallbackWidth,
-        boardToFit.widestRow
-      );
-      boardToFit.element.style.setProperty('--scd-board-tile-size', `${tileSize}px`);
-    }
+    this.fitBoardTiles();
     this.syncLoadingOverlay();
     if (previousInputFocused && state?.status === 'playing') {
       queueMicrotask(() => {
@@ -536,6 +527,7 @@ export class SkribbleFeatureUi {
       });
     }
     this.refreshCoinNodes();
+    if (state?.status === 'lost') this.scheduleLossAnimation(state.sessionId);
   }
 
   private headerIconButton(tooltip: string, close: boolean): HTMLButtonElement {
@@ -742,6 +734,7 @@ export class SkribbleFeatureUi {
       this.invalidMessage = null;
       this.inputFocused = true;
       row.replaceWith(this.inputRow(state));
+      this.fitBoardTiles();
     });
     input.addEventListener('keydown', event => {
       if (event.key !== 'Enter') return;
@@ -809,9 +802,12 @@ export class SkribbleFeatureUi {
     return button;
   }
 
-  private lossMessageRow(): HTMLElement {
+  private lossMessageRow(settled: boolean): HTMLElement {
     const text = codePoints('You lost!');
-    const row = element('div', 'scd-skribble-row scd-skribble-loss-message');
+    const row = element(
+      'div',
+      `scd-skribble-row scd-skribble-loss-message ${settled ? 'settled' : 'pending'}`
+    );
     row.style.setProperty('--scd-row-tile-count', String(text.length));
     text.forEach((character, index) => {
       const tile = this.tile(character, 'emptyTile');
@@ -860,18 +856,85 @@ export class SkribbleFeatureUi {
     overlay.appendChild(load);
   }
 
-  private animateLoss(): void {
-    const rows = this.modal?.querySelectorAll<HTMLElement>('.scd-skribble-board .scd-skribble-row:not(.scd-skribble-loss-message)');
-    if (!rows) return;
+  private scheduleLossAnimation(sessionId: string): void {
+    if (!this.modal
+        || this.lostSessions.has(sessionId)
+        || this.collapsedLossSessions.has(sessionId)) return;
+    this.lostSessions.add(sessionId);
+    requestAnimationFrame(() => this.animateLoss(sessionId));
+  }
+
+  private animateLoss(sessionId: string): void {
+    const state = this.visibleState;
+    const rows = this.modal?.querySelectorAll<HTMLElement>(
+      '.scd-skribble-board .scd-skribble-row:not(.scd-skribble-loss-message)'
+    );
+    if (!state || state.status !== 'lost' || state.sessionId !== sessionId || !rows) {
+      this.lostSessions.delete(sessionId);
+      return;
+    }
     const tiles = [...rows].flatMap(row => [...row.querySelectorAll<HTMLElement>('.scd-skribble-tile')]);
-    tiles.sort(() => Math.random() - 0.5).forEach((tile, index) => {
-      tile.style.animationDelay = `${index * 45}ms`;
+    for (let index = tiles.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [tiles[index], tiles[swapIndex]] = [tiles[swapIndex]!, tiles[index]!];
+    }
+    tiles.forEach((tile, index) => {
+      tile.style.animationDelay = `${Math.floor(index / 2) * SKRIBBLE_LOSS_PAIR_INTERVAL_MS}ms`;
       tile.classList.add('fall');
     });
-    this.modal?.querySelectorAll<HTMLElement>('.scd-skribble-loss-message .scd-skribble-tile')
+    const pairCount = Math.ceil(tiles.length / 2);
+    const messageDelay = Math.max(0, pairCount - 1) * SKRIBBLE_LOSS_PAIR_INTERVAL_MS
+      + SKRIBBLE_LOSS_FALL_DURATION_MS;
+    const lossMessage = this.modal?.querySelector<HTMLElement>('.scd-skribble-loss-message');
+    lossMessage?.classList.remove('pending');
+    lossMessage?.querySelectorAll<HTMLElement>('.scd-skribble-tile')
       .forEach((tile, index) => {
-        tile.style.animationDelay = `${tiles.length * 45 + 720 + index * 80}ms`;
+        tile.style.animationDelay = `${messageDelay + index * 80}ms`;
       });
+    if (this.lossAnimationTimer !== null) window.clearTimeout(this.lossAnimationTimer);
+    this.lossAnimationTimer = window.setTimeout(() => {
+      this.lossAnimationTimer = null;
+      this.collapseLossBoard(sessionId);
+    }, messageDelay + codePoints('You lost!').length * 80 + 560);
+  }
+
+  private collapseLossBoard(sessionId: string): void {
+    this.collapsedLossSessions.add(sessionId);
+    if (this.visibleState?.sessionId !== sessionId || this.visibleState.status !== 'lost') return;
+    const board = this.modal?.querySelector<HTMLElement>('.scd-skribble-board');
+    board?.querySelectorAll('.scd-skribble-row:not(.scd-skribble-loss-message)')
+      .forEach(row => row.remove());
+    board?.classList.add('collapsed-loss');
+    const lossMessage = board?.querySelector<HTMLElement>('.scd-skribble-loss-message');
+    lossMessage?.classList.remove('pending');
+    lossMessage?.classList.add('settled');
+    lossMessage?.querySelectorAll<HTMLElement>('.scd-skribble-tile').forEach(tile => {
+      tile.style.animationDelay = '0ms';
+    });
+    this.modal?.querySelector('.scd-skribble-modal')?.classList.add('finished');
+    this.modal?.querySelector('.scd-skribble-content')?.classList.add('finished');
+    this.fitBoardTiles();
+  }
+
+  private fitBoardTiles(): void {
+    const board = this.modal?.querySelector<HTMLElement>('.scd-skribble-board');
+    const content = this.modal?.querySelector<HTMLElement>('.scd-skribble-content');
+    if (!board || !content) return;
+    const widestRow = [...board.querySelectorAll<HTMLElement>('.scd-skribble-row')]
+      .reduce((widest, row) => {
+        const count = Number(row.style.getPropertyValue('--scd-row-tile-count'));
+        return Number.isFinite(count) ? Math.max(widest, count) : widest;
+      }, 2);
+    const contentStyle = getComputedStyle(content);
+    const inlinePadding = Number.parseFloat(contentStyle.paddingLeft || '0')
+      + Number.parseFloat(contentStyle.paddingRight || '0');
+    const measuredWidth = Math.max(0, content.clientWidth - inlinePadding);
+    const fallbackWidth = Math.max(128, Math.min(944, window.innerWidth - 60));
+    const tileSize = calculateSkribbleTileSize(
+      measuredWidth > 0 ? measuredWidth : fallbackWidth,
+      widestRow
+    );
+    board.style.setProperty('--scd-board-tile-size', `${tileSize}px`);
   }
 
   private animateCoinReward(
@@ -1012,11 +1075,13 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-coin-pill.compact { min-width:0;width:max-content;height:38px;padding:3px 8px 3px 3px; }
 .scd-coin-pill img { width:40px;height:40px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-coin-pill.compact img { width:32px;height:32px; }
-.scd-skribble-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 18px 18px;text-align:center; }
+.scd-skribble-content { min-height:330px;min-width:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 18px 18px;text-align:center;box-sizing:border-box; }
+.scd-skribble-content.finished { min-height:0; }
 .scd-skribble-mode-bar { position:relative;width:100%;min-height:40px;display:flex;align-items:center;justify-content:center; }
 .scd-skribble-mode-bar .scd-skribble-return { position:absolute;left:0; }
 .scd-skribble-mode { font-weight:800;opacity:.86; }
-.scd-skribble-board { width:100%;min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:6px; }
+.scd-skribble-board { width:100%;min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:6px;box-sizing:border-box; }
+.scd-skribble-board.collapsed-loss { min-height:34px; }
 .scd-skribble-row { --scd-row-tile-count:2;width:100%;min-width:0;max-width:100%;display:grid;grid-template-columns:repeat(var(--scd-row-tile-count),var(--scd-board-tile-size,32px));gap:2px;justify-content:center; }
 .scd-skribble-tile { position:relative;width:var(--scd-board-tile-size,32px);aspect-ratio:1/1;justify-self:center;display:grid;place-items:center;border-radius:3px;background-position:center;background-size:100% 100%;background-repeat:no-repeat;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .16s ease-in-out,opacity .16s ease-in-out,scale .16s ease-in-out; }
 .scd-skribble-tile:hover { scale:1.12;z-index:2; }
@@ -1031,6 +1096,8 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-row.won .scd-skribble-tile.reveal { animation:scd-skribble-reveal .28s ease-out var(--scd-reveal-delay,0ms) forwards,scd-skribble-jump var(--scd-jump-duration,.9s) cubic-bezier(.2,.8,.3,1) calc(var(--scd-reveal-delay,0ms) + 500ms) infinite; }
 .scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards !important; }
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
+.scd-skribble-loss-message.pending .scd-skribble-tile { animation-play-state:paused; }
+.scd-skribble-loss-message.settled .scd-skribble-tile { opacity:1;animation:none; }
 .scd-skribble-keyboard { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:auto;padding-top:8px;user-select:none;touch-action:manipulation; }
 .scd-skribble-keyboard-row { --scd-key-count:10;--scd-key-max-width:420px;width:min(100%,var(--scd-key-max-width));display:grid;grid-template-columns:repeat(var(--scd-key-count),minmax(0,1fr));gap:2px; }
 .scd-skribble-keyboard-controls { width:min(100%,520px);display:grid;grid-template-columns:3fr 10fr 3fr;align-items:center;justify-content:center;gap:3px; }
@@ -1062,7 +1129,7 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-progression-load .container { position:absolute;left:50%;top:50%;animation:scd-load-position .3s ease-in-out; }
 .scd-progression-load .icon { position:absolute;width:128px;height:128px; }
 .scd-progression-load .graphic { position:absolute;left:-50%;top:-50%;width:100%;height:100%;background:url('/img/load.gif') center/contain no-repeat;filter:drop-shadow(0 0 5px rgba(0,0,0,.5));animation:scd-skribble-spin .8s ease-in-out infinite; }
-.scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:24px;height:24px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
+.scd-skribble-coin-particle { position:fixed;z-index:2147483647;width:28px;height:28px;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25)); }
 .scd-skribble-overlay::-webkit-scrollbar,.scd-skribble-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-skribble-overlay::-webkit-scrollbar-thumb,.scd-skribble-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
 @keyframes scd-skribble-fade { from { opacity:0; } to { opacity:1; } }

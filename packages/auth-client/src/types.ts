@@ -1,4 +1,4 @@
-export const AUTH_CLIENT_VERSION = '0.36.0' as const;
+export const AUTH_CLIENT_VERSION = '0.37.0' as const;
 
 export type AuthStatus = 'initializing' | 'signed-out' | 'signed-in' | 'error';
 
@@ -51,7 +51,7 @@ export interface SupabaseAuthClientLike {
     provider: 'discord';
     options: {
       redirectTo: string;
-      scopes: string;
+      scopes?: string;
     };
   }): Promise<{
     data: { provider?: string; url?: string | null };
@@ -92,7 +92,7 @@ export interface SupabaseBrowserLibrary {
         persistSession: boolean;
         autoRefreshToken: boolean;
         detectSessionInUrl: boolean;
-        flowType: 'implicit';
+        flowType: 'pkce';
         storageKey: string;
       };
     }

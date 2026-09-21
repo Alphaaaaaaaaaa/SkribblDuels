@@ -15,9 +15,9 @@ assert.ok(
 );
 assert.equal(calculateSkribbleTileSize(2_000, 32), 32);
 
-assert.match(skribble, /const measuredWidth = boardToFit\.element\.clientWidth;/);
+assert.match(skribble, /private fitBoardTiles\(\): void/);
 assert.ok(
-  skribble.indexOf('overlay.appendChild(shell);') < skribble.indexOf('const measuredWidth = boardToFit.element.clientWidth;'),
+  skribble.indexOf('overlay.appendChild(shell);') < skribble.indexOf('this.fitBoardTiles();'),
   'Board width must be measured only after the modal enters the document.'
 );
 assert.match(skribble, /\.scd-skribble-board \{ width:100%;min-width:0;max-width:100%;/);
@@ -26,8 +26,8 @@ assert.match(skribble, /\.scd-skribble-row \{[^\n]*min-width:0;max-width:100%;/)
 assert.match(product, /\.scd-icon-image \{[^\n]*filter:drop-shadow\(3px 3px 0 rgba\(0,0,0,\.25\)\);/);
 assert.match(skribble, /\.scd-skribble-secondary\.scd-skribble-return,[^\n]*\{ background:transparent; \}/);
 assert.match(skribble, /\.scd-skribble-return \{[^\n]*filter:drop-shadow\(3px 3px 0 rgba\(0,0,0,\.25\)\);/);
-assert.match(skribble, /const SKRIBBLE_COIN_PARTICLE_SIZE = 24;/);
-assert.match(skribble, /\.scd-skribble-coin-particle \{[^\n]*width:24px;height:24px;/);
+assert.match(skribble, /const SKRIBBLE_COIN_PARTICLE_SIZE = 28;/);
+assert.match(skribble, /\.scd-skribble-coin-particle \{[^\n]*width:28px;height:28px;/);
 assert.match(skribble, /SKRIBBLE_COIN_PARTICLE_SIZE \/ 2/);
 
 console.log('v0.66.3 icon shadows, transparent Daily return, Coin sizing and 32-character board fit passed.');

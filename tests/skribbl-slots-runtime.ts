@@ -40,7 +40,7 @@ const forced = [
   pickIndex(GATEWAY_SLOT_ICON_IDS, 'skull'),
   pickIndex(GATEWAY_SLOT_ICON_IDS, 'fill'),
   pickIndex(GATEWAY_SLOT_ICON_IDS, 'poop'),
-  pickIndex(SKRIBBL_SLOTS_RULES_FOR_TESTING.NON_EFFECT_IDS, 'ribbon'),
+  pickIndex(SKRIBBL_SLOTS_RULES_FOR_TESTING.PROFITABLE_IDS, 'ribbon'),
   0
 ];
 const fillOutcome = generateSlotOutcome(maximum => {
@@ -53,13 +53,40 @@ assert.deepEqual(fillOutcome.initialIcons, ['skull', 'fill', 'poop']);
 assert.deepEqual(fillOutcome.effectSteps.map(step => step.kind), ['fill']);
 assert.deepEqual(fillOutcome.effectSteps[0]?.targetIndices, [1, 0, 2]);
 assert.deepEqual(fillOutcome.finalIcons, ['ribbon', 'ribbon', 'ribbon']);
-assert.equal(fillOutcome.coinReward, 1);
+assert.equal(fillOutcome.coinReward, 10);
 assert.equal(fillOutcome.baseFreeSpinReward, 0);
 assert.deepEqual(
   SKRIBBL_SLOTS_RULES_FOR_TESTING.EFFECT_ORDER,
   ['fill', 'wizard', 'eraser', 'trash', 'dice'],
   'Special effects must always resolve in the documented deployment order.'
 );
+for (const pool of [
+  SKRIBBL_SLOTS_RULES_FOR_TESTING.PROFITABLE_IDS,
+  SKRIBBL_SLOTS_RULES_FOR_TESTING.DICE_IDS,
+  SKRIBBL_SLOTS_RULES_FOR_TESTING.CASCADE_IDS
+]) {
+  const ids: readonly string[] = pool;
+  assert.equal(ids.includes('skull'), false);
+  assert.equal(ids.includes('poop'), false);
+  assert.equal(ids.some(icon => ['fill', 'wizard', 'eraser', 'trash', 'dice'].includes(icon)), false);
+}
+assert.equal(SKRIBBL_SLOTS_RULES_FOR_TESTING.DICE_IDS.includes('heart'), true);
+assert.equal(SKRIBBL_SLOTS_RULES_FOR_TESTING.PROFITABLE_IDS.includes('heart' as never), false);
+
+const wizardForced = [
+  pickIndex(GATEWAY_SLOT_ICON_IDS, 'skribbl-coin'),
+  pickIndex(GATEWAY_SLOT_ICON_IDS, 'wizard'),
+  pickIndex(GATEWAY_SLOT_ICON_IDS, 'ribbon'),
+  pickIndex(SKRIBBL_SLOTS_RULES_FOR_TESTING.PROFITABLE_IDS, 'trophy')
+];
+const wizardOutcome = generateSlotOutcome(maximum => {
+  const value = wizardForced.shift();
+  assert.notEqual(value, undefined);
+  assert.ok(value! < maximum);
+  return value!;
+}, '12121212-1212-4212-8212-121212121212');
+assert.deepEqual(wizardOutcome.effectSteps[0]?.targetIndices, [1, 2]);
+assert.deepEqual(wizardOutcome.finalIcons, ['skribbl-coin', 'trophy', 'trophy']);
 
 let seed = 0x51f15e;
 const randomIndex = (maximum: number): number => {
@@ -73,7 +100,7 @@ for (let index = 0; index < simulationCount; index += 1) {
   returnedValue += outcome.coinReward + outcome.baseFreeSpinReward + outcome.heartCount / 3;
 }
 const simulatedReturn = returnedValue / simulationCount;
-assert.ok(simulatedReturn > 0.06 && simulatedReturn < 0.14, `Unexpected Slots return ${simulatedReturn}.`);
+assert.ok(simulatedReturn > 0.48 && simulatedReturn < 0.58, `Unexpected Slots return ${simulatedReturn}.`);
 assert.ok(simulatedReturn < 1, 'The base rules must remain a bounded Coin sink.');
 
 class MemoryProgressionPersistence implements GatewayProgressionPersistence {
@@ -198,8 +225,8 @@ if (first?.type !== 'SLOTS_SPIN_RESULT') throw new Error('Slots spin result miss
 assert.equal(first.accepted, true);
 assert.deepEqual(first.outcome?.finalIcons, ['ribbon', 'ribbon', 'ribbon']);
 assert.equal(first.outcome?.coinCost, 1);
-assert.equal(first.outcome?.coinReward, 1);
-assert.equal(persistence.balance, 2);
+assert.equal(first.outcome?.coinReward, 10);
+assert.equal(persistence.balance, 11);
 assert.equal(persistence.commits.size, 1);
 
 await service.handle(accountId, {
@@ -208,7 +235,7 @@ await service.handle(accountId, {
 const duplicate = messages.at(-1);
 if (duplicate?.type !== 'SLOTS_SPIN_RESULT') throw new Error('Idempotent Slots result missing.');
 assert.deepEqual(duplicate.outcome, first.outcome);
-assert.equal(persistence.balance, 2, 'A replayed request must neither spend nor reward twice.');
+assert.equal(persistence.balance, 11, 'A replayed request must neither spend nor reward twice.');
 assert.equal(persistence.commits.size, 1);
 
 generated = {

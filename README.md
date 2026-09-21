@@ -1,9 +1,32 @@
-# Skribbl Duels v0.66.3
+# Skribbl Duels v0.67.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v13, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v14, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.67.0
+
+- Starts Supabase Auth synchronously at userscript startup and moves Discord
+  login from implicit tokens to PKCE, preventing Firefox from losing the OAuth
+  callback while local stats and Challenge state restore. The redundant client
+  `identify` scope is gone; Supabase's managed Discord provider still controls
+  its own default consent scopes.
+- Reworks Skribble losses so two randomized letters fall every 100 ms, then
+  collapses the board to “You lost!”. The on-screen keyboard disappears for
+  terminal rounds, and physical typing now recalculates tile width on every
+  edit so a full 32-character row remains inside the modal.
+- Enlarges shared Coin particles to 28 px. Hearts in Slots now scale before
+  their persistent progress appears, and winning bulbs blink for three seconds.
+- Introduces Slots rules v2: Dice, Fill, Wizard, Eraser and Trash produce only
+  profitable replacements; Wizard targets the lower-value neighboring reel.
+  Payline rewards are now 100/77/50/40/30/20/10 Coins by tier. A seeded
+  120,000-spin regression measures an approximately 52.7% combined return.
+
+v0.67.0 requires Gateway Contract v14 and migration
+`202609210001_upgrade_skribbl_slots_rules_v2.sql`. Apply it after the v0.66
+Slots migration, deploy the Gateway, then distribute the userscript. No new
+Railway variable is required. See `docs/auth-skribble-slots-v0.67.0.md`.
 
 ## v0.66.3
 

@@ -9,7 +9,7 @@ import {
   type GatewaySlotIconId
 } from '@skribbl-duels/gateway-contracts';
 
-export const SKRIBBL_SLOTS_RULES_VERSION = 1;
+export const SKRIBBL_SLOTS_RULES_VERSION = 2;
 export const SKRIBBL_SLOTS_REEL_COUNT = 3 as const;
 export const SKRIBBL_SLOTS_SPIN_COST = 1 as const;
 export const SKRIBBL_SLOTS_HEART_TARGET = 3 as const;
@@ -17,10 +17,13 @@ export const SKRIBBL_SLOTS_HEART_TARGET = 3 as const;
 const EFFECT_ORDER: readonly GatewaySlotEffectKind[] = [
   'fill', 'wizard', 'eraser', 'trash', 'dice'
 ];
-const EFFECT_IDS = new Set<GatewaySlotIconId>([...EFFECT_ORDER]);
-const NON_EFFECT_IDS = GATEWAY_SLOT_ICON_IDS.filter(icon => !EFFECT_IDS.has(icon)
-  && icon !== 'book' && icon !== 'slimy' && icon !== 'heart');
-const DICE_IDS = [...NON_EFFECT_IDS, 'book', 'slimy', 'heart'] as const;
+const COIN_REWARD_IDS = [
+  'skribbl-coin', '7', 'trophy', 'crown', 'pen', 'skribbl-duels-logo',
+  'potion', 'drop', 'pizza', 'pumpkin', 'eggplant', 'pineapple', 'peach', 'ribbon'
+] as const satisfies readonly GatewaySlotIconId[];
+const PROFITABLE_IDS = ['book', 'slimy', ...COIN_REWARD_IDS] as const;
+const DICE_IDS = ['book', 'slimy', 'heart', ...COIN_REWARD_IDS] as const;
+const CASCADE_IDS = DICE_IDS;
 
 type SlotTriple = [GatewaySlotIconId, GatewaySlotIconId, GatewaySlotIconId];
 type RandomIndex = (maximumExclusive: number) => number;
@@ -52,12 +55,34 @@ function baseIcon(nextIndex: RandomIndex): GatewaySlotIconId {
   return weightedPick(GATEWAY_SLOT_ICON_IDS, nextIndex);
 }
 
-function nonEffectIcon(nextIndex: RandomIndex): GatewaySlotIconId {
-  return weightedPick(NON_EFFECT_IDS, nextIndex);
+function profitableIcon(nextIndex: RandomIndex): GatewaySlotIconId {
+  return weightedPick(PROFITABLE_IDS, nextIndex);
 }
 
 function diceIcon(nextIndex: RandomIndex): GatewaySlotIconId {
   return weightedPick(DICE_IDS, nextIndex);
+}
+
+function cascadeIcon(nextIndex: RandomIndex): GatewaySlotIconId {
+  return weightedPick(CASCADE_IDS, nextIndex);
+}
+
+function rewardRank(icon: GatewaySlotIconId): number {
+  if (icon === 'slimy') return GATEWAY_SLOT_FREE_SPIN_REWARDS.slimy ?? 0;
+  if (icon === 'book') return GATEWAY_SLOT_FREE_SPIN_REWARDS.book ?? 0;
+  if (icon === 'heart') return 1 / SKRIBBL_SLOTS_HEART_TARGET;
+  return GATEWAY_SLOT_COIN_REWARDS[icon] ?? 0;
+}
+
+function lowerRewardTarget(
+  icons: SlotTriple,
+  sourceIndex: number,
+  nextIndex: RandomIndex
+): number {
+  const candidates = [0, 1, 2].filter(index => index !== sourceIndex);
+  const minimum = Math.min(...candidates.map(index => rewardRank(icons[index]!)));
+  const lowest = candidates.filter(index => rewardRank(icons[index]!) === minimum);
+  return lowest.length === 1 ? lowest[0]! : lowest[nextIndex(lowest.length)]!;
 }
 
 function triple(values: readonly GatewaySlotIconId[]): SlotTriple {
@@ -86,7 +111,7 @@ export function generateSlotOutcome(
     for (let sourceIndex = 0; sourceIndex < SKRIBBL_SLOTS_REEL_COUNT; sourceIndex += 1) {
       if (icons[sourceIndex] !== kind) continue;
       if (kind === 'fill') {
-        const replacement = nonEffectIcon(nextIndex);
+        const replacement = profitableIcon(nextIndex);
         const adjacent: number[] = [];
         if (sourceIndex > 0) adjacent.push(sourceIndex - 1);
         if (sourceIndex < SKRIBBL_SLOTS_REEL_COUNT - 1) adjacent.push(sourceIndex + 1);
@@ -95,18 +120,17 @@ export function generateSlotOutcome(
         targets.forEach(index => { icons[index] = replacement; });
         recordStep(effectSteps, kind, sourceIndex, targets, icons);
       } else if (kind === 'wizard') {
-        const candidates = [0, 1, 2].filter(index => index !== sourceIndex);
-        const targetIndex = candidates[nextIndex(candidates.length)]!;
-        const replacement = nonEffectIcon(nextIndex);
+        const targetIndex = lowerRewardTarget(icons, sourceIndex, nextIndex);
+        const replacement = profitableIcon(nextIndex);
         icons[sourceIndex] = replacement;
         icons[targetIndex] = replacement;
         recordStep(effectSteps, kind, sourceIndex, [sourceIndex, targetIndex], icons);
       } else if (kind === 'eraser') {
-        icons[sourceIndex] = nonEffectIcon(nextIndex);
+        icons[sourceIndex] = cascadeIcon(nextIndex);
         recordStep(effectSteps, kind, sourceIndex, [sourceIndex], icons);
       } else if (kind === 'trash') {
         for (let index = 0; index < SKRIBBL_SLOTS_REEL_COUNT; index += 1) {
-          icons[index] = nonEffectIcon(nextIndex);
+          icons[index] = cascadeIcon(nextIndex);
         }
         recordStep(effectSteps, kind, sourceIndex, [0, 1, 2], icons);
       } else {
@@ -130,7 +154,11 @@ export function generateSlotOutcome(
 
 export const SKRIBBL_SLOTS_RULES_FOR_TESTING = {
   EFFECT_ORDER,
-  NON_EFFECT_IDS,
+  COIN_REWARD_IDS,
+  PROFITABLE_IDS,
   DICE_IDS,
+  CASCADE_IDS,
+  lowerRewardTarget,
+  rewardRank,
   weightedPick
 } as const;

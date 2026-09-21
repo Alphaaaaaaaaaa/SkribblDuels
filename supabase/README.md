@@ -60,6 +60,13 @@ account for Slots testing. The deterministic idempotency key prevents duplicate
 credit on a rerun; the migration neither updates the balance directly nor adds
 an account-wide owner bypass.
 
+For v0.67.0, apply
+`202609210001_upgrade_skribbl_slots_rules_v2.sql` after the v0.66 Slots and
+testing-grant migrations and before deploying Contract v14. It expands the
+audited reward bound to 100 Coins and replaces the atomic spin RPC with a
+validator that accepts historical rules-v1 retries and enforces the new
+rules-v2 payout table. Existing append-only spin and ledger rows are unchanged.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

@@ -38,7 +38,7 @@ const createClient: SupabaseBrowserLibrary['createClient'] = (url, key, options)
     createClientCalls += 1;
     assert.equal(url, 'https://kryznzijjlqkixdxqkft.supabase.co');
     assert.match(key, /^sb_publishable_/);
-    assert.equal(options.auth.flowType, 'implicit');
+    assert.equal(options.auth.flowType, 'pkce');
     assert.equal(options.auth.detectSessionInUrl, true);
     return {
       auth: {
@@ -73,8 +73,7 @@ assert.equal(client.getState().status, 'initializing');
 assert.deepEqual(signInInput, {
   provider: 'discord',
   options: {
-    redirectTo: 'https://skribbl.io/',
-    scopes: 'identify'
+    redirectTo: 'https://skribbl.io/'
   }
 });
 

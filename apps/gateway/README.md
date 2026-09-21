@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v13 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v13 also owns the append-only Skribbl Coin balance, Daily Skribble validation/reward path and Skribbl Slots outcomes.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v14 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v14 also owns the append-only Skribbl Coin balance, Daily Skribble validation/reward path and rules-v2 Skribbl Slots outcomes.
 
 ## Local server
 
@@ -9,7 +9,8 @@ The Gateway verifies the browser's Supabase access token, loads the matching rea
    `202608210001_create_gateway_abuse_controls.sql`, and finally
    `202608280001_add_duel_name_colors.sql`, and
    `202609160001_create_skribbl_coin_ledger.sql`, and
-   `202609170001_add_skribbl_slots_and_harden_functions.sql` in that order.
+   `202609170001_add_skribbl_slots_and_harden_functions.sql`, and
+   `202609210001_upgrade_skribbl_slots_rules_v2.sql` in that order.
 2. Copy `.env.example` to `.env` and set the server-only
    `SUPABASE_SERVICE_ROLE_KEY`. Add `REDIS_URL` and `OBSERVABILITY_TOKEN` for
    the production-equivalent multi-instance path. Set a stable, random
@@ -23,7 +24,7 @@ cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v13 resume
+change closes cluster sockets once and reuses the durable Contract v14 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require

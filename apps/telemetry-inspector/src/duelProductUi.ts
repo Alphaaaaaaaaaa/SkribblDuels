@@ -99,6 +99,7 @@ import { SkribblSlotsFeatureUi } from './slotsUi';
 
 interface ProductFoundationOptions {
   runtimeId: string;
+  authClient: SupabaseDiscordAuthClient;
   definitionsVersion: string;
   challengeDefinitions: ReturnType<ChallengeEngine['getDefinitions']>;
   challengeEngine: ChallengeEngine;
@@ -1302,7 +1303,7 @@ export class DuelProductFoundation {
   private activeTab: ProductUiSettings['panelTab'];
   private readonly tooltips: ProductTooltipManager;
   private readonly soundEffects: SoundEffectPlayer;
-  private readonly authClient = new SupabaseDiscordAuthClient();
+  private readonly authClient: SupabaseDiscordAuthClient;
   private readonly gatewayClient: SocketIoGatewayClient;
   private readonly skribbleUi: SkribbleFeatureUi;
   private readonly slotsUi: SkribblSlotsFeatureUi;
@@ -1369,6 +1370,7 @@ export class DuelProductFoundation {
   private destroyed = false;
 
   public constructor(private readonly options: ProductFoundationOptions) {
+    this.authClient = options.authClient;
     this.tooltips = new ProductTooltipManager(options.runtimeId);
     this.profileUiPreferences = loadDuelProfileUiPreferences();
     this.localStatsSnapshot = options.getLocalStatsSnapshot();
@@ -1597,7 +1599,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.66.3',
+      version: '0.67.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1757,7 +1759,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.66.3') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.67.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {

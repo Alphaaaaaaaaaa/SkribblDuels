@@ -83,10 +83,11 @@ import {
   subscribeOfficialWordListStatus,
   type OfficialWordListStatus
 } from '@skribbl-duels/challenge-definitions';
+import { SupabaseDiscordAuthClient } from '@skribbl-duels/auth-client';
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.66.3';
+const BUILD_VERSION = '0.67.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -280,7 +281,10 @@ function createRuntimeController(): RuntimeController {
   return runtime;
 }
 
-async function bootstrap(runtime: RuntimeController): Promise<void> {
+async function bootstrap(
+  runtime: RuntimeController,
+  authClient: SupabaseDiscordAuthClient
+): Promise<void> {
   const bridge = new TypoRelayBridge();
   const store = new IndexedDbRawPacketStore();
   // Typo transfers both relay MessagePorts only once during page startup. The
@@ -728,6 +732,7 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
 
   const productFoundation = new DuelProductFoundation({
     runtimeId: runtime.runtimeId,
+    authClient,
     definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,
     challengeDefinitions: challengeEngine.getDefinitions(),
     challengeEngine,
@@ -846,7 +851,12 @@ async function bootstrap(runtime: RuntimeController): Promise<void> {
 }
 
 const runtime = createRuntimeController();
-void bootstrap(runtime).catch(error => {
+const authClient = new SupabaseDiscordAuthClient();
+runtime.addCleanup(() => authClient.stop());
+// Start PKCE callback exchange before IndexedDB restoration or challenge replay.
+// Firefox can otherwise advance the page lifecycle before Auth inspects the URL.
+void authClient.start();
+void bootstrap(runtime, authClient).catch(error => {
   runtime.dispose('bootstrap-failed');
   console.error('[Skribbl Duels] Bootstrap failed', error);
 });

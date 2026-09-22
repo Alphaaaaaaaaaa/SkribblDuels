@@ -17,6 +17,7 @@ let authCallback: ((event: string, session: SupabaseSessionLike | null) => void)
 let signInInput: Parameters<SupabaseAuthClientLike['signInWithOAuth']>[0] | null = null;
 let signedOut = false;
 let createClientCalls = 0;
+let exchangedCode: string | null = null;
 
 const session: SupabaseSessionLike = {
   access_token: 'test-access-token',
@@ -39,11 +40,18 @@ const createClient: SupabaseBrowserLibrary['createClient'] = (url, key, options)
     assert.equal(url, 'https://kryznzijjlqkixdxqkft.supabase.co');
     assert.match(key, /^sb_publishable_/);
     assert.equal(options.auth.flowType, 'pkce');
-    assert.equal(options.auth.detectSessionInUrl, true);
+    assert.equal(options.auth.detectSessionInUrl, false);
+    assert.equal(typeof options.auth.storage.getItem, 'function');
+    assert.equal(typeof options.auth.storage.setItem, 'function');
+    assert.equal(typeof options.auth.storage.removeItem, 'function');
     return {
       auth: {
         async getSession() {
           return { data: { session: null }, error: null };
+        },
+        async exchangeCodeForSession(authCode) {
+          exchangedCode = authCode;
+          return { data: { session }, error: null };
         },
         async signInWithOAuth(input) {
           signInInput = input;
@@ -91,9 +99,32 @@ await client.signOut();
 assert.equal(signedOut, true);
 assert.equal(client.getState().status, 'signed-out');
 
+client.stop();
+let replacedCallbackUrl = '';
+Object.defineProperty(globalThis, 'window', {
+  configurable: true,
+  value: {
+    location: { href: 'https://skribbl.io/?code=firefox-pkce-code' },
+    history: {
+      state: null,
+      replaceState(_state: unknown, _unused: string, url: string) {
+        replacedCallbackUrl = url;
+      }
+    }
+  }
+});
+const callbackClient = new SupabaseDiscordAuthClient(createClient);
+const callbackState = await callbackClient.start();
+assert.equal(exchangedCode, 'firefox-pkce-code');
+assert.equal(callbackState.status, 'signed-in');
+assert.equal(callbackState.profile?.username, 'alpha_dev');
+assert.equal(replacedCallbackUrl, 'https://skribbl.io/');
+callbackClient.stop();
+
 console.log(JSON.stringify({
   bundledSdk: true,
   discordOAuth: true,
+  explicitPkceCallback: true,
   sessionRestore: true,
   gatewayAccessToken: true,
   asciiAlphanumericDuelNames: true,

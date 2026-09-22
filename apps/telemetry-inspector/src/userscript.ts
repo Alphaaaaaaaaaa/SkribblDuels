@@ -87,7 +87,7 @@ import { SupabaseDiscordAuthClient } from '@skribbl-duels/auth-client';
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.67.0';
+const BUILD_VERSION = '0.68.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;

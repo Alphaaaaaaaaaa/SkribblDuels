@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.67.0
+// @version      0.68.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -14570,7 +14570,7 @@ var SUPABASE_PROJECT_URL = configuredValue$1("https://kryznzijjlqkixdxqkft.supab
 var SUPABASE_PUBLISHABLE_KEY = configuredValue$1("sb_publishable_6SOSKRreA8lHr-7aRZsq6w_361QcD9J", "sb_publishable_6SOSKRreA8lHr-7aRZsq6w_361QcD9J");
 var SUPABASE_AUTH_REDIRECT_URL = configuredValue$1("https://skribbl.io/", "https://skribbl.io/");
 var SUPABASE_AUTH_STORAGE_KEY = "skribblDuelsSupabaseAuthV1";
-var AUTH_CLIENT_VERSION = "0.37.0";
+var AUTH_CLIENT_VERSION = "0.38.0";
 var resolveFetch$3 = (customFetch) => {
 	if (customFetch) return (...args) => customFetch(...args);
 	return (...args) => fetch(...args);
@@ -35164,6 +35164,80 @@ var INITIAL_STATE = {
 	expiresAt: null,
 	error: null
 };
+function browserStorage(name) {
+	try {
+		const storage = globalThis[name];
+		const probe = `${SUPABASE_AUTH_STORAGE_KEY}:${name}:probe`;
+		storage.setItem(probe, "1");
+		storage.removeItem(probe);
+		return storage;
+	} catch {
+		return null;
+	}
+}
+/**
+* PKCE needs its verifier after a full Discord round-trip. Firefox privacy
+* modes and userscript realms can expose only one of the two origin stores,
+* so Auth writes to both and falls back to memory for the current document.
+*/
+function createResilientAuthStorage() {
+	const stores = [browserStorage("localStorage"), browserStorage("sessionStorage")].filter((storage) => storage !== null);
+	const memory = /* @__PURE__ */ new Map();
+	return {
+		getItem(key) {
+			for (const storage of stores) try {
+				const value = storage.getItem(key);
+				if (value !== null) return value;
+			} catch {}
+			return memory.get(key) ?? null;
+		},
+		setItem(key, value) {
+			memory.set(key, value);
+			for (const storage of stores) try {
+				storage.setItem(key, value);
+			} catch {}
+		},
+		removeItem(key) {
+			memory.delete(key);
+			for (const storage of stores) try {
+				storage.removeItem(key);
+			} catch {}
+		}
+	};
+}
+function oauthCallbackState() {
+	try {
+		const href = typeof window !== "undefined" ? window.location?.href : null;
+		if (!href) return {
+			code: null,
+			error: null
+		};
+		const url = new URL(href);
+		const errorDescription = stringValue(url.searchParams.get("error_description"));
+		const errorCode = stringValue(url.searchParams.get("error_code")) ?? stringValue(url.searchParams.get("error"));
+		return {
+			code: stringValue(url.searchParams.get("code")),
+			error: errorDescription ? `Discord sign-in could not be completed: ${errorDescription}${errorCode ? ` (${errorCode})` : ""}.` : errorCode ? `Discord sign-in could not be completed (${errorCode}).` : null
+		};
+	} catch {
+		return {
+			code: null,
+			error: null
+		};
+	}
+}
+function clearOAuthCallbackParameters() {
+	try {
+		const url = new URL(window.location.href);
+		for (const parameter of [
+			"code",
+			"error",
+			"error_code",
+			"error_description"
+		]) url.searchParams.delete(parameter);
+		window.history.replaceState(window.history.state, "", url.toString());
+	} catch {}
+}
 function validateDuelDisplayName(value) {
 	if (value.length < 3) return "too-short";
 	if (value.length > 24) return "too-long";
@@ -35217,6 +35291,7 @@ var SupabaseDiscordAuthClient = class {
 	authSubscription = null;
 	started = false;
 	startPromise = null;
+	callbackPending = false;
 	constructor(createClient = createBundledSupabaseClient) {
 		this.createClient = createClient;
 	}
@@ -35246,15 +35321,19 @@ var SupabaseDiscordAuthClient = class {
 		return attempt;
 	}
 	async initialize() {
+		const callback = oauthCallbackState();
+		this.callbackPending = callback.code !== null || callback.error !== null;
 		try {
 			const client = this.createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY, { auth: {
 				persistSession: true,
 				autoRefreshToken: true,
-				detectSessionInUrl: true,
+				detectSessionInUrl: false,
 				flowType: "pkce",
-				storageKey: SUPABASE_AUTH_STORAGE_KEY
+				storageKey: SUPABASE_AUTH_STORAGE_KEY,
+				storage: createResilientAuthStorage()
 			} });
-			this.authSubscription = client.auth.onAuthStateChange((_event, session) => {
+			this.authSubscription = client.auth.onAuthStateChange((event, session) => {
+				if (!session && event === "INITIAL_SESSION" && (this.callbackPending || this.state.status === "error")) return;
 				this.update(snapshotFromSession(session));
 			}).data.subscription;
 			this.client = client;
@@ -35283,6 +35362,25 @@ var SupabaseDiscordAuthClient = class {
 			return this.getState();
 		}
 		try {
+			if (callback.error) {
+				clearOAuthCallbackParameters();
+				this.update({
+					status: "error",
+					profile: null,
+					accessToken: null,
+					expiresAt: null,
+					error: `${callback.error} Please retry Discord authorization.`
+				});
+				return this.getState();
+			}
+			if (callback.code) {
+				const { data, error } = await client.auth.exchangeCodeForSession(callback.code);
+				clearOAuthCallbackParameters();
+				if (error) throw new Error(error.message ?? "Unable to exchange the Discord authorization code.");
+				if (!data.session) throw new Error("Discord authorization returned no Supabase session.");
+				this.update(snapshotFromSession(data.session));
+				return this.getState();
+			}
 			const { data, error } = await client.auth.getSession();
 			if (error) throw new Error(error.message ?? "Unable to restore Supabase session.");
 			this.update(snapshotFromSession(data.session));
@@ -35294,6 +35392,8 @@ var SupabaseDiscordAuthClient = class {
 				expiresAt: null,
 				error: error instanceof Error ? error.message : String(error)
 			});
+		} finally {
+			this.callbackPending = false;
 		}
 		return this.getState();
 	}
@@ -35359,6 +35459,7 @@ var SupabaseDiscordAuthClient = class {
 		this.client = null;
 		this.started = false;
 		this.startPromise = null;
+		this.callbackPending = false;
 	}
 	async ensureClient() {
 		if (this.startPromise) await this.startPromise;
@@ -36907,7 +37008,7 @@ function configuredValue(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.67.0";
+var GATEWAY_CLIENT_VERSION = "0.68.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -43109,8 +43210,9 @@ function codePoints(value) {
 var SKRIBBLE_BOARD_TILE_GAP = 2;
 var SKRIBBLE_BOARD_INLINE_SAFETY = 10;
 var SKRIBBLE_COIN_PARTICLE_SIZE = 28;
-var SKRIBBLE_LOSS_PAIR_INTERVAL_MS = 100;
+var SKRIBBLE_LOSS_PAIR_INTERVAL_MS = 50;
 var SKRIBBLE_LOSS_FALL_DURATION_MS = 720;
+var SKRIBBLE_LOSS_MESSAGE_DURATION_MS = 560;
 function calculateSkribbleTileSize(availableWidth, tileCount) {
 	const count = Math.max(1, Math.floor(tileCount));
 	const exactSize = ((Number.isFinite(availableWidth) ? Math.max(0, availableWidth - SKRIBBLE_BOARD_INLINE_SAFETY) : 0) - (count - 1) * SKRIBBLE_BOARD_TILE_GAP) / count;
@@ -43657,12 +43759,11 @@ var SkribbleFeatureUi = class {
 		return button;
 	}
 	lossMessageRow(settled) {
-		const text = codePoints("You lost!");
+		const text = codePoints("You lose!");
 		const row = element$2("div", `scd-skribble-row scd-skribble-loss-message ${settled ? "settled" : "pending"}`);
 		row.style.setProperty("--scd-row-tile-count", String(text.length));
-		text.forEach((character, index) => {
+		text.forEach((character) => {
 			const tile = this.tile(character, "emptyTile");
-			tile.style.animationDelay = `${index * 80}ms`;
 			row.appendChild(tile);
 		});
 		return row;
@@ -43725,33 +43826,43 @@ var SkribbleFeatureUi = class {
 			tile.classList.add("fall");
 		});
 		const pairCount = Math.ceil(tiles.length / 2);
-		const messageDelay = Math.max(0, pairCount - 1) * SKRIBBLE_LOSS_PAIR_INTERVAL_MS + SKRIBBLE_LOSS_FALL_DURATION_MS;
-		const lossMessage = this.modal?.querySelector(".scd-skribble-loss-message");
-		lossMessage?.classList.remove("pending");
-		lossMessage?.querySelectorAll(".scd-skribble-tile").forEach((tile, index) => {
-			tile.style.animationDelay = `${messageDelay + index * 80}ms`;
-		});
+		const fallFinishedAt = Math.max(0, pairCount - 1) * SKRIBBLE_LOSS_PAIR_INTERVAL_MS + SKRIBBLE_LOSS_FALL_DURATION_MS;
 		if (this.lossAnimationTimer !== null) window.clearTimeout(this.lossAnimationTimer);
 		this.lossAnimationTimer = window.setTimeout(() => {
 			this.lossAnimationTimer = null;
 			this.collapseLossBoard(sessionId);
-		}, messageDelay + codePoints("You lost!").length * 80 + 560);
+		}, fallFinishedAt);
 	}
 	collapseLossBoard(sessionId) {
-		this.collapsedLossSessions.add(sessionId);
 		if (this.visibleState?.sessionId !== sessionId || this.visibleState.status !== "lost") return;
 		const board = this.modal?.querySelector(".scd-skribble-board");
+		if (!board) {
+			this.collapsedLossSessions.add(sessionId);
+			return;
+		}
+		const startHeight = board.getBoundingClientRect().height;
+		const lossMessage = board.querySelector(".scd-skribble-loss-message");
+		lossMessage?.classList.remove("pending", "settled");
+		lossMessage?.classList.add("dropping");
 		board?.querySelectorAll(".scd-skribble-row:not(.scd-skribble-loss-message)").forEach((row) => row.remove());
 		board?.classList.add("collapsed-loss");
-		const lossMessage = board?.querySelector(".scd-skribble-loss-message");
-		lossMessage?.classList.remove("pending");
-		lossMessage?.classList.add("settled");
-		lossMessage?.querySelectorAll(".scd-skribble-tile").forEach((tile) => {
-			tile.style.animationDelay = "0ms";
-		});
 		this.modal?.querySelector(".scd-skribble-modal")?.classList.add("finished");
 		this.modal?.querySelector(".scd-skribble-content")?.classList.add("finished");
 		this.fitBoardTiles();
+		const endHeight = Math.max(34, lossMessage?.getBoundingClientRect().height ?? 34);
+		const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+		board.animate([{ height: `${startHeight}px` }, { height: `${endHeight}px` }], {
+			duration: reducedMotion ? 0 : SKRIBBLE_LOSS_MESSAGE_DURATION_MS,
+			easing: "cubic-bezier(.4,0,.2,1)"
+		});
+		if (this.lossAnimationTimer !== null) window.clearTimeout(this.lossAnimationTimer);
+		this.lossAnimationTimer = window.setTimeout(() => {
+			this.lossAnimationTimer = null;
+			this.collapsedLossSessions.add(sessionId);
+			lossMessage?.classList.remove("dropping");
+			lossMessage?.classList.add("settled");
+			this.fitBoardTiles();
+		}, reducedMotion ? 0 : SKRIBBLE_LOSS_MESSAGE_DURATION_MS);
 	}
 	fitBoardTiles() {
 		const board = this.modal?.querySelector(".scd-skribble-board");
@@ -43942,6 +44053,7 @@ html[data-scd-skribble-scroll-lock],body[data-scd-skribble-scroll-lock] { overfl
 .scd-skribble-tile.fall { animation:scd-skribble-fall .72s ease-in forwards !important; }
 .scd-skribble-loss-message .scd-skribble-tile { opacity:0;animation:scd-skribble-loss-bounce .55s cubic-bezier(.2,.85,.35,1.25) forwards; }
 .scd-skribble-loss-message.pending .scd-skribble-tile { animation-play-state:paused; }
+.scd-skribble-loss-message.dropping .scd-skribble-tile { animation-delay:0ms;animation-play-state:running; }
 .scd-skribble-loss-message.settled .scd-skribble-tile { opacity:1;animation:none; }
 .scd-skribble-keyboard { width:min(760px,100%);display:flex;flex-direction:column;align-items:center;gap:3px;margin-top:auto;padding-top:8px;user-select:none;touch-action:manipulation; }
 .scd-skribble-keyboard-row { --scd-key-count:10;--scd-key-max-width:420px;width:min(100%,var(--scd-key-max-width));display:grid;grid-template-columns:repeat(var(--scd-key-count),minmax(0,1fr));gap:2px; }
@@ -44077,6 +44189,13 @@ var SLOT_FALLBACKS = {
 	skull: "\u2620",
 	poop: "\u25CF"
 };
+var SLOT_EFFECT_ICONS = /* @__PURE__ */ new Set([
+	"fill",
+	"wizard",
+	"eraser",
+	"trash",
+	"dice"
+]);
 function element$1(tag, className = "", text = "") {
 	const node = document.createElement(tag);
 	node.className = className;
@@ -44316,9 +44435,13 @@ var SkribblSlotsFeatureUi = class {
 		actions.append(help, close);
 		header.append(title, actions);
 		const content = element$1("div", "scd-slots-content");
-		if (this.helpOpen) content.appendChild(this.helpCard());
 		const state = this.presentedState ?? this.visibleState;
-		if (!state) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the machine\u2026"));
+		if (this.helpOpen) {
+			content.classList.add("help-view");
+			const toolbar = element$1("div", "scd-slots-help-toolbar");
+			toolbar.appendChild(this.returnToSlotsButton());
+			content.append(toolbar, this.helpCard());
+		} else if (!state) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the machine\u2026"));
 		else {
 			const machine = element$1("div", "scd-slots-machine");
 			const reels = element$1("div", "scd-slots-reels");
@@ -44470,6 +44593,32 @@ var SkribblSlotsFeatureUi = class {
 		this.options.registerTooltip(button, tooltip, "Y");
 		return button;
 	}
+	returnToSlotsButton() {
+		const button = element$1("button", "scd-slots-return");
+		button.type = "button";
+		const source = progressionAsset("skribbleReturn");
+		if (source) {
+			const image = element$1("img");
+			image.src = source;
+			image.alt = "";
+			button.appendChild(image);
+		} else button.textContent = "\u21A9";
+		button.addEventListener("click", () => {
+			this.helpOpen = false;
+			this.renderModal();
+		});
+		this.options.registerTooltip(button, "Return to Skribbl Slots");
+		return button;
+	}
+	oddsReward(icon) {
+		if (SLOT_EFFECT_ICONS.has(icon)) return "Effect";
+		if (icon === "heart") return "3 for 1 Free Spin";
+		const freeSpinReward = GATEWAY_SLOT_FREE_SPIN_REWARDS[icon] ?? 0;
+		if (freeSpinReward > 0) return `${freeSpinReward} Free Spins`;
+		const coinReward = GATEWAY_SLOT_COIN_REWARDS[icon] ?? 0;
+		if (coinReward > 0) return `${coinReward} Skribbl Coin${coinReward === 1 ? "" : "s"}`;
+		return "Nothing";
+	}
 	helpCard() {
 		const card = element$1("section", "scd-slots-help");
 		const intro = element$1("div", "scd-slots-help-intro");
@@ -44490,10 +44639,11 @@ var SkribblSlotsFeatureUi = class {
 		const grid = element$1("div", "scd-slots-odds-grid");
 		for (const icon of GATEWAY_SLOT_ICON_IDS) {
 			const item = element$1("div", "scd-slots-odds-item");
-			const coinReward = GATEWAY_SLOT_COIN_REWARDS[icon];
-			const freeSpinReward = GATEWAY_SLOT_FREE_SPIN_REWARDS[icon];
-			const reward = coinReward ? ` \u00B7 ${coinReward} Coin${coinReward === 1 ? "" : "s"}` : freeSpinReward ? ` \u00B7 ${freeSpinReward} Free Spins` : "";
-			item.append(this.slotIcon(icon), element$1("span", "", SLOT_LABELS[icon]), element$1("span", "scd-slots-muted", `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}${reward}`));
+			const details = element$1("div", "scd-slots-odds-details");
+			const heading = element$1("div", "scd-slots-odds-heading");
+			heading.append(element$1("span", "", SLOT_LABELS[icon]), element$1("span", "scd-slots-muted", `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}`));
+			details.append(heading, element$1("div", "scd-slots-odds-reward", this.oddsReward(icon)));
+			item.append(this.slotIcon(icon), details);
 			grid.appendChild(item);
 		}
 		odds.appendChild(grid);
@@ -44528,8 +44678,10 @@ var SkribblSlotsFeatureUi = class {
 		const heartIndices = outcome.finalIcons.map((icon, index) => icon === "heart" ? index : -1).filter((index) => index >= 0);
 		let progress = outcome.heartProgressBefore;
 		for (const reelIndex of heartIndices) {
-			(this.modal?.querySelector(`.scd-slot-reel[data-index="${reelIndex}"]`))?.classList.add("effect-active", "effect-heart");
+			const reel = this.modal?.querySelector(`.scd-slot-reel[data-index="${reelIndex}"]`);
+			reel?.classList.add("effect-heart");
 			if (!await this.wait(1e3, generation)) return false;
+			reel?.classList.remove("effect-heart");
 			progress = (progress + 1) % 3;
 			if (this.presentedState) this.presentedState = {
 				...this.presentedState,
@@ -44676,9 +44828,14 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-actions .scd-icon-button { width:42px;height:42px; }
 .scd-slots-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:34px 24px 24px;text-align:center; }
+.scd-slots-content.help-view { align-items:stretch; }
+.scd-slots-help-toolbar { position:relative;width:100%;min-height:40px;display:flex;align-items:center; }
+.scd-slots-return { width:40px;height:40px;display:grid;place-items:center;border:0;padding:3px;background:transparent;color:#fff;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .12s ease-in-out,scale .12s ease-in-out; }
+.scd-slots-return:hover { background:transparent;filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);scale:1.08; }
+.scd-slots-return img { width:32px;height:32px;object-fit:contain; }
 .scd-slots-machine { width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px;padding:30px 0;overflow:visible; }
 .scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:30px 6px;overflow:visible; }
-.scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background:#fff;box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
+.scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background-color:var(--COLOR_INPUT_BG,#fff);box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
 .scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
 .scd-slot-reel::before { top:0; }
 .scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
@@ -44690,7 +44847,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
 .scd-slot-reel.effect-active { z-index:3;transform:scale(1.2);filter:drop-shadow(0 0 15px #fff9); }
-.scd-slot-reel.effect-heart { transform:scale(1.28);filter:drop-shadow(0 0 18px #ff7eb8); }
+.scd-slot-reel.effect-heart { z-index:3;animation:scd-slot-heart 1s ease-in-out;filter:drop-shadow(0 0 18px #ff7eb8); }
 .scd-slot-reel.effect-fill-target .scd-slot-payline { animation:scd-slot-pop .46s ease; }
 .scd-slot-reel.effect-wizard { animation:scd-slot-wizard .46s ease; }
 .scd-slot-reel.effect-wizard-target .scd-slot-payline { animation:scd-slot-magic .46s ease; }
@@ -44715,11 +44872,16 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-help-intro > img { width:64px;height:64px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-help p { margin:.55em 0 0; }
 .scd-slots-odds { margin-top:14px; }
-.scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
-.scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
+.scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px; }
+.scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
 .scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
 .scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:contain; }
 .scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
+.scd-slots-odds-details { min-width:0;display:grid;gap:2px; }
+.scd-slots-odds-heading { min-width:0;display:flex;align-items:baseline;justify-content:space-between;gap:8px; }
+.scd-slots-odds-heading > :first-child { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-slots-odds-heading .scd-slots-muted { flex:none; }
+.scd-slots-odds-reward { color:var(--COLOR_CHAT_TEXT_GUESSED,#6fd66a);font-size:.88em;font-weight:800; }
 .scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
 .scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-slots-overlay::-webkit-scrollbar-thumb,.scd-slots-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
@@ -44732,6 +44894,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 @keyframes scd-slot-erase { 0% { transform:translateY(0);opacity:1; } 50% { transform:translateY(-28%) rotate(-8deg);opacity:.5; } 100% { transform:translateY(30%);opacity:0; } }
 @keyframes scd-slot-cascade { from { transform:translateY(-140%);opacity:0; } to { transform:translateY(0);opacity:1; } }
 @keyframes scd-slot-dice { from { transform:rotate(0) scale(.9); } to { transform:rotate(90deg) scale(1.08); } }
+@keyframes scd-slot-heart { 0%,100% { transform:scale(1);filter:none; } 50% { transform:scale(1.2);filter:drop-shadow(0 0 18px #ff7eb8); } }
 @media (max-width:720px) {
   .scd-slots-header { grid-template-columns:auto 1fr auto; }
   .scd-slots-title { font-size:1.2em; }
@@ -44739,7 +44902,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
   .scd-slots-title img { transform:scale(1.35); }
   .scd-slots-machine { grid-template-columns:1fr; }
   .scd-slots-reels { gap:6px; }
-  .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .scd-slots-odds-grid { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
   .scd-slots-bulb { width:42px;height:42px; }
   .scd-slots-bulbs { top:-27px; }
 }
@@ -45978,7 +46141,7 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.67.0",
+			version: "0.68.0",
 			coreVersion: PRODUCT_CORE_VERSION,
 			gatewayContractVersion: 14,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -46128,7 +46291,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.67.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.68.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -49935,7 +50098,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.67.0";
+var BUILD_VERSION = "0.68.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

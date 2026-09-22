@@ -98,6 +98,10 @@ const SLOT_FALLBACKS: Readonly<Record<GatewaySlotIconId, string>> = {
   skull: '☠', poop: '●'
 };
 
+const SLOT_EFFECT_ICONS = new Set<GatewaySlotIconId>([
+  'fill', 'wizard', 'eraser', 'trash', 'dice'
+]);
+
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className = '',
@@ -377,9 +381,13 @@ export class SkribblSlotsFeatureUi {
     header.append(title, actions);
 
     const content = element('div', 'scd-slots-content');
-    if (this.helpOpen) content.appendChild(this.helpCard());
     const state = this.presentedState ?? this.visibleState;
-    if (!state) {
+    if (this.helpOpen) {
+      content.classList.add('help-view');
+      const toolbar = element('div', 'scd-slots-help-toolbar');
+      toolbar.appendChild(this.returnToSlotsButton());
+      content.append(toolbar, this.helpCard());
+    } else if (!state) {
       content.appendChild(element('div', 'scd-slots-muted', 'Preparing the machine…'));
     } else {
       const machine = element('div', 'scd-slots-machine');
@@ -552,6 +560,36 @@ export class SkribblSlotsFeatureUi {
     return button;
   }
 
+  private returnToSlotsButton(): HTMLButtonElement {
+    const button = element('button', 'scd-slots-return') as HTMLButtonElement;
+    button.type = 'button';
+    const source = progressionAsset('skribbleReturn');
+    if (source) {
+      const image = element('img') as HTMLImageElement;
+      image.src = source;
+      image.alt = '';
+      button.appendChild(image);
+    } else button.textContent = '↩';
+    button.addEventListener('click', () => {
+      this.helpOpen = false;
+      this.renderModal();
+    });
+    this.options.registerTooltip(button, 'Return to Skribbl Slots');
+    return button;
+  }
+
+  private oddsReward(icon: GatewaySlotIconId): string {
+    if (SLOT_EFFECT_ICONS.has(icon)) return 'Effect';
+    if (icon === 'heart') return '3 for 1 Free Spin';
+    const freeSpinReward = GATEWAY_SLOT_FREE_SPIN_REWARDS[icon] ?? 0;
+    if (freeSpinReward > 0) return `${freeSpinReward} Free Spins`;
+    const coinReward = GATEWAY_SLOT_COIN_REWARDS[icon] ?? 0;
+    if (coinReward > 0) {
+      return `${coinReward} Skribbl Coin${coinReward === 1 ? '' : 's'}`;
+    }
+    return 'Nothing';
+  }
+
   private helpCard(): HTMLElement {
     const card = element('section', 'scd-slots-help');
     const intro = element('div', 'scd-slots-help-intro');
@@ -576,17 +614,19 @@ export class SkribblSlotsFeatureUi {
     const grid = element('div', 'scd-slots-odds-grid');
     for (const icon of GATEWAY_SLOT_ICON_IDS) {
       const item = element('div', 'scd-slots-odds-item');
-      const coinReward = GATEWAY_SLOT_COIN_REWARDS[icon];
-      const freeSpinReward = GATEWAY_SLOT_FREE_SPIN_REWARDS[icon];
-      const reward = coinReward
-        ? ` · ${coinReward} Coin${coinReward === 1 ? '' : 's'}`
-        : freeSpinReward
-          ? ` · ${freeSpinReward} Free Spins`
-          : '';
+      const details = element('div', 'scd-slots-odds-details');
+      const heading = element('div', 'scd-slots-odds-heading');
+      heading.append(
+        element('span', '', SLOT_LABELS[icon]),
+        element('span', 'scd-slots-muted', `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}`)
+      );
+      details.append(
+        heading,
+        element('div', 'scd-slots-odds-reward', this.oddsReward(icon))
+      );
       item.append(
         this.slotIcon(icon),
-        element('span', '', SLOT_LABELS[icon]),
-        element('span', 'scd-slots-muted', `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}${reward}`)
+        details
       );
       grid.appendChild(item);
     }
@@ -639,8 +679,9 @@ export class SkribblSlotsFeatureUi {
       const reel = this.modal?.querySelector<HTMLElement>(
         `.scd-slot-reel[data-index="${reelIndex}"]`
       );
-      reel?.classList.add('effect-active', 'effect-heart');
+      reel?.classList.add('effect-heart');
       if (!await this.wait(1_000, generation)) return false;
+      reel?.classList.remove('effect-heart');
       progress = (progress + 1) % 3;
       if (this.presentedState) {
         this.presentedState = {
@@ -809,9 +850,14 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-actions .scd-icon-button { width:42px;height:42px; }
 .scd-slots-actions .scd-icon { width:36px;height:36px;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-content { min-height:330px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;align-items:center;gap:16px;padding:34px 24px 24px;text-align:center; }
+.scd-slots-content.help-view { align-items:stretch; }
+.scd-slots-help-toolbar { position:relative;width:100%;min-height:40px;display:flex;align-items:center; }
+.scd-slots-return { width:40px;height:40px;display:grid;place-items:center;border:0;padding:3px;background:transparent;color:#fff;cursor:pointer;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25));transition:filter .12s ease-in-out,scale .12s ease-in-out; }
+.scd-slots-return:hover { background:transparent;filter:drop-shadow(4px 4px 0 rgba(0,0,0,.32)) brightness(1.08);scale:1.08; }
+.scd-slots-return img { width:32px;height:32px;object-fit:contain; }
 .scd-slots-machine { width:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);align-items:center;gap:22px;padding:30px 0;overflow:visible; }
 .scd-slots-reels { min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;padding:30px 6px;overflow:visible; }
-.scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background:#fff;box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
+.scd-slot-reel { position:relative;min-width:0;aspect-ratio:1/.9;display:grid;place-items:center;overflow:hidden;border:5px solid #48a2ff;border-radius:13px;background-color:var(--COLOR_INPUT_BG,#fff);box-shadow:inset 0 8px 12px #0002;transition:transform 1s ease,filter .2s ease; }
 .scd-slot-reel::before,.scd-slot-reel::after { content:'';position:absolute;z-index:2;left:0;right:0;height:19%;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.2),transparent); }
 .scd-slot-reel::before { top:0; }
 .scd-slot-reel::after { bottom:0;transform:rotate(180deg); }
@@ -823,7 +869,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slot-reel.spinning .scd-slot-payline { animation:scd-reel-spin .15s linear infinite; }
 .scd-slot-reel.stopped { animation:scd-reel-stop .26s ease-out; }
 .scd-slot-reel.effect-active { z-index:3;transform:scale(1.2);filter:drop-shadow(0 0 15px #fff9); }
-.scd-slot-reel.effect-heart { transform:scale(1.28);filter:drop-shadow(0 0 18px #ff7eb8); }
+.scd-slot-reel.effect-heart { z-index:3;animation:scd-slot-heart 1s ease-in-out;filter:drop-shadow(0 0 18px #ff7eb8); }
 .scd-slot-reel.effect-fill-target .scd-slot-payline { animation:scd-slot-pop .46s ease; }
 .scd-slot-reel.effect-wizard { animation:scd-slot-wizard .46s ease; }
 .scd-slot-reel.effect-wizard-target .scd-slot-payline { animation:scd-slot-magic .46s ease; }
@@ -848,11 +894,16 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 .scd-slots-help-intro > img { width:64px;height:64px;object-fit:contain;flex:0 0 auto;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-slots-help p { margin:.55em 0 0; }
 .scd-slots-odds { margin-top:14px; }
-.scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px; }
-.scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:5px;padding:4px 6px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
+.scd-slots-odds-grid { margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px; }
+.scd-slots-odds-item { min-width:0;display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:var(--COLOR_PANEL_BG,rgba(0,0,0,.15)); }
 .scd-slots-odds-item .scd-slot-icon { width:30px;height:30px; }
 .scd-slots-odds-item .scd-slot-icon[data-icon="pen"] img { width:30px;height:30px;aspect-ratio:1/1;object-fit:contain; }
 .scd-slots-odds-item .scd-slot-icon-fallback { font-size:18px; }
+.scd-slots-odds-details { min-width:0;display:grid;gap:2px; }
+.scd-slots-odds-heading { min-width:0;display:flex;align-items:baseline;justify-content:space-between;gap:8px; }
+.scd-slots-odds-heading > :first-child { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.scd-slots-odds-heading .scd-slots-muted { flex:none; }
+.scd-slots-odds-reward { color:var(--COLOR_CHAT_TEXT_GUESSED,#6fd66a);font-size:.88em;font-weight:800; }
 .scd-slots-muted { color:var(--COLOR_PANEL_TEXT_SUB,#ffffffa8); }
 .scd-slots-overlay::-webkit-scrollbar,.scd-slots-overlay *::-webkit-scrollbar { width:14px;height:14px;border-radius:7px;background-color:var(--COLOR_PANEL_LO); }
 .scd-slots-overlay::-webkit-scrollbar-thumb,.scd-slots-overlay *::-webkit-scrollbar-thumb { border-radius:7px;background-color:var(--COLOR_PANEL_HI); }
@@ -865,6 +916,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 @keyframes scd-slot-erase { 0% { transform:translateY(0);opacity:1; } 50% { transform:translateY(-28%) rotate(-8deg);opacity:.5; } 100% { transform:translateY(30%);opacity:0; } }
 @keyframes scd-slot-cascade { from { transform:translateY(-140%);opacity:0; } to { transform:translateY(0);opacity:1; } }
 @keyframes scd-slot-dice { from { transform:rotate(0) scale(.9); } to { transform:rotate(90deg) scale(1.08); } }
+@keyframes scd-slot-heart { 0%,100% { transform:scale(1);filter:none; } 50% { transform:scale(1.2);filter:drop-shadow(0 0 18px #ff7eb8); } }
 @media (max-width:720px) {
   .scd-slots-header { grid-template-columns:auto 1fr auto; }
   .scd-slots-title { font-size:1.2em; }
@@ -872,7 +924,7 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
   .scd-slots-title img { transform:scale(1.35); }
   .scd-slots-machine { grid-template-columns:1fr; }
   .scd-slots-reels { gap:6px; }
-  .scd-slots-odds-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .scd-slots-odds-grid { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
   .scd-slots-bulb { width:42px;height:42px; }
   .scd-slots-bulbs { top:-27px; }
 }

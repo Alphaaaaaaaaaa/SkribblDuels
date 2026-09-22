@@ -67,6 +67,13 @@ audited reward bound to 100 Coins and replaces the atomic spin RPC with a
 validator that accepts historical rules-v1 retries and enforces the new
 rules-v2 payout table. Existing append-only spin and ledger rows are unchanged.
 
+For v0.68.0, apply
+`202609220001_harden_discord_profile_sync.sql` after the Slots-rules-v2
+migration. It keeps symbol-bearing Discord usernames intact, derives a separate
+ASCII-safe Duel display name, prevents stale provider/profile collisions from
+aborting OAuth and repairs historical Auth users without a profile row. It does
+not copy Discord email data into `public.profiles`.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

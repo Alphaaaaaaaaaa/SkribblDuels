@@ -10,7 +10,8 @@ The Gateway verifies the browser's Supabase access token, loads the matching rea
    `202608280001_add_duel_name_colors.sql`, and
    `202609160001_create_skribbl_coin_ledger.sql`, and
    `202609170001_add_skribbl_slots_and_harden_functions.sql`, and
-   `202609210001_upgrade_skribbl_slots_rules_v2.sql` in that order.
+   `202609210001_upgrade_skribbl_slots_rules_v2.sql`, and
+   `202609220001_harden_discord_profile_sync.sql` in that order.
 2. Copy `.env.example` to `.env` and set the server-only
    `SUPABASE_SERVICE_ROLE_KEY`. Add `REDIS_URL` and `OBSERVABILITY_TOKEN` for
    the production-equivalent multi-instance path. Set a stable, random

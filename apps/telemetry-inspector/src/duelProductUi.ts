@@ -1599,7 +1599,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.67.0',
+      version: '0.68.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1759,7 +1759,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.67.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.68.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {

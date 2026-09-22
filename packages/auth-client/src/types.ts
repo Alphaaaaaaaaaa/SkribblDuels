@@ -1,4 +1,4 @@
-export const AUTH_CLIENT_VERSION = '0.37.0' as const;
+export const AUTH_CLIENT_VERSION = '0.38.0' as const;
 
 export type AuthStatus = 'initializing' | 'signed-out' | 'signed-in' | 'error';
 
@@ -47,6 +47,14 @@ export interface SupabaseAuthClientLike {
     data: { session: SupabaseSessionLike | null };
     error: SupabaseAuthErrorLike | null;
   }>;
+  exchangeCodeForSession(authCode: string): Promise<{
+    data: {
+      session: SupabaseSessionLike | null;
+      user?: SupabaseAuthUserLike | null;
+      redirectType?: string | null;
+    };
+    error: SupabaseAuthErrorLike | null;
+  }>;
   signInWithOAuth(input: {
     provider: 'discord';
     options: {
@@ -64,6 +72,12 @@ export interface SupabaseAuthClientLike {
   ) => void): {
     data: { subscription: AuthSubscription };
   };
+}
+
+export interface SupabaseAuthStorageLike {
+  getItem(key: string): string | null | Promise<string | null>;
+  setItem(key: string, value: string): void | Promise<void>;
+  removeItem(key: string): void | Promise<void>;
 }
 
 export interface SupabaseClientLike {
@@ -94,6 +108,7 @@ export interface SupabaseBrowserLibrary {
         detectSessionInUrl: boolean;
         flowType: 'pkce';
         storageKey: string;
+        storage: SupabaseAuthStorageLike;
       };
     }
   ): SupabaseClientLike;

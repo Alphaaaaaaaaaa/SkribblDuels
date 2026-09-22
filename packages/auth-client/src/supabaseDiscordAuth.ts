@@ -10,6 +10,7 @@ import type {
   AuthSubscription,
   DuelProfileUpdate,
   DiscordAuthProfile,
+  SupabaseAuthStorageLike,
   SupabaseAuthUserLike,
   SupabaseBrowserLibrary,
   SupabaseClientLike,
@@ -29,6 +30,100 @@ const INITIAL_STATE: AuthSnapshot = {
   expiresAt: null,
   error: null
 };
+
+interface OAuthCallbackState {
+  code: string | null;
+  error: string | null;
+}
+
+function browserStorage(name: 'localStorage' | 'sessionStorage'): Storage | null {
+  try {
+    const storage = globalThis[name];
+    const probe = `${SUPABASE_AUTH_STORAGE_KEY}:${name}:probe`;
+    storage.setItem(probe, '1');
+    storage.removeItem(probe);
+    return storage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PKCE needs its verifier after a full Discord round-trip. Firefox privacy
+ * modes and userscript realms can expose only one of the two origin stores,
+ * so Auth writes to both and falls back to memory for the current document.
+ */
+export function createResilientAuthStorage(): SupabaseAuthStorageLike {
+  const stores = [browserStorage('localStorage'), browserStorage('sessionStorage')]
+    .filter((storage): storage is Storage => storage !== null);
+  const memory = new Map<string, string>();
+  return {
+    getItem(key) {
+      for (const storage of stores) {
+        try {
+          const value = storage.getItem(key);
+          if (value !== null) return value;
+        } catch {
+          // Try the other same-origin store before falling back to memory.
+        }
+      }
+      return memory.get(key) ?? null;
+    },
+    setItem(key, value) {
+      memory.set(key, value);
+      for (const storage of stores) {
+        try {
+          storage.setItem(key, value);
+        } catch {
+          // A working peer store still preserves the verifier/session.
+        }
+      }
+    },
+    removeItem(key) {
+      memory.delete(key);
+      for (const storage of stores) {
+        try {
+          storage.removeItem(key);
+        } catch {
+          // Removal from the remaining stores is still useful.
+        }
+      }
+    }
+  };
+}
+
+function oauthCallbackState(): OAuthCallbackState {
+  try {
+    const href = typeof window !== 'undefined' ? window.location?.href : null;
+    if (!href) return { code: null, error: null };
+    const url = new URL(href);
+    const errorDescription = stringValue(url.searchParams.get('error_description'));
+    const errorCode = stringValue(url.searchParams.get('error_code'))
+      ?? stringValue(url.searchParams.get('error'));
+    return {
+      code: stringValue(url.searchParams.get('code')),
+      error: errorDescription
+        ? `Discord sign-in could not be completed: ${errorDescription}${errorCode ? ` (${errorCode})` : ''}.`
+        : errorCode
+          ? `Discord sign-in could not be completed (${errorCode}).`
+          : null
+    };
+  } catch {
+    return { code: null, error: null };
+  }
+}
+
+function clearOAuthCallbackParameters(): void {
+  try {
+    const url = new URL(window.location.href);
+    for (const parameter of ['code', 'error', 'error_code', 'error_description']) {
+      url.searchParams.delete(parameter);
+    }
+    window.history.replaceState(window.history.state, '', url.toString());
+  } catch {
+    // Authentication must not fail merely because history is unavailable.
+  }
+}
 
 export type DuelDisplayNameValidationError =
   | 'too-short'
@@ -104,6 +199,7 @@ export class SupabaseDiscordAuthClient {
   private authSubscription: AuthSubscription | null = null;
   private started = false;
   private startPromise: Promise<AuthSnapshot> | null = null;
+  private callbackPending = false;
 
   public constructor(
     private readonly createClient: SupabaseClientFactory = createBundledSupabaseClient
@@ -139,6 +235,8 @@ export class SupabaseDiscordAuthClient {
   }
 
   private async initialize(): Promise<AuthSnapshot> {
+    const callback = oauthCallbackState();
+    this.callbackPending = callback.code !== null || callback.error !== null;
     try {
       const client = this.createClient(
         SUPABASE_PROJECT_URL,
@@ -147,13 +245,18 @@ export class SupabaseDiscordAuthClient {
           auth: {
             persistSession: true,
             autoRefreshToken: true,
-            detectSessionInUrl: true,
+            // The userscript handles the callback explicitly so initialization
+            // errors cannot be swallowed as an ordinary signed-out session.
+            detectSessionInUrl: false,
             flowType: 'pkce',
-            storageKey: SUPABASE_AUTH_STORAGE_KEY
+            storageKey: SUPABASE_AUTH_STORAGE_KEY,
+            storage: createResilientAuthStorage()
           }
         }
       );
-      this.authSubscription = client.auth.onAuthStateChange((_event, session) => {
+      this.authSubscription = client.auth.onAuthStateChange((event, session) => {
+        if (!session && event === 'INITIAL_SESSION'
+            && (this.callbackPending || this.state.status === 'error')) return;
         this.update(snapshotFromSession(session));
       }).data.subscription;
       this.client = client;
@@ -184,6 +287,25 @@ export class SupabaseDiscordAuthClient {
     }
 
     try {
+      if (callback.error) {
+        clearOAuthCallbackParameters();
+        this.update({
+          status: 'error',
+          profile: null,
+          accessToken: null,
+          expiresAt: null,
+          error: `${callback.error} Please retry Discord authorization.`
+        });
+        return this.getState();
+      }
+      if (callback.code) {
+        const { data, error } = await client.auth.exchangeCodeForSession(callback.code);
+        clearOAuthCallbackParameters();
+        if (error) throw new Error(error.message ?? 'Unable to exchange the Discord authorization code.');
+        if (!data.session) throw new Error('Discord authorization returned no Supabase session.');
+        this.update(snapshotFromSession(data.session));
+        return this.getState();
+      }
       const { data, error } = await client.auth.getSession();
       if (error) throw new Error(error.message ?? 'Unable to restore Supabase session.');
       this.update(snapshotFromSession(data.session));
@@ -195,6 +317,8 @@ export class SupabaseDiscordAuthClient {
         expiresAt: null,
         error: error instanceof Error ? error.message : String(error)
       });
+    } finally {
+      this.callbackPending = false;
     }
     return this.getState();
   }
@@ -264,6 +388,7 @@ export class SupabaseDiscordAuthClient {
     this.client = null;
     this.started = false;
     this.startPromise = null;
+    this.callbackPending = false;
   }
 
   private async ensureClient(): Promise<SupabaseClientLike> {

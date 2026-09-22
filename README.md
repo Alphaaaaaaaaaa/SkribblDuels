@@ -1,9 +1,33 @@
-# Skribbl Duels v0.67.0
+# Skribbl Duels v0.68.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
 Gateway Contract v14, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.68.0
+
+- Makes the Discord PKCE return explicit and observable. The verifier/session
+  store is mirrored across same-origin local and session storage for Firefox,
+  callback errors remain visible in the account card, and OAuth query data is
+  removed only after the exchange has been handled.
+- Reasserts symbol-safe Discord profile provisioning. Provider usernames such
+  as `lboot__` remain intact while the separate Duel display name is sanitized;
+  deterministic fallbacks and a backfill repair historical Auth users without
+  profiles. Symbols in a Discord username are therefore not a login blocker.
+- Accelerates the Skribble loss sequence to two randomized tiles every 50 ms.
+  “You lose!” drops only after the final tile finishes, while the board and
+  modal contract smoothly to the remaining terminal controls.
+- Moves Skribbl Slots About/Help into a dedicated view with a Return control.
+  Transparent reel weights use distinct name/rarity and reward rows, including
+  explicit Effect, Nothing and Heart progress labels. Reels use
+  `var(--COLOR_INPUT_BG)`, and Hearts complete one smooth grow/shrink cycle
+  before progress changes.
+
+v0.68.0 remains compatible with Gateway Contract v14 and Slots rules v2. Apply
+`202609220001_harden_discord_profile_sync.sql` after the v0.67 migration, then
+distribute the userscript. No new Railway variable or Gateway protocol deploy
+is required. See `docs/firefox-auth-terminal-slots-ui-v0.68.0.md`.
 
 ## v0.67.0
 
@@ -763,6 +787,8 @@ Gateway is deployed. v0.54.0 additionally requires
 `supabase/migrations/202608210001_create_gateway_abuse_controls.sql`.
 Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
+Current v0.68.0 installations must finish the ordered chain through
+`supabase/migrations/202609220001_harden_discord_profile_sync.sql`.
 
 ## Local verification
 

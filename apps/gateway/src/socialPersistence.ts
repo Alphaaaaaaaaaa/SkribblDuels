@@ -78,6 +78,7 @@ interface PreferenceRow {
   profile_status_visibility: string;
   lobby_status_visibility: string;
   allow_lobby_join: boolean;
+  lobby_join_mode: 'public' | 'private' | 'none';
   receive_friend_requests: boolean;
   receive_match_invites: boolean;
   status_challenge_id: string | null;
@@ -89,7 +90,7 @@ const DEFAULT_PREFERENCES: GatewaySocialStoredPreferences = {
   availability: 'online',
   profileStatusVisibility: 'everyone',
   lobbyStatusVisibility: 'friends',
-  allowLobbyJoin: true,
+  lobbyJoinMode: 'public',
   receiveFriendRequests: true,
   receiveMatchInvites: true,
   statusChallengeId: null,
@@ -108,7 +109,8 @@ function preferenceRow(row: PreferenceRow | null): GatewaySocialStoredPreference
     availability,
     profileStatusVisibility: visibility(row.profile_status_visibility, 'everyone'),
     lobbyStatusVisibility: visibility(row.lobby_status_visibility, 'friends'),
-    allowLobbyJoin: row.allow_lobby_join !== false,
+    lobbyJoinMode: ['public', 'private', 'none'].includes(row.lobby_join_mode)
+      ? row.lobby_join_mode : row.allow_lobby_join === false ? 'none' : 'public',
     receiveFriendRequests: row.receive_friend_requests !== false,
     receiveMatchInvites: row.receive_match_invites !== false,
     statusChallengeId: typeof row.status_challenge_id === 'string' ? row.status_challenge_id : null,
@@ -142,9 +144,9 @@ export class SupabaseGatewaySocialPersistence implements GatewaySocialPersistenc
       this.client.rpc('gateway_social_contract_version')
     ]);
     if (error) throw new Error(`Social persistence health check failed: ${error.message}`);
-    if (contract.error) throw new Error(`Social Contract v17 health check failed: ${contract.error.message}`);
-    if (Number(contract.data) !== 17) {
-      throw new Error(`Social Contract v17 is required; database reported v${String(contract.data)}.`);
+    if (contract.error) throw new Error(`Social Contract v18 health check failed: ${contract.error.message}`);
+    if (Number(contract.data) !== 18) {
+      throw new Error(`Social Contract v18 is required; database reported v${String(contract.data)}.`);
     }
   }
 
@@ -292,7 +294,8 @@ export class SupabaseGatewaySocialPersistence implements GatewaySocialPersistenc
       availability: preferences.availability,
       profile_status_visibility: preferences.profileStatusVisibility,
       lobby_status_visibility: preferences.lobbyStatusVisibility,
-      allow_lobby_join: preferences.allowLobbyJoin,
+      lobby_join_mode: preferences.lobbyJoinMode,
+      allow_lobby_join: preferences.lobbyJoinMode !== 'none',
       receive_friend_requests: preferences.receiveFriendRequests,
       receive_match_invites: preferences.receiveMatchInvites
     }).eq('profile_id', accountId).select('*').single();

@@ -110,6 +110,7 @@ export class GatewayAuthorityController {
   private readonly social: GatewaySocialService | null;
   private socialRefreshQueued = false;
   private readonly socialActiveMatch = new Map<string, boolean>();
+  private readonly respondingFriendInvites = new Set<string>();
 
   public constructor(private readonly options: GatewayAuthorityControllerOptions) {
     this.progression = options.progression
@@ -332,6 +333,11 @@ export class GatewayAuthorityController {
       }
     }
     this.options.sendToAccount(accountId, message);
+    if (message.type === 'INVITE_STATUS' && message.status !== 'waiting' && this.social
+        && !this.respondingFriendInvites.has(message.inviteId)) {
+      void this.social.updateMatchInviteStatus(message.inviteId, message.status)
+        .catch(error => this.options.log('social-invite-status-error', { error: String(error) }));
+    }
     if (message.type === 'MATCH_SNAPSHOT' && this.social) {
       const active = message.state.phase !== 'finished' && message.state.phase !== 'cancelled';
       const previous = this.socialActiveMatch.get(accountId) ?? false;
@@ -412,9 +418,13 @@ export class GatewayAuthorityController {
           errorMessage('FRIEND_MATCH_INVITE_NOT_FOUND', 'This friend Match invitation is no longer available.', true, message.requestId));
         return;
       }
-      const decision = message.accept
-        ? await matchmaker.acceptInvite(peer, { type: 'INVITE_ACCEPT', requestId: message.requestId, token: invite.inviteToken, page: 'home' })
-        : await matchmaker.cancelInvite(invite.senderAccountId, { type: 'INVITE_CANCEL', requestId: message.requestId, inviteId: invite.inviteId });
+      this.respondingFriendInvites.add(invite.inviteId);
+      let decision;
+      try {
+        decision = message.accept
+          ? await matchmaker.acceptInvite(peer, { type: 'INVITE_ACCEPT', requestId: message.requestId, token: invite.inviteToken, page: 'home' })
+          : await matchmaker.cancelInvite(invite.senderAccountId, { type: 'INVITE_CANCEL', requestId: message.requestId, inviteId: invite.inviteId });
+      } finally { this.respondingFriendInvites.delete(invite.inviteId); }
       if (!decision.ok) {
         this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
           errorMessage(decision.code, decision.message, true, message.requestId));

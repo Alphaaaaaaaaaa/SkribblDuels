@@ -20,7 +20,7 @@ const defaultPreferences = (): GatewaySocialStoredPreferences => ({
   availability: 'online',
   profileStatusVisibility: 'everyone',
   lobbyStatusVisibility: 'friends',
-  allowLobbyJoin: true,
+  lobbyJoinMode: 'public',
   receiveFriendRequests: true,
   receiveMatchInvites: true,
   statusChallengeId: null,
@@ -313,6 +313,26 @@ assert.equal(alphaForBravo?.statusText, 'Ready now');
 assert.equal(alphaForBravo?.lobby?.lobbyId, 'room-1');
 assert.equal(alphaForBravo?.canJoinLobby, true);
 
+// Lobby details remain visible while join IDs are disclosed only with permission.
+for (const lobbyType of ['public', 'private'] as const) {
+  await service.handle('alpha', { type: 'SOCIAL_PRESENCE_SET', requestId: 'presence-permission', page: 'lobby',
+    lobby: { lobbyId: 'permission-room', lobbyType, languageName: 'English', playerCount: 4, maxPlayers: 8 } });
+  for (const mode of ['public', 'private', 'none'] as const) {
+    await service.handle('alpha', { type: 'SOCIAL_PREFERENCES_SET', requestId: 'preferences-permission',
+      preferences: { ...(await persistence.getPreferences('alpha')), lobbyJoinMode: mode } });
+    const visible = latest('bravo', 'SOCIAL_SNAPSHOT').friends[0]!;
+    const allowed = mode === 'private' || mode === 'public' && lobbyType === 'public';
+    assert.equal(visible.canJoinLobby, allowed, `${mode}/${lobbyType}`);
+    assert.equal(visible.lobby?.lobbyId, allowed ? 'permission-room' : null);
+    assert.equal(visible.lobby?.lobbyType, lobbyType);
+  }
+}
+await service.handle('alpha', { type: 'SOCIAL_PREFERENCES_SET', requestId: 'preferences-hide-lobby',
+  preferences: { ...(await persistence.getPreferences('alpha')), lobbyJoinMode: 'private', lobbyStatusVisibility: 'nobody' } });
+assert.equal(latest('bravo', 'SOCIAL_SNAPSHOT').friends[0]!.lobby, null);
+await service.handle('alpha', { type: 'SOCIAL_PREFERENCES_SET', requestId: 'preferences-restore-lobby',
+  preferences: { ...(await persistence.getPreferences('alpha')), lobbyJoinMode: 'public', lobbyStatusVisibility: 'friends' } });
+
 activeMatches.add('alpha');
 await service.refreshAll();
 alphaForBravo = latest('bravo', 'SOCIAL_SNAPSHOT').friends.find(friend => friend.accountId === 'alpha');
@@ -342,8 +362,28 @@ await service.deliverMatchInvite({
   format: 'casual', expiresAt: Date.now() + 60_000
 });
 assert.equal(service.matchInvite('invite-1', 'bravo')?.inviteToken, 'opaque-token');
+assert.equal(latest('bravo', 'SOCIAL_EVENT').kind, 'match-invite-received');
+assert.equal(latest('alpha', 'SOCIAL_EVENT').kind, 'match-invite-sent');
+assert.ok(latest('bravo', 'SOCIAL_EVENT').inviteExpiresAt! > Date.now());
+assert.equal(latest('bravo', 'SOCIAL_EVENT').inviteToken, null, 'The opaque token stays inside Match Authority.');
 await service.matchInviteResponded('invite-1', false);
 assert.equal(latest('alpha', 'SOCIAL_EVENT').kind, 'match-invite-declined');
+assert.equal(latest('bravo', 'SOCIAL_EVENT').kind, 'match-invite-declined');
+assert.equal(service.matchInvite('invite-1', 'bravo'), null);
+await service.deliverMatchInvite({ inviteId: 'accepted', inviteToken: 'accept-token', senderAccountId: 'alpha', recipientAccountId: 'bravo', format: 'ranked', expiresAt: Date.now() + 60_000 });
+await service.disconnected('bravo'); await service.connected(identity('bravo'));
+assert.equal(latest('bravo', 'SOCIAL_EVENT').inviteId, 'accepted', 'Reconnecting recovers pending invitations.');
+await service.matchInviteResponded('accepted', true);
+assert.equal(latest('bravo', 'SOCIAL_EVENT').kind, 'match-invite-accepted');
+assert.equal(latest('alpha', 'SOCIAL_EVENT').kind, 'match-invite-accepted');
+await service.deliverMatchInvite({ inviteId: 'previous', inviteToken: 'old-token', senderAccountId: 'alpha', recipientAccountId: 'bravo', format: 'casual', expiresAt: Date.now() + 60_000 });
+await service.deliverMatchInvite({ inviteId: 'replacement', inviteToken: 'new-token', senderAccountId: 'alpha', recipientAccountId: 'bravo', format: 'casual', expiresAt: Date.now() + 60_000 });
+assert.equal(service.matchInvite('previous', 'bravo'), null);
+assert.ok(sent.get('bravo')!.some(message => message.type === 'SOCIAL_EVENT' && message.kind === 'match-invite-cancelled' && message.inviteId === 'previous'));
+await service.updateMatchInviteStatus('replacement', 'expired');
+assert.equal(latest('bravo', 'SOCIAL_EVENT').kind, 'match-invite-expired');
+assert.equal(service.matchInvite('replacement', 'bravo'), null);
+
 
 await service.disconnected('bravo');
 await service.handle('alpha', {

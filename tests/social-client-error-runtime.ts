@@ -51,7 +51,7 @@ internals.receive({
     availability: 'online',
     profileStatusVisibility: 'everyone',
     lobbyStatusVisibility: 'friends',
-    allowLobbyJoin: true,
+    lobbyJoinMode: 'public',
     receiveFriendRequests: true,
     receiveMatchInvites: true
   },

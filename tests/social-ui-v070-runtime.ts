@@ -30,7 +30,7 @@ const profile = (accountId: string, presence: GatewaySocialProfile['presence'], 
   lastSeenAt: null, activity: presence === 'offline' ? null : 'lobby', lobby: null, canJoinLobby: false, pinned
 });
 const friends = [profile('Offline', 'offline'), profile('Idle', 'idle'), profile('Bravo', 'online'), profile('Duel', 'duel'), profile('Pinned', 'offline', true)];
-const preferences = { availability: 'online', profileStatusVisibility: 'everyone', lobbyStatusVisibility: 'friends', allowLobbyJoin: true, receiveFriendRequests: true, receiveMatchInvites: true } as const;
+const preferences = { availability: 'online', profileStatusVisibility: 'everyone', lobbyStatusVisibility: 'friends', lobbyJoinMode: 'public', receiveFriendRequests: true, receiveMatchInvites: true } as const;
 const realClient = new SocketIoGatewayClient({ endpoint: null, clientVersion: 'test', capabilities: ['skribbl-telemetry'] });
 let state: GatewayConnectionSnapshot = {
   ...realClient.getState(), status: 'connected', connectionId: 'connection-1',
@@ -102,15 +102,18 @@ try {
   choose('never'); assert.equal(document.querySelector('.scd-home-friends'), null); choose('always');
   assert.equal(JSON.parse(localStorage.getItem('skribblDuelsSocialUiV1')!).showFriendsList, 'always');
 
-  const idlePin = row('Idle').querySelector<HTMLButtonElement>('.scd-social-pin')!;
+  assert.equal(document.querySelector('.scd-home-friends .scd-social-pin'), null, 'Homepage pin controls are absent.');
+  ui.openFriends();
+  const friendModalRow = (id: string) => [...document.querySelectorAll<HTMLElement>('.scd-social-row')].find(node => node.querySelector('.scd-social-name')?.textContent === id)!;
+  const idlePin = friendModalRow('Idle').querySelector<HTMLButtonElement>('.scd-social-pin')!;
   assert.equal(window.getComputedStyle(idlePin).opacity, '0.6');
   assert.equal(window.getComputedStyle(idlePin).top, '-7px');
   assert.equal(window.getComputedStyle(idlePin).right, '-5px');
   idlePin.click(); assert.equal(listNames()[0], 'Idle', 'Pinning sorts immediately before the server ACK.');
-  assert.equal(window.getComputedStyle(row('Idle').querySelector('.scd-social-pin')!).opacity, '1');
+  assert.equal(window.getComputedStyle(friendModalRow('Idle').querySelector('.scd-social-pin')!).opacity, '1');
   update({ socialError: { type: 'ERROR', requestId: pins.at(-1)!.requestId, code: 'SOCIAL_ACTION_FAILED', message: 'Try again', recoverable: true } });
   assert.deepEqual(listNames(), ['Pinned', 'Duel', 'Bravo', 'Idle', 'Offline'], 'A rejected pin restores authoritative ordering.');
-  update({ socialError: null });
+  update({ socialError: null }); ui.closeModals();
 
   update({ friendInbox: { type: 'FRIEND_CHAT_INBOX', requestId: null, unread: [{ accountId: 'Offline', count: 2 }] } });
   assert.ok(row('Offline').querySelector('.scd-social-icon-button.unread'), 'Offline messages restore the ping indicator on reconnect.');
@@ -149,7 +152,7 @@ try {
   const toggle = find<HTMLButtonElement>('.scd-social-emoji-toggle');
   assert.equal(toggle.nextElementSibling?.textContent, 'Send', 'Slimy sits immediately to the left of Send.');
   toggle.click(); assert.equal(find<HTMLElement>('.scd-social-emoji-picker').hidden, false);
-  assert.equal(document.querySelectorAll('.scd-social-emoji-choice').length, 104);
+  assert.equal(document.querySelectorAll('.scd-social-emoji-choice').length, 132);
   input.value = 'Before after'; input.setSelectionRange(7, 7); find<HTMLButtonElement>('.scd-social-emoji-choice').click();
   assert.ok(input.value.includes(SOCIAL_EMOJIS[0]!.token)); assert.ok(input.value.endsWith('after'));
   form.requestSubmit(); assert.ok(document.querySelector('.scd-social-message.outgoing img.scd-social-emoji'));

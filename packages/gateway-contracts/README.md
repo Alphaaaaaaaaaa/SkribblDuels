@@ -6,13 +6,20 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
+Contract v18 replaces the public-lobby boolean with `lobbyJoinMode` values
+`public`, `private`, `none`. Joining and lobby-ID disclosure require the
+permission and current friendship. Social invite events now include sent,
+accepted, declined, cancelled and expired cards and their authoritative expiry;
+opaque invite tokens stay on the server. Readiness requires the v0.71.0 SQL
+migration's probe to return 18. See `docs/social-chat-polish-v0.71.0.md`.
+
 Contract v17 adds `SOCIAL_PROFILE_STATS_SET`, `FRIEND_PROFILE_GET`,
 `FRIEND_CHAT_HISTORY_GET` and `FRIEND_CHAT_READ`. New server frames expose
 privacy-filtered profile cards, paginated 24-hour friend history and unread
 inbox counts. Chat events contain stored message IDs and monotonic sequences
 for optimistic reconciliation. Lobby IDs may be null when a visible game is
-observed before metadata; joining still requires a known public ID. The Social
-readiness probe now requires v17. Pinned stat strings are display data only;
+observed before metadata; joining still requires a known public ID. At Contract v17, the Social
+readiness probe required v17. Pinned stat strings are display data only;
 clients cannot award ratings or Challenge results through this channel.
 
 Contract v16 repairs the row-locked Friend-response boundary, adds a

@@ -91,7 +91,7 @@ function socialPreferences(value: unknown): boolean {
     && socialAvailability(preferences.availability)
     && socialVisibility(preferences.profileStatusVisibility)
     && socialVisibility(preferences.lobbyStatusVisibility)
-    && typeof preferences.allowLobbyJoin === 'boolean'
+    && ['public', 'private', 'none'].includes(String(preferences.lobbyJoinMode))
     && typeof preferences.receiveFriendRequests === 'boolean'
     && typeof preferences.receiveMatchInvites === 'boolean');
 }
@@ -867,7 +867,9 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && (message.kind === 'friend-request-received' || message.kind === 'friend-request-accepted'
           || message.kind === 'friend-removed' || message.kind === 'friend-message-received'
           || message.kind === 'friend-message-sent' || message.kind === 'match-invite-received'
-          || message.kind === 'match-invite-declined')
+          || message.kind === 'match-invite-declined' || message.kind === 'match-invite-sent'
+          || message.kind === 'match-invite-accepted' || message.kind === 'match-invite-cancelled'
+          || message.kind === 'match-invite-expired')
         && socialProfile(message.profile)
         && (message.friendRequestId === null || nonEmptyString(message.friendRequestId))
         && (message.clientMessageId === null || nonEmptyString(message.clientMessageId))
@@ -876,7 +878,8 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128))
         && (message.format === null || message.format === 'casual' || message.format === 'ranked')
         && finiteNumber(message.occurredAt)
-        && (message.chatMessage === undefined || friendChatMessage(message.chatMessage));
+        && (message.chatMessage === undefined || friendChatMessage(message.chatMessage))
+        && (message.inviteExpiresAt === undefined || nonNegativeInteger(message.inviteExpiresAt));
     case 'COIN_BALANCE':
       return (message.requestId === null || nonEmptyString(message.requestId))
         && nonNegativeInteger(message.balance)

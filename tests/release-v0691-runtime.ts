@@ -18,13 +18,13 @@ const [rootRaw, inspectorRaw, gatewayRaw, clientRaw, contractsRaw, userscript, p
   readFile('apps/telemetry-inspector/src/generatedProgressionAssets.ts', 'utf8')
 ]);
 
-assert.equal(JSON.parse(rootRaw).version, '0.70.0');
-assert.equal(JSON.parse(inspectorRaw).version, '0.70.0');
-assert.equal(JSON.parse(gatewayRaw).version, '0.12.0');
-assert.equal(JSON.parse(clientRaw).version, '0.11.0');
-assert.equal(JSON.parse(contractsRaw).version, '0.10.0');
-assert.match(userscript, /BUILD_VERSION = '0\.70\.0'/);
-assert.match(product, /version: '0\.70\.0'/);
+assert.equal(JSON.parse(rootRaw).version, '0.71.0');
+assert.equal(JSON.parse(inspectorRaw).version, '0.71.0');
+assert.equal(JSON.parse(gatewayRaw).version, '0.13.0');
+assert.equal(JSON.parse(clientRaw).version, '0.12.0');
+assert.equal(JSON.parse(contractsRaw).version, '0.11.0');
+assert.match(userscript, /BUILD_VERSION = '0\.71\.0'/);
+assert.match(product, /version: '0\.71\.0'/);
 
 assert.match(product, /const sidebar = element\('div', 'scd-profile-sidebar'\)/);
 assert.match(product, /sidebar\.append\(identityColumn, this\.socialUi\.createProfileControls\(\)\)/);
@@ -49,7 +49,7 @@ assert.match(gatewayClient, /socialError: structuredClone\(value\)/);
 assert.match(gatewayClient, /\[Skribbl Duels Social\] Action failed/);
 assert.match(gatewayClient, /value\.requestId\.startsWith\('social-'\)/);
 assert.match(persistence, /this\.client\.rpc\('gateway_social_contract_version'\)/);
-assert.match(persistence, /Number\(contract\.data\) !== 17/);
+assert.match(persistence, /Number\(contract\.data\) !== 18/);
 assert.match(persistence, /unblockAccount\(accountId: string, blockedId: string\)/);
 assert.match(service, /Diagnostic ID: \$\{diagnosticId\}/);
 assert.match(service, /requestId: commandRequestId\(message\)/);
@@ -60,4 +60,4 @@ assert.equal(template.friendUnblock, 'res/friend-system/unblock.gif');
 await access(template.friendUnblock);
 assert.match(generatedAssets, /"friendUnblock": "data:image\/gif;base64,/);
 
-console.log('v0.70.0 Social RPC, diagnostics, search, unblock and UI polish regressions passed.');
+console.log('v0.71.0 Social RPC, diagnostics, search, unblock and UI polish regressions passed.');

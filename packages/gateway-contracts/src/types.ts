@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 17 as const;
+export const GATEWAY_CONTRACT_VERSION = 18 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export const GATEWAY_SLOT_ICON_IDS = [
@@ -256,7 +256,7 @@ export interface GatewaySocialPreferences {
   availability: GatewaySocialAvailability;
   profileStatusVisibility: GatewaySocialVisibility;
   lobbyStatusVisibility: GatewaySocialVisibility;
-  allowLobbyJoin: boolean;
+  lobbyJoinMode: 'public' | 'private' | 'none';
   receiveFriendRequests: boolean;
   receiveMatchInvites: boolean;
 }
@@ -738,7 +738,11 @@ export type GatewaySocialEventKind =
   | 'friend-message-received'
   | 'friend-message-sent'
   | 'match-invite-received'
-  | 'match-invite-declined';
+  | 'match-invite-sent'
+  | 'match-invite-accepted'
+  | 'match-invite-declined'
+  | 'match-invite-cancelled'
+  | 'match-invite-expired';
 
 export interface GatewaySocialEventMessage {
   type: 'SOCIAL_EVENT';
@@ -753,6 +757,7 @@ export interface GatewaySocialEventMessage {
   format: 'casual' | 'ranked' | null;
   occurredAt: number;
   chatMessage?: GatewayFriendChatMessage;
+  inviteExpiresAt?: number;
 }
 
 export interface GatewayFriendChatMessage {

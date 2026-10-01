@@ -1,9 +1,26 @@
-# Skribbl Duels v0.70.0
+# Skribbl Duels v0.71.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v17, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v18, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.71.0
+
+- Keeps friend pins in the Friends modal and prevents horizontal list flicker.
+- Adds Public/Private/None lobby permissions and a fixed full-screen lock overlay.
+- Shows actionable Duel invitations and response/expiry status in Quick Messages.
+- Groups messages, keeps rapid outgoing sends in place when confirmed, enlarges
+  emoji-only messages and adds the profile-style Unicode character count.
+- Includes the 132 curated emojis, all 34 additions, short codes and legacy
+  aliases; adds Ctrl+E, Shift-click and a picker above the composer.
+- Makes links clickable in Quick Messages, Duel chat and the observed game chat,
+  with the requested underline color and safe text-node rendering.
+
+Apply `202610010003_social_lobby_join_permissions.sql` after the v0.70.0 chat
+migration, deploy Gateway v0.13.0 (Contract 18), then update the userscript.
+No new Railway variable is required. See `docs/START-HERE-v0.71.0.md` and
+`docs/social-chat-polish-v0.71.0.md`.
 
 ## v0.70.0
 
@@ -853,8 +870,8 @@ Gateway is deployed. v0.54.0 additionally requires
 `supabase/migrations/202608210001_create_gateway_abuse_controls.sql`.
 Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
-Current v0.70.0 installations must finish the ordered chain through
-`supabase/migrations/202610010002_add_friend_chat_history.sql`.
+Current v0.71.0 installations must finish the ordered chain through
+`supabase/migrations/202610010003_social_lobby_join_permissions.sql`.
 
 ## Local verification
 
@@ -869,7 +886,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/social-chat-profiles-v0.70.0.md`,
+See `docs/social-chat-polish-v0.71.0.md`,
+`docs/social-chat-profiles-v0.70.0.md`,
 `docs/social-hotfix-v0.69.1.md`,
 `docs/friends-social-v0.69.0.md`,
 `docs/firefox-auth-terminal-slots-ui-v0.68.0.md`,

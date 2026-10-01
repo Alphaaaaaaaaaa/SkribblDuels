@@ -14,7 +14,7 @@ import { EMBEDDED_PROGRESSION_ASSETS, type ProgressionAssetId } from './generate
 import { appendColoredDuelName } from './nameColors';
 import { compareSocialFriends } from '@skribbl-duels/gateway-contracts';
 import { socialPresenceReport, type SocialLobbySnapshot } from './socialLobbyPresence';
-import { SOCIAL_EMOJIS, appendSocialMessage } from './socialEmojis';
+import { SOCIAL_EMOJIS, SOCIAL_EMOJI_GROUPS, appendSocialMessage } from './socialEmojis';
 import { PROFILE_STAT_DEFINITION_BY_ID, DEFAULT_PINNED_PROFILE_STAT_IDS, isProfileStatId } from './profileStats';
 import { EMBEDDED_STAT_ICON_ASSETS, STAT_ICON_ASSET_PATHS } from './generatedStatIconAssets';
 
@@ -43,6 +43,15 @@ interface LocalFriendMessage {
   clientMessageId?: string;
   sequence?: number;
   status?: 'pending' | 'sent' | 'failed';
+  displayAt?: number;
+  displayOrder?: number;
+  invite?: {
+    id: string;
+    format: 'casual' | 'ranked';
+    expiresAt: number;
+    state: 'waiting' | 'responding' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'unavailable';
+    requestId?: string;
+  };
 }
 
 interface LocalSocialUiPreferences {
@@ -120,7 +129,7 @@ function socialPreferencesEqual(left: GatewaySocialPreferences, right: GatewaySo
   return left.availability === right.availability
     && left.profileStatusVisibility === right.profileStatusVisibility
     && left.lobbyStatusVisibility === right.lobbyStatusVisibility
-    && left.allowLobbyJoin === right.allowLobbyJoin
+    && left.lobbyJoinMode === right.lobbyJoinMode
     && left.receiveFriendRequests === right.receiveFriendRequests
     && left.receiveMatchInvites === right.receiveMatchInvites;
 }
@@ -135,6 +144,8 @@ export class SocialFeatureUi {
   private handledEvents = new Set<string>();
   private unread = new Set<string>();
   private messages: LocalFriendMessage[] = [];
+  private messageDisplayOrder = 0;
+  private inviteExpiryTimer: number | null = null;
   private uiPreferences = loadUiPreferences();
   private activeView: 'friends' | 'requests' = 'friends';
   private searchRequestId: string | null = null;
@@ -176,6 +187,8 @@ export class SocialFeatureUi {
     window.removeEventListener('keydown', this.messageKeydown, true);
     for (const [toast, timer] of this.toastTimers) { window.clearTimeout(timer); toast.remove(); }
     this.toastTimers.clear();
+    if (this.inviteExpiryTimer !== null) window.clearTimeout(this.inviteExpiryTimer);
+    this.inviteExpiryTimer = null;
     if (this.readTimer !== null) window.clearTimeout(this.readTimer);
     this.readTimer = null;
     if (this.presencePoll !== null) window.clearInterval(this.presencePoll);
@@ -242,6 +255,12 @@ export class SocialFeatureUi {
       const failed = this.messages.find(item => item.direction === 'outgoing'
         && (item.clientMessageId ?? item.id) === next.socialError!.requestId && item.status === 'pending');
       if (failed) { failed.status = 'failed'; this.saveMessages(); this.refreshConversationHistory(); }
+      const invitation = this.messages.find(item => item.invite?.requestId === next.socialError!.requestId)?.invite;
+      if (invitation) {
+        invitation.state = /INVITE_(?:NOT_FOUND|NOT_ACTIVE|EXPIRED)|FRIEND_NOT_FOUND/.test(next.socialError.code)
+          ? 'unavailable' : invitation.expiresAt <= Date.now() ? 'expired' : 'waiting';
+        delete invitation.requestId; this.saveMessages(); this.refreshConversationHistory();
+      }
       if (next.socialError.requestId && this.historyRequests.has(next.socialError.requestId)) {
         this.historyRequests.delete(next.socialError.requestId); this.historyPrependRequests.delete(next.socialError.requestId); this.historyLoading = false; this.refreshConversationHistory();
       }
@@ -272,7 +291,7 @@ export class SocialFeatureUi {
       for (const friend of next.social?.friends ?? []) {
         if (this.optimisticPins.get(friend.accountId)?.pinned === friend.pinned) this.optimisticPins.delete(friend.accountId);
       }
-      this.refreshConversationHeader(); this.refreshProfileCard();
+      this.refreshConversationHeader(); this.refreshConversationHistory(); this.refreshProfileCard();
       this.renderHomepageList();
       if (this.modal?.isConnected) this.renderModal();
       this.refreshProfileControls();
@@ -282,8 +301,11 @@ export class SocialFeatureUi {
       this.refreshConversationHeader();
       if (next.status !== 'connected') {
         for (const entry of this.messages) if (entry.direction === 'outgoing' && entry.status === 'pending') entry.status = 'failed';
+        for (const entry of this.messages) if (entry.invite && ['waiting', 'responding'].includes(entry.invite.state)) {
+          entry.invite.state = 'unavailable'; delete entry.invite.requestId;
+        }
         this.saveMessages(); this.refreshConversationHistory();
-      }
+      } else this.refreshConversationHistory();
     }
     if (next.status === 'connected' && previous.status !== 'connected') {
       this.lastPresenceFingerprint = ''; this.presenceRequestId = null; this.lastStatsFingerprint = '';
@@ -354,6 +376,7 @@ export class SocialFeatureUi {
       return;
     }
     const draft = { ...snapshot.preferences };
+    let submitted = { ...snapshot.preferences };
     const select = <T extends string>(labelText: string, value: T, values: readonly T[], update: (value: T) => void): HTMLLabelElement => {
       const label = element('label', 'scd-label');
       const input = element('select') as HTMLSelectElement;
@@ -369,12 +392,14 @@ export class SocialFeatureUi {
       return label;
     };
     const save = (): void => {
-      if (!socialPreferencesEqual(draft, snapshot.preferences)) this.options.gateway.setSocialPreferences(draft);
+      if (!socialPreferencesEqual(draft, submitted)) {
+        this.options.gateway.setSocialPreferences(draft); submitted = { ...draft };
+      }
     };
     card.append(
       select('Profile status visibility', draft.profileStatusVisibility, ['everyone', 'friends', 'nobody'] as const, value => { draft.profileStatusVisibility = value; save(); }),
       select('Lobby status visibility', draft.lobbyStatusVisibility, ['everyone', 'friends', 'nobody'] as const, value => { draft.lobbyStatusVisibility = value; save(); }),
-      this.checkbox('Allow friends to join my public lobby', draft.allowLobbyJoin, value => { draft.allowLobbyJoin = value; save(); }),
+      select('Allow friends to join your lobby', draft.lobbyJoinMode, ['public', 'private', 'none'] as const, value => { draft.lobbyJoinMode = value; save(); }),
       this.checkbox('Receive friend requests', draft.receiveFriendRequests, value => { draft.receiveFriendRequests = value; save(); }),
       this.checkbox('Receive Match invitations', draft.receiveMatchInvites, value => { draft.receiveMatchInvites = value; save(); })
     );
@@ -557,7 +582,7 @@ export class SocialFeatureUi {
     }
     actions.appendChild(this.iconButton('friendMessage', 'Open Quick Messages', () => this.openMessages(friend), this.unread.has(friend.accountId) ? 'unread' : ''));
     if (friend.lobby) actions.appendChild(this.iconButton(friend.canJoinLobby ? 'friendJoin' : 'friendLocked',
-      friend.canJoinLobby ? 'Join public lobby' : 'This friend disabled lobby joining',
+      friend.canJoinLobby ? `Join ${friend.lobby?.lobbyType ?? 'public'} lobby` : 'This friend disabled lobby joining',
       () => friend.canJoinLobby ? this.joinLobby(friend) : this.showLocked(friend)));
     if (removable) actions.appendChild(this.iconButton('friendTrash', 'Remove friend', () => this.confirmRemoveFriend(friend), 'danger'));
     row.appendChild(actions);
@@ -631,25 +656,38 @@ export class SocialFeatureUi {
       const more = element('button', 'scd-button scd-social-load-history', 'Load older messages'); more.type = 'button';
       more.addEventListener('click', () => { if (this.nextHistorySequence !== null) this.requestConversationHistory(this.nextHistorySequence); });
       const form = element('form', 'scd-social-message-form');
-      const input = element('input'); input.type = 'text'; input.maxLength = 300; input.placeholder = 'Write a message…';
+      const input = element('input'); input.type = 'text'; input.maxLength = 600; input.placeholder = 'Write a message…';
+      input.setAttribute('aria-label', 'Quick Message');
       input.dataset.scdFriendMessageInput = 'true'; input.value = this.conversationDrafts.get(friend.accountId) ?? '';
-      input.addEventListener('input', () => this.conversationDrafts.set(friend.accountId, input.value));
+      const inputShell = element('span', 'scd-profile-status-input-shell scd-social-message-input-shell');
+      const counter = element('span', 'scd-chat-characters scd-social-message-count'); counter.setAttribute('aria-label', 'Message character count');
+      inputShell.append(input, counter);
+      input.addEventListener('input', () => {
+        input.value = Array.from(input.value).slice(0, 300).join('');
+        this.conversationDrafts.set(friend.accountId, input.value); this.updateConversationCounter(input);
+      });
       const picker = this.createEmojiPicker(input);
       const emojis = this.iconButton('friendSlimy', 'Choose a Skribbl emoji', () => {
         picker.hidden = !picker.hidden; emojis.setAttribute('aria-expanded', String(!picker.hidden));
+        input.focus({ preventScroll: true });
       }, 'scd-social-emoji-toggle'); emojis.setAttribute('aria-expanded', 'false');
+      emojis.addEventListener('mousedown', event => event.preventDefault());
+      this.options.registerTooltip(emojis, 'Choose a Skribbl emoji (Ctrl+E)', 'Y');
       const send = element('button', 'scd-button primary', 'Send'); send.type = 'submit';
       form.addEventListener('submit', event => {
         event.preventDefault(); event.stopPropagation();
         const message = input.value.trim(); if (!message || send.disabled) return;
+        if (Array.from(message).length > 300) { this.options.showToast('Message too long', 'A message can contain up to 300 characters.'); return; }
         const id = `friend-message-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
         this.recordMessage({ id, clientMessageId: id, accountId: friend.accountId, direction: 'outgoing', message, occurredAt: Date.now(), status: 'pending' });
         input.value = ''; this.conversationDrafts.delete(friend.accountId); picker.hidden = true; emojis.setAttribute('aria-expanded', 'false');
+        this.updateConversationCounter(input);
         this.refreshConversationHistory(true); this.sendPendingMessage(id); input.focus({ preventScroll: true });
       });
-      form.append(input, emojis, send);
+      form.append(inputShell, emojis, send);
+      const composer = element('div', 'scd-social-message-composer'); composer.append(form, picker);
       const retention = element('div', 'scd-muted scd-social-chat-retention', 'The latest 24 hours are synced between browsers; older messages may remain in this browser.');
-      body.append(more, history, form, picker, retention);
+      body.append(more, history, composer, retention); this.updateConversationCounter(input);
     });
     this.activeConversationId = friend.accountId; this.conversationProfile = friend; this.nextHistorySequence = null;
     this.unread.delete(friend.accountId); this.renderHomepageList(); if (this.modal?.isConnected) this.renderModal();
@@ -661,7 +699,10 @@ export class SocialFeatureUi {
     const input = event.target instanceof HTMLInputElement ? event.target : null;
     if (!input?.matches('[data-scd-friend-message-input]') || !this.detailModal?.contains(input)) return;
     event.stopPropagation();
-    if (event.key === 'Enter' && !event.isComposing) {
+    if (event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'e' && !event.isComposing) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (!event.repeat) this.detailModal?.querySelector<HTMLButtonElement>('.scd-social-emoji-toggle')?.click();
+    } else if (event.key === 'Enter' && !event.isComposing) {
       event.preventDefault(); event.stopImmediatePropagation(); input.form?.requestSubmit();
     } else if (event.key === 'Escape') {
       event.preventDefault(); event.stopImmediatePropagation();
@@ -674,22 +715,36 @@ export class SocialFeatureUi {
   private createEmojiPicker(input: HTMLInputElement): HTMLElement {
     const picker = element('div', 'scd-social-emoji-picker'); picker.hidden = true;
     picker.setAttribute('aria-label', 'Skribbl emojis');
-    const grid = element('div', 'scd-social-emoji-grid');
-    for (const emoji of SOCIAL_EMOJIS) {
-      if (!emoji.source) continue;
-      const button = element('button', 'scd-icon-button scd-social-emoji-choice'); button.type = 'button';
-      const image = element('img'); image.src = emoji.source; image.alt = emoji.label; button.appendChild(image);
-      button.addEventListener('click', () => {
-        const start = input.selectionStart ?? input.value.length; const end = input.selectionEnd ?? start;
-        const value = input.value.slice(0, start) + emoji.token + input.value.slice(end);
-        if (Array.from(value).length > 300) { this.options.showToast('Message too long', 'A message can contain up to 300 characters.'); return; }
-        input.value = value; if (this.activeConversationId) this.conversationDrafts.set(this.activeConversationId, value);
-        picker.hidden = true; this.detailModal?.querySelector('.scd-social-emoji-toggle')?.setAttribute('aria-expanded', 'false');
-        input.focus({ preventScroll: true }); input.setSelectionRange(start + emoji.token.length, start + emoji.token.length);
-      });
-      this.options.registerTooltip(button, emoji.label, 'Y'); grid.appendChild(button);
+    for (const group of SOCIAL_EMOJI_GROUPS) {
+      const section = element('section', 'scd-social-emoji-group');
+      section.appendChild(element('strong', 'scd-social-emoji-group-title', group));
+      const grid = element('div', 'scd-social-emoji-grid');
+      for (const emoji of SOCIAL_EMOJIS.filter(item => item.group === group)) {
+        if (!emoji.source) continue;
+        const button = element('button', 'scd-icon-button scd-social-emoji-choice'); button.type = 'button';
+        const image = element('img'); image.src = emoji.source; image.alt = emoji.token; button.appendChild(image);
+        button.dataset.emojiToken = emoji.token; button.setAttribute('aria-label', emoji.token);
+        button.addEventListener('mousedown', event => event.preventDefault());
+        button.addEventListener('click', event => {
+          const start = input.selectionStart ?? input.value.length; const end = input.selectionEnd ?? start;
+          const value = input.value.slice(0, start) + emoji.token + input.value.slice(end);
+          if (Array.from(value).length > 300) { this.options.showToast('Message too long', 'A message can contain up to 300 characters.'); return; }
+          input.value = value; if (this.activeConversationId) this.conversationDrafts.set(this.activeConversationId, value);
+          if (!event.shiftKey) { picker.hidden = true; this.detailModal?.querySelector('.scd-social-emoji-toggle')?.setAttribute('aria-expanded', 'false'); }
+          input.focus({ preventScroll: true }); input.setSelectionRange(start + emoji.token.length, start + emoji.token.length);
+          this.updateConversationCounter(input);
+        });
+        this.options.registerTooltip(button, emoji.token, 'Y'); grid.appendChild(button);
+      }
+      section.appendChild(grid); picker.appendChild(section);
     }
-    picker.appendChild(grid); return picker;
+    return picker;
+  }
+
+  private updateConversationCounter(input: HTMLInputElement): void {
+    const count = Array.from(input.value).length;
+    const counter = input.parentElement?.querySelector('.scd-social-message-count');
+    if (counter) { counter.textContent = String(count); counter.classList.toggle('visible', count > 0); }
   }
 
   private sendPendingMessage(id: string): void {
@@ -734,21 +789,83 @@ export class SocialFeatureUi {
     const oldHeight = history.scrollHeight; const oldTop = history.scrollTop; history.replaceChildren();
     const entries = this.messages.filter(item => item.accountId === this.activeConversationId);
     if (entries.length === 0) history.appendChild(element('div', 'scd-muted', this.historyLoading ? 'Loading messages…' : 'Start a conversation.'));
+    let group: HTMLElement | null = null;
+    let previous: LocalFriendMessage | null = null;
     for (const message of entries) {
+      const time = message.displayAt ?? message.occurredAt;
+      const gap = previous ? time - (previous.displayAt ?? previous.occurredAt) : Infinity;
+      if (!group || !previous || previous.direction !== message.direction || message.invite || previous.invite || gap > 120_000 || gap < 0) {
+        group = element('div', `scd-social-message-group ${message.direction}`);
+        group.appendChild(element('span', 'scd-social-message-author', message.direction === 'outgoing' ? 'You' : this.conversationProfile?.displayName ?? 'Friend'));
+        history.appendChild(group);
+      }
       const row = element('div', `scd-social-message ${message.direction}${message.status === 'pending' ? ' pending' : ''}${message.status === 'failed' ? ' failed' : ''}`);
       row.dataset.messageId = message.clientMessageId ?? message.id;
       const copy = element('span', 'scd-social-message-text'); appendSocialMessage(copy, message.message);
-      row.append(element('span', 'scd-social-message-author', message.direction === 'outgoing' ? 'You' : this.conversationProfile?.displayName ?? 'Friend'), copy);
-      if (message.status === 'pending') row.appendChild(element('span', 'scd-muted scd-social-message-state', 'Sending…'));
+      row.appendChild(copy);
+      if (message.status === 'pending') { row.setAttribute('aria-label', 'Sending message'); row.setAttribute('aria-busy', 'true'); }
+      if (message.invite) row.appendChild(this.createConversationInvite(message));
       if (message.status === 'failed') {
         const retry = element('button', 'scd-button scd-social-message-retry', 'Retry'); retry.type = 'button';
         retry.addEventListener('click', () => this.sendPendingMessage(message.clientMessageId ?? message.id)); row.appendChild(retry);
       }
-      history.appendChild(row);
+      group.appendChild(row); previous = message;
     }
     const more = this.detailModal.querySelector<HTMLButtonElement>('.scd-social-load-history');
     if (more) { more.hidden = this.nextHistorySequence === null; more.disabled = this.historyLoading; }
     history.scrollTop = follow ? history.scrollHeight : oldTop + (prepended ? Math.max(0, history.scrollHeight - oldHeight) : 0);
+    this.scheduleInviteExpiry();
+  }
+
+  private createConversationInvite(message: LocalFriendMessage): HTMLElement {
+    const invite = message.invite!;
+    if ((invite.state === 'waiting' || invite.state === 'responding') && invite.expiresAt <= Date.now()) invite.state = 'expired';
+    const card = element('div', 'scd-social-chat-invite'); card.dataset.inviteId = invite.id;
+    card.dataset.inviteState = invite.state;
+    const labels: Record<typeof invite.state, string> = {
+      waiting: message.direction === 'incoming' ? 'Accept or deny this invitation.' : 'Waiting for a reply…',
+      responding: 'Waiting for the Gateway…', accepted: 'Accepted', declined: 'Denied', cancelled: 'Cancelled', expired: 'Expired', unavailable: 'No longer available'
+    };
+    card.appendChild(element('span', 'scd-muted scd-social-chat-invite-state', labels[invite.state]));
+    if (message.direction === 'incoming' && (invite.state === 'waiting' || invite.state === 'responding')) {
+      const controls = element('div', 'scd-social-format-actions');
+      const state = this.options.getGatewayState();
+      for (const [accept, label] of [[true, 'Accept'], [false, 'Deny']] as const) {
+        const button = element('button', `scd-button${accept ? ' primary' : ''}`, label); button.type = 'button';
+        button.disabled = invite.state !== 'waiting' || state.status !== 'connected'
+          || !state.social?.friends.some(item => item.accountId === message.accountId);
+        button.addEventListener('click', () => this.respondToConversationInvite(invite.id, accept));
+        controls.appendChild(button);
+      }
+      card.appendChild(controls);
+    }
+    return card;
+  }
+
+  private respondToConversationInvite(inviteId: string, accept: boolean): void {
+    const entry = this.messages.find(item => item.invite?.id === inviteId);
+    const invite = entry?.invite;
+    if (!invite || invite.state !== 'waiting') return;
+    if (invite.expiresAt <= Date.now()) { invite.state = 'expired'; this.refreshConversationHistory(); return; }
+    invite.state = 'responding'; this.matchInviteAcceptancePending = accept;
+    this.refreshConversationHistory();
+    try { invite.requestId = this.options.gateway.respondToFriendMatchInvite(inviteId, accept); }
+    catch { invite.state = 'waiting'; this.matchInviteAcceptancePending = false; this.refreshConversationHistory(); }
+    this.saveMessages();
+  }
+
+  private scheduleInviteExpiry(): void {
+    if (this.inviteExpiryTimer !== null) window.clearTimeout(this.inviteExpiryTimer);
+    this.inviteExpiryTimer = null;
+    const next = Math.min(...this.messages.filter(item => item.invite && ['waiting', 'responding'].includes(item.invite.state)).map(item => item.invite!.expiresAt));
+    if (!Number.isFinite(next)) return;
+    this.inviteExpiryTimer = window.setTimeout(() => {
+      this.inviteExpiryTimer = null;
+      for (const message of this.messages) if (message.invite && ['waiting', 'responding'].includes(message.invite.state) && message.invite.expiresAt <= Date.now()) {
+        message.invite.state = 'expired'; delete message.invite.requestId;
+      }
+      this.saveMessages(); this.refreshConversationHistory(); this.scheduleInviteExpiry();
+    }, Math.max(1, Math.min(2_147_483_647, next - Date.now() + 1)));
   }
 
   private scheduleConversationRead(): void {
@@ -832,6 +949,7 @@ export class SocialFeatureUi {
         button.type = 'button';
         button.addEventListener('click', () => {
           button.disabled = true; this.options.gateway.sendFriendMatchInvite(friend.accountId, format); this.closeDetail();
+          this.openMessages(friend);
           this.options.showToast('Match invitation sent', `${friend.displayName} can now accept your ${label} invitation.`);
         });
         this.options.registerTooltip(button, `Invite ${friend.displayName} to ${label}`, 'Y');
@@ -892,7 +1010,7 @@ export class SocialFeatureUi {
         this.actionToast(`${event.profile.displayName} sent a message`, event.message, event.profile,
           [{ label: 'Reply', action: () => this.openMessages(event.profile), primary: true }]);
       }
-      if (this.activeConversationId === event.profile.accountId) { this.refreshConversationHistory(direction === 'outgoing'); this.scheduleConversationRead(); }
+      if (this.activeConversationId === event.profile.accountId) { this.refreshConversationHistory(); this.scheduleConversationRead(); }
     } else if (event.kind === 'friend-request-received' && event.friendRequestId) {
       this.actionToast('Friend request', `${event.profile.displayName} sent you a friend request.`, event.profile, [
         { label: 'Accept', action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId!, 'accept'), primary: true },
@@ -900,17 +1018,30 @@ export class SocialFeatureUi {
         { label: 'Ignore', action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId!, 'ignore') },
         { label: 'Block', action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId!, 'block') }
       ]);
-    } else if (event.kind === 'match-invite-received' && event.inviteId && event.format) {
+    } else if (event.kind.startsWith('match-invite-') && event.inviteId && event.format) {
       const label = event.format === 'ranked' ? 'Ranked 5×5' : 'Casual 3×3';
-      this.actionToast('Friend Match invitation', `${event.profile.displayName} invited you to ${label}.`, event.profile, [
-        { label: 'Accept', action: () => {
-          this.matchInviteAcceptancePending = true;
-          this.options.gateway.respondToFriendMatchInvite(event.inviteId!, true);
-        }, primary: true },
-        { label: 'Decline', action: () => this.options.gateway.respondToFriendMatchInvite(event.inviteId!, false) }
-      ]);
+      const id = `friend-invite:${event.inviteId}`;
+      const existing = this.messages.find(item => item.id === id);
+      const initial = event.kind === 'match-invite-received' || event.kind === 'match-invite-sent';
+      const state = initial ? existing?.invite?.state === 'unavailable' ? 'waiting' : existing?.invite?.state ?? 'waiting'
+        : event.kind.slice('match-invite-'.length) as NonNullable<LocalFriendMessage['invite']>['state'];
+      this.recordMessage({ id, accountId: event.profile.accountId,
+        direction: existing?.direction ?? (event.kind === 'match-invite-sent' ? 'outgoing' : 'incoming'),
+        message: `${label} Duel invitation`, occurredAt: existing?.occurredAt ?? event.occurredAt, status: 'sent',
+        invite: { id: event.inviteId, format: event.format, expiresAt: event.inviteExpiresAt ?? existing?.invite?.expiresAt ?? event.occurredAt, state,
+          ...(initial && existing?.invite?.requestId ? { requestId: existing.invite.requestId } : {}) }
+      });
+      this.scheduleInviteExpiry();
+      if (this.activeConversationId === event.profile.accountId) this.refreshConversationHistory();
+      else if (event.kind === 'match-invite-received' && !existing) {
+        this.unread.add(event.profile.accountId);
+        this.actionToast('Friend Match invitation', `${event.profile.displayName} invited you to ${label}.`, event.profile, [
+          { label: 'Accept', action: () => this.respondToConversationInvite(event.inviteId!, true), primary: true },
+          { label: 'Deny', action: () => this.respondToConversationInvite(event.inviteId!, false) },
+          { label: 'Open Quick Messages', action: () => this.openMessages(event.profile) }
+        ]);
+      }
     } else if (event.kind === 'friend-request-accepted') this.options.showToast('Friend request accepted', `${event.profile.displayName} is now in your friends list.`);
-    else if (event.kind === 'match-invite-declined') this.options.showToast('Match invitation declined', `${event.profile.displayName} declined your invitation.`);
     else if (event.kind === 'friend-removed') this.options.showToast('Friendship updated', `${event.profile.displayName} is no longer in your friends list.`);
     this.renderHomepageList();
   }
@@ -954,11 +1085,11 @@ export class SocialFeatureUi {
     if (state.social.friends.length === 0) list.appendChild(element('div', 'scd-muted scd-home-friends-empty', 'No friends yet'));
     for (const friend of this.sortedFriends(state.social.friends)) {
       const row = element('div', `scd-home-friend presence-${friend.presence}`);
-      row.append(this.createFriendPin(friend), this.createIdentity(friend));
+      row.appendChild(this.createIdentity(friend));
       const actions = element('div', 'scd-home-friend-actions');
       if (friend.presence === 'online' || friend.presence === 'idle') actions.appendChild(this.iconButton('friendDuelsLogo', 'Invite to a Duel', () => this.openMatchInvitePicker(friend)));
       actions.appendChild(this.iconButton('friendMessage', 'Open Quick Messages', () => this.openMessages(friend), this.unread.has(friend.accountId) ? 'unread' : ''));
-      if (friend.lobby) actions.appendChild(this.iconButton(friend.canJoinLobby ? 'friendJoin' : 'friendLocked', friend.canJoinLobby ? 'Join public lobby' : 'Lobby joining disabled', () => friend.canJoinLobby ? this.joinLobby(friend) : this.showLocked(friend)));
+      if (friend.lobby) actions.appendChild(this.iconButton(friend.canJoinLobby ? 'friendJoin' : 'friendLocked', friend.canJoinLobby ? `Join ${friend.lobby.lobbyType} lobby` : 'Lobby joining disabled', () => friend.canJoinLobby ? this.joinLobby(friend) : this.showLocked(friend)));
       row.appendChild(actions); list.appendChild(row);
     }
     panel.append(header, list); (document.body ?? document.documentElement).appendChild(panel); this.homepageList = panel;
@@ -1011,9 +1142,13 @@ export class SocialFeatureUi {
     const index = this.messages.findIndex(item => item.accountId === message.accountId && item.direction === message.direction
       && ((item.clientMessageId ?? item.id) === (message.clientMessageId ?? message.id) || item.id === message.id));
     const fresh = index < 0;
-    if (index >= 0) this.messages[index] = { ...this.messages[index], ...message };
-    else this.messages.push(message);
-    this.messages.sort((a, b) => a.occurredAt - b.occurredAt || (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER));
+    if (index >= 0) {
+      const existing = this.messages[index]!;
+      this.messages[index] = { ...existing, ...message,
+        displayAt: existing.displayAt ?? existing.occurredAt, displayOrder: existing.displayOrder ?? ++this.messageDisplayOrder };
+    } else this.messages.push({ ...message, displayAt: message.occurredAt, displayOrder: ++this.messageDisplayOrder });
+    this.messages.sort((a, b) => (a.displayAt ?? a.occurredAt) - (b.displayAt ?? b.occurredAt)
+      || (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
     this.saveMessages(); return fresh;
   }
 
@@ -1026,7 +1161,7 @@ export class SocialFeatureUi {
   }
 
   private loadMessages(): void {
-    this.messages = [];
+    this.messages = []; this.messageDisplayOrder = 0;
     const accountId = this.options.getGatewayState().identity?.accountId;
     if (!accountId) return;
     try {
@@ -1034,8 +1169,18 @@ export class SocialFeatureUi {
       this.messages = Array.isArray(parsed) ? parsed.filter(item => item && typeof item.id === 'string'
         && typeof item.accountId === 'string' && (item.direction === 'incoming' || item.direction === 'outgoing')
         && typeof item.message === 'string' && Number.isFinite(item.occurredAt)).slice(-1_000)
-        .map(item => item.status === 'pending' ? { ...item, status: 'failed' as const } : item) : [];
+        .map(item => {
+          const displayOrder = Number.isFinite(item.displayOrder) ? item.displayOrder! : ++this.messageDisplayOrder;
+          this.messageDisplayOrder = Math.max(this.messageDisplayOrder, displayOrder);
+          const restored = { ...item, displayAt: Number.isFinite(item.displayAt) ? item.displayAt! : item.occurredAt, displayOrder,
+            status: item.status === 'pending' ? 'failed' as const : item.status ?? 'sent' as const };
+          if (restored.invite && ['waiting', 'responding', 'unavailable'].includes(restored.invite.state)) {
+            restored.invite.state = restored.invite.expiresAt <= Date.now() ? 'expired' : 'unavailable'; delete restored.invite.requestId;
+          }
+          return restored;
+        }) : [];
     } catch {}
+    this.scheduleInviteExpiry();
   }
 
   private saveMessages(): void {
@@ -1061,17 +1206,17 @@ export class SocialFeatureUi {
 .scd-social-actions,.scd-home-friend-actions{display:flex;align-items:center;gap:5px}.scd-social-icon-button{position:relative;width:36px;height:36px;border-radius:6px}.scd-social-icon-button .scd-icon{width:31px;height:31px}.scd-social-icon-button.selected{background:#53e237}.scd-social-tabs .selected:hover:not(:disabled),.scd-social-presence-choice.selected:hover:not(:disabled),.scd-social-icon-button.selected:hover:not(:disabled){background:#38c41c}.scd-social-icon-button.unread::after{content:'';position:absolute;right:-2px;top:-3px;width:15px;height:15px;background:url('${assetUrl('friendPing') ?? ''}') center/contain no-repeat;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25))}.scd-social-request-kind{justify-self:start;font-size:10px}
 .scd-social-profile-avatar{overflow:visible!important}.scd-social-presence-badge{position:absolute;right:-7px;bottom:-4px;width:38px;height:38px;border:0;padding:0;background:transparent;z-index:4;cursor:pointer}.scd-social-presence-badge .scd-icon{width:100%;height:100%}.scd-social-profile-controls{width:100%}.scd-social-friends-button{width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800}.scd-social-friends-button .scd-icon{width:34px;height:34px}
 .scd-social-detail-overlay{z-index:2147483647}.scd-social-detail-modal{width:min(580px,calc(100vw - 24px));max-height:min(680px,calc(100vh - 24px))}.scd-social-detail-header{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;padding:8px 10px}.scd-social-detail-body{min-height:0;overflow:auto;padding:12px}.scd-social-presence-choice{width:100%;min-height:58px;display:flex;align-items:center;justify-content:flex-start;gap:10px;margin-bottom:7px}.scd-social-presence-choice.selected{background:#53e237}.scd-social-presence-choice .scd-icon{width:42px;height:42px}
-.scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message{align-self:flex-start;max-width:85%;display:flex;flex-direction:column;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
-.scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow:auto}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
-.scd-social-locked-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 22px rgba(255,255,255,.45))}@keyframes scd-social-lock-glow{0%{opacity:0;transform:scale(.75)}18%,72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
+.scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message-group{align-self:flex-start;max-width:85%;min-width:0;display:flex;flex-direction:column;gap:4px;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message-group.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message{position:relative;min-width:0;display:flex;flex-direction:column;gap:4px}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
+.scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
+.scd-social-locked-overlay{position:fixed;inset:0;width:100vw;height:100dvh;isolation:isolate;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay::before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse 100px 100px at 50% calc(50% - 14px),rgba(255,255,255,.24),transparent 100%)}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:none}.scd-social-locked-overlay .scd-icon-image{filter:none}@keyframes scd-social-lock-glow{0%{opacity:0}18%,72%{opacity:1}100%{opacity:0}}
 .scd-social-avatar-wrap{border:0;padding:0;background:transparent;color:inherit;cursor:pointer;overflow:visible}.scd-social-avatar-wrap>.scd-social-avatar{pointer-events:none}
-.scd-social-row,.scd-home-friend{position:relative;padding-right:24px}.scd-social-list{padding:8px 5px 2px}.scd-home-friends-list{padding:8px 5px 2px}.scd-home-friend{border-radius:7px;margin-bottom:6px}
+.scd-social-row{position:relative;padding-right:24px}.scd-home-friend{position:relative}.scd-social-list{padding:8px 5px 2px}.scd-home-friends-list{padding:8px 5px 2px}.scd-home-friend{border-radius:7px;margin-bottom:6px}
 .scd-social-pin{position:absolute!important;right:-5px;top:-7px;width:22px!important;height:22px!important;padding:0!important;z-index:3;opacity:.6;background:transparent!important;transition:opacity .18s ease,transform .18s ease;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.35))}.scd-social-pin.pinned{opacity:1}.scd-social-pin:hover{transform:translateY(-1px)}.scd-social-pin .scd-icon{width:22px!important;height:22px!important}
 .scd-social-detail-header .scd-modal-title{min-width:0}.scd-social-detail-header .scd-social-identity{width:100%}.scd-social-detail-header .scd-social-status-text{max-width:360px}
-.scd-social-detail-body{position:relative}.scd-social-message-form{grid-template-columns:minmax(0,1fr) 36px auto;align-items:center}.scd-social-message-form .scd-social-emoji-toggle{width:36px;height:36px}
-.scd-social-emoji-picker{position:absolute;left:12px;right:12px;bottom:62px;z-index:5;padding:10px;border-radius:9px;background:var(--COLOR_PANEL_BG);box-shadow:0 5px 20px rgba(0,0,0,.3);max-height:240px;overflow:auto}.scd-social-emoji-picker[hidden],.scd-social-load-history[hidden]{display:none!important}
-.scd-social-emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:5px}.scd-social-emoji-choice{display:grid;place-items:center;width:38px;height:38px;padding:3px}.scd-social-emoji-choice img{width:32px;height:32px;object-fit:contain;transition:transform .15s}.scd-social-emoji-choice:hover img{transform:scale(1.1)}.scd-social-emoji{display:inline-block;width:26px;height:26px;object-fit:contain;vertical-align:middle;margin:0 2px}
-.scd-social-message.pending{opacity:.65}.scd-social-message.failed{outline:1px solid #de523d}.scd-social-message-state{font-size:10px}.scd-social-message-retry{padding:3px 8px;font-size:11px}.scd-social-load-history{width:100%;margin-bottom:8px}.scd-social-chat-retention{font-size:10px;margin-top:6px}
+.scd-social-detail-body{position:relative}.scd-social-message-composer{position:relative;margin-top:10px}.scd-social-message-composer .scd-social-message-form{margin-top:0}.scd-social-message-input-shell{position:relative;display:flex;min-width:0}.scd-social-message-input-shell input{width:100%;min-width:0;padding-right:3em}.scd-social-message-count{font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out}.scd-social-message-count.visible{top:.5em;opacity:1}.scd-social-message-form{grid-template-columns:minmax(0,1fr) 36px auto;align-items:center}.scd-social-message-form .scd-social-emoji-toggle{width:36px;height:36px}
+.scd-social-emoji-picker{position:absolute;left:0;right:0;bottom:calc(100% + 10px);z-index:5;padding:10px;border-radius:9px;background:var(--COLOR_PANEL_BG);box-shadow:0 5px 20px rgba(0,0,0,.3);max-height:240px;overflow:auto}.scd-social-emoji-picker[hidden],.scd-social-load-history[hidden]{display:none!important}
+.scd-social-emoji-group+.scd-social-emoji-group{margin-top:12px}.scd-social-emoji-group-title{display:block;font-size:11px;margin:0 0 6px;opacity:.8}.scd-social-emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:5px}.scd-social-emoji-choice{display:grid;place-items:center;width:38px;height:38px;padding:3px}.scd-social-emoji-choice img{width:32px;height:32px;object-fit:contain;transition:transform .15s}.scd-social-emoji-choice:hover img{transform:scale(1.1)}.scd-social-emoji{display:inline-block;width:26px;height:26px;object-fit:contain;vertical-align:middle;margin:0 2px}
+.scd-social-emoji-only .scd-social-emoji{width:52px;height:52px}.scd-social-chat-invite{display:flex;flex-direction:column;gap:8px;min-width:180px}.scd-social-chat-invite .scd-social-format-actions{margin:0}.scd-chat-link{color:inherit;text-decoration-line:underline;text-decoration-color:var(--COLOR_PANEL_BORDER_FOCUS);text-underline-offset:2px;cursor:pointer;overflow-wrap:anywhere}.scd-social-message.pending{opacity:.65}.scd-social-message.failed{outline:1px solid #de523d}.scd-social-message-state{font-size:10px}.scd-social-message-retry{padding:3px 8px;font-size:11px}.scd-social-load-history{width:100%;margin-bottom:8px}.scd-social-chat-retention{font-size:10px;margin-top:6px}
 .scd-social-profile-card{position:relative;display:flex;flex-direction:column;gap:18px;padding:12px 7px}.scd-social-profile-card>.scd-social-identity{padding-right:45px}.scd-social-profile-card .scd-social-avatar-wrap,.scd-social-profile-card .scd-social-avatar{width:82px!important;height:82px!important}.scd-social-profile-card .scd-social-status-icon{width:30px;height:30px;right:-4px;bottom:-4px}.scd-social-profile-card .scd-social-status-icon[aria-label='Online']{width:39px}.scd-social-profile-card .scd-social-name{font-size:20px}.scd-social-profile-card .scd-social-status-text{font-size:13px;max-width:350px}
 .scd-social-profile-friend-action{position:absolute;right:3px;top:12px}.scd-social-profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:4px 5px}.scd-social-public-stat{position:relative;min-width:0;overflow:visible}.scd-social-stat-icon{grid-row:1/3;width:32px;height:32px;object-fit:contain}.scd-social-public-stat .scd-profile-pin-icon .scd-icon-image{width:100%;height:100%;object-fit:contain}
 

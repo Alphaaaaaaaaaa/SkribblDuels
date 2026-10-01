@@ -98,6 +98,7 @@ import { isTypoRuntimeDetected } from './typoRuntimeDetection';
 import { SkribbleFeatureUi } from './skribbleUi';
 import { SkribblSlotsFeatureUi } from './slotsUi';
 import { SocialFeatureUi } from './socialUi';
+import { appendChatText, ChatLinkifier } from './chatLinks';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -1159,7 +1160,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
       const copy = element('span', 'scd-match-chat-message');
       const author = element('b');
       author.textContent = `${message.author}: `;
-      copy.append(author, document.createTextNode(message.message));
+      copy.appendChild(author); appendChatText(copy, message.message);
       paragraph.append(message.avatar, copy);
       target.appendChild(paragraph);
       target.scrollTop = target.scrollHeight;
@@ -1333,6 +1334,7 @@ export class DuelProductFoundation {
   private matchState: MatchState;
   private chatAdapter: CompletionChatAdapter;
   private readonly chatStatDisplay: SkribblChatStatDisplay;
+  private readonly chatLinkifier = new ChatLinkifier();
   private duelChatMessages: DuelChatMessage[] = [];
   private activeTab: ProductUiSettings['panelTab'];
   private settingsSection: 'general' | 'social' = 'general';
@@ -1518,6 +1520,7 @@ export class DuelProductFoundation {
     this.removeForeignRuntimeDom();
     this.chatAdapter.start();
     this.chatStatDisplay.start();
+    this.chatLinkifier.start();
     this.tooltips.start();
     this.soundEffects.initialize();
     this.skribbleUi.start();
@@ -1678,7 +1681,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.70.0',
+      version: '0.71.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1783,6 +1786,7 @@ export class DuelProductFoundation {
     this.draftSlotTimer = null;
     this.chatAdapter.stop();
     this.chatStatDisplay.stop();
+    this.chatLinkifier.stop();
     this.tooltips.stop();
     document.removeEventListener('keydown', this.draftKeydown, true);
     document.removeEventListener('visibilitychange', this.visibilityRecovery, true);
@@ -1839,7 +1843,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.70.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.71.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -4137,7 +4141,8 @@ export class DuelProductFoundation {
             ? 'var(--COLOR_CHAT_TEXT_OWNER,#ffa844)'
             : 'var(--SCD_ACCENT)';
         }
-        line.append(author, document.createTextNode(message.message), element('small', 'scd-muted', ` · ${formatTime(message.occurredAt)}`));
+        line.appendChild(author); appendChatText(line, message.message);
+        line.appendChild(element('small', 'scd-muted', ` · ${formatTime(message.occurredAt)}`));
         log.appendChild(line);
       }
     }

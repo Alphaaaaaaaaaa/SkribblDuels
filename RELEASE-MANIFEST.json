@@ -1,0 +1,186 @@
+{
+  "productVersion": "0.71.0",
+  "gatewayVersion": "0.13.0",
+  "gatewayClientPackageVersion": "0.12.0",
+  "gatewayContract": 18,
+  "sourceCommit": "63f1868e46ff2de7c2d23721e704b067f0f7253d",
+  "baseCommit": "1686b52c367ba6120c355ae08f6986cb4dc9dc96",
+  "emojiCount": 132,
+  "additionalEmojiCount": 34,
+  "migration": "202610010003_social_lobby_join_permissions.sql",
+  "createdAt": "2026-10-01T15:22:51.417657+00:00",
+  "repository": "Alphaaaaaaaaaa/SkribblDuels",
+  "ref": "main",
+  "additionalEmojis": [
+    {
+      "path": "res/friend-system/additional-emojis/+.gif",
+      "gitBlobSha": "7625b221fa4db7f0e2400b3072e434c1ca310e29",
+      "bytes": 398
+    },
+    {
+      "path": "res/friend-system/additional-emojis/-.gif",
+      "gitBlobSha": "3c75f5eb2e1d4abb11b3da34c26fbaa4ab195b60",
+      "bytes": 406
+    },
+    {
+      "path": "res/friend-system/additional-emojis/0.gif",
+      "gitBlobSha": "d9c6d4b96f3a064d4e60ea94a68ab62a57dbce3c",
+      "bytes": 439
+    },
+    {
+      "path": "res/friend-system/additional-emojis/8.gif",
+      "gitBlobSha": "9b9b4cdc1e15fe293b95919cb417c01d38c1d4a1",
+      "bytes": 434
+    },
+    {
+      "path": "res/friend-system/additional-emojis/b.gif",
+      "gitBlobSha": "4a6322ad1a816961513c9807c4a8ab0d9bbad4b2",
+      "bytes": 432
+    },
+    {
+      "path": "res/friend-system/additional-emojis/ban.gif",
+      "gitBlobSha": "ee3bfaa9f39e67840e13df12fb69acddfc22bd45",
+      "bytes": 344
+    },
+    {
+      "path": "res/friend-system/additional-emojis/bulb_off.gif",
+      "gitBlobSha": "b665fe96be9c0db15eda4a71bdc3a5350880f5bc",
+      "bytes": 339
+    },
+    {
+      "path": "res/friend-system/additional-emojis/c.gif",
+      "gitBlobSha": "870018cff35c699b380ae578d6a13d299436b522",
+      "bytes": 436
+    },
+    {
+      "path": "res/friend-system/additional-emojis/candle.gif",
+      "gitBlobSha": "0b39706c42c46a4ee895189471dffad5b19eb61e",
+      "bytes": 320
+    },
+    {
+      "path": "res/friend-system/additional-emojis/d.gif",
+      "gitBlobSha": "f459316627ef3d2e13b1860f76825a6063159447",
+      "bytes": 440
+    },
+    {
+      "path": "res/friend-system/additional-emojis/e.gif",
+      "gitBlobSha": "3072875757dbb350ca7f4d2a3c8b74b69b7e7ff6",
+      "bytes": 428
+    },
+    {
+      "path": "res/friend-system/additional-emojis/f.gif",
+      "gitBlobSha": "ba0eaf264f2d847a12307ecc149e3a6d3c232297",
+      "bytes": 424
+    },
+    {
+      "path": "res/friend-system/additional-emojis/h.gif",
+      "gitBlobSha": "56afcb73733c8fcf8bd081cac19c951124e23729",
+      "bytes": 433
+    },
+    {
+      "path": "res/friend-system/additional-emojis/i.gif",
+      "gitBlobSha": "d554222a0028f76200feb343bfdd4a18a737a97e",
+      "bytes": 422
+    },
+    {
+      "path": "res/friend-system/additional-emojis/j.gif",
+      "gitBlobSha": "374e0454f135dd5a616a09a9ebdc93244ddbdb29",
+      "bytes": 429
+    },
+    {
+      "path": "res/friend-system/additional-emojis/k.gif",
+      "gitBlobSha": "55f679ef04cbaa209fa8b7553ff0824931784348",
+      "bytes": 436
+    },
+    {
+      "path": "res/friend-system/additional-emojis/l.gif",
+      "gitBlobSha": "2939f5af7aaee6511bf6814559333859c6c13241",
+      "bytes": 425
+    },
+    {
+      "path": "res/friend-system/additional-emojis/letter.gif",
+      "gitBlobSha": "e00bbe31bab6c960edcf140785ba29a23e6b21c5",
+      "bytes": 394
+    },
+    {
+      "path": "res/friend-system/additional-emojis/loud.gif",
+      "gitBlobSha": "05309e3625b6fb739ddd855ad5032060a3fd67cb",
+      "bytes": 1252
+    },
+    {
+      "path": "res/friend-system/additional-emojis/m.gif",
+      "gitBlobSha": "bd17724f4d3b680bca1134da07d2694345364a95",
+      "bytes": 434
+    },
+    {
+      "path": "res/friend-system/additional-emojis/moon.gif",
+      "gitBlobSha": "67c283ef1837f8db2f30bd3aecfc3cd0539389f1",
+      "bytes": 334
+    },
+    {
+      "path": "res/friend-system/additional-emojis/music.gif",
+      "gitBlobSha": "04ec8141f307d0d70bba9e90329d95318a2be14e",
+      "bytes": 432
+    },
+    {
+      "path": "res/friend-system/additional-emojis/n.gif",
+      "gitBlobSha": "b21b175c445f1c715e3ccd3278db5edc04be8048",
+      "bytes": 446
+    },
+    {
+      "path": "res/friend-system/additional-emojis/p.gif",
+      "gitBlobSha": "f5e4f235727ab8b25cdefc44a3478f25ae61669e",
+      "bytes": 433
+    },
+    {
+      "path": "res/friend-system/additional-emojis/pizza.gif",
+      "gitBlobSha": "39d39ab21d4b93579c1185500b505eae63f5b966",
+      "bytes": 359
+    },
+    {
+      "path": "res/friend-system/additional-emojis/q.gif",
+      "gitBlobSha": "6e01ca98b1ac98e6c1ccb4aa63232d5d2a74ac4e",
+      "bytes": 443
+    },
+    {
+      "path": "res/friend-system/additional-emojis/r.gif",
+      "gitBlobSha": "484a2c734080a384adce824dde264a6466b30da1",
+      "bytes": 437
+    },
+    {
+      "path": "res/friend-system/additional-emojis/s.gif",
+      "gitBlobSha": "67861295afaeb790e81b8a5ca9364629990bc4fd",
+      "bytes": 432
+    },
+    {
+      "path": "res/friend-system/additional-emojis/santa.gif",
+      "gitBlobSha": "9c129d1a7175f56456078200ff7b1a13556881d1",
+      "bytes": 412
+    },
+    {
+      "path": "res/friend-system/additional-emojis/t.gif",
+      "gitBlobSha": "4c170dc6933e2e8133278bb16ca5cf2421971f61",
+      "bytes": 418
+    },
+    {
+      "path": "res/friend-system/additional-emojis/u.gif",
+      "gitBlobSha": "e1ac918c0a6f1079f910f5136d38e8672f3dd92a",
+      "bytes": 438
+    },
+    {
+      "path": "res/friend-system/additional-emojis/v.gif",
+      "gitBlobSha": "84c5350267b09e9dd947e064a9387a36bd59795d",
+      "bytes": 432
+    },
+    {
+      "path": "res/friend-system/additional-emojis/y.gif",
+      "gitBlobSha": "f2703f5586dd8cf3259d9130b06350698943d6e9",
+      "bytes": 427
+    },
+    {
+      "path": "res/friend-system/additional-emojis/z.gif",
+      "gitBlobSha": "c0d45d98dd0b2807b04e695e07a2a650c31c87b3",
+      "bytes": 426
+    }
+  ]
+}

@@ -4,9 +4,10 @@ import { GATEWAY_CONTRACT_VERSION, isGatewayClientMessage, isGatewayServerMessag
   type GatewayClientMessage, type GatewayFriendChatMessage, type GatewayServerMessage } from '@skribbl-duels/gateway-contracts';
 import { SocketIoGatewayClient, type GatewayConnectionSnapshot } from '@skribbl-duels/gateway-client';
 import { socialPresenceReport } from '../apps/telemetry-inspector/src/socialLobbyPresence';
+import { LEGACY_SOCIAL_EMOJI_DEFINITIONS } from '../apps/telemetry-inspector/src/generatedSocialEmojiAssets';
 import { SOCIAL_EMOJIS } from '../apps/telemetry-inspector/src/socialEmojis';
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 17);
+assert.equal(GATEWAY_CONTRACT_VERSION, 18);
 const stored: GatewayFriendChatMessage = { messageId: 'message-1', clientMessageId: 'friend-message-1', sequence: 1, senderId: 'self', recipientId: 'friend', message: 'Hello :slot/heart:', occurredAt: Date.now(), readAt: null };
 const newCommands: GatewayClientMessage[] = [
   { type: 'SOCIAL_PROFILE_STATS_SET', requestId: 'social-profile-stats-1', stats: [{ id: 'duel-wins', value: '3' }, { id: 'best-public-score', value: '3,400' }] },
@@ -68,7 +69,7 @@ const expected = [
   ...['7.gif', 'eraser.gif', 'heart.gif'].map(file => `res/skribbl-slots/slot-icons/${file}`),
   ...(await readdir('res/stat-icons')).filter(file => /\.(gif|png)$/.test(file) && !excluded.includes(file)).map(file => `res/stat-icons/${file}`)
 ];
-assert.deepEqual(SOCIAL_EMOJIS.map(emoji => emoji.path).sort(), expected.sort());
+assert.deepEqual(LEGACY_SOCIAL_EMOJI_DEFINITIONS.map(emoji => emoji.path).sort(), expected.sort());
 assert.equal(new Set(SOCIAL_EMOJIS.map(emoji => emoji.token)).size, SOCIAL_EMOJIS.length);
 assert.ok(SOCIAL_EMOJIS.every(emoji => emoji.source.startsWith('data:image/')), 'Every selected emoji is embedded and available offline.');
 assert.ok((await readFile('res/friend-system/friend-add.gif')).subarray(0, 3).equals(Buffer.from('GIF')));
@@ -91,4 +92,4 @@ assert.deepEqual(client.getState().friendChatHistory, frames[0]);
 assert.deepEqual(client.getState().friendInbox, frames[1]);
 assert.deepEqual(client.getState().friendProfile, frames[2]);
 assert.equal(client.getState().error, null);
-console.log(`Contract v17, partial-lobby presence, sorting, ${SOCIAL_EMOJIS.length} exact emojis, participant profiles and client frame routing passed.`);
+console.log(`Contract v18, partial-lobby presence, sorting, ${SOCIAL_EMOJIS.length} exact emojis, participant profiles and client frame routing passed.`);

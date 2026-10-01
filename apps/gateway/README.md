@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v17 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v17 includes the privacy-filtered Friends/Social graph, a qualified Friend-response RPC boundary and directional Unblock capability.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v18 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v18 includes the privacy-filtered Friends/Social graph, a qualified Friend-response RPC boundary and directional Unblock capability.
 
 ## Local server
 
@@ -28,7 +28,7 @@ cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v17 resume
+change closes cluster sockets once and reuses the durable Contract v18 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require
@@ -84,7 +84,7 @@ idle seconds; submissions are blocked before the score can exceed Skribbl's
 kick boundary. Client message IDs make resends idempotent; only both match
 participants receive live or replayed messages.
 
-Friends and Social state are Gateway-owned under Contract v17. Durable tables
+Friends and Social state are Gateway-owned under Contract v18. Durable tables
 store privacy, profile status, requests, canonical friendships, directional
 blocks and per-owner pins. The Gateway filters status and lobby data before it
 leaves the server; manually Offline accounts never expose an active Duel or
@@ -98,10 +98,11 @@ without disabling other Duels features. Social action notifications remain
 live events. Friend Match invitations reuse the hash-only durable
 invite authority rather than introducing a second Match path.
 `/readyz` additionally calls the Social contract probe and refuses readiness if
-the v0.70.0 chat migration has not been applied. Unexpected Social command failures
+the v0.71.0 lobby-permission migration has not been applied. Unexpected Social command failures
 carry a short diagnostic ID shared by the client toast and structured Railway
 log entry; tokens and private profile data are never included. See
-`docs/social-chat-profiles-v0.70.0.md` for deployment and capacity checks.
+`docs/social-chat-polish-v0.71.0.md` for deployment and permission changes,
+and `docs/social-chat-profiles-v0.70.0.md` for chat capacity checks.
 
 During a running match, each real participant sends contiguous normalized
 telemetry batches. The Gateway acknowledges the last accepted sequence and
@@ -155,3 +156,7 @@ lookup still runs with the same user's bearer token so profile RLS remains
 active. The service-role key is used only inside the Gateway process for the
 private durable-authority tables and RPCs. It must never be embedded in Vite,
 the userscript, logs or browser configuration.
+
+Lobby join permission uses `public` / `private` / `none`; IDs are disclosed only
+to eligible friends. Active Social invitation cards replay on reconnect and
+receive accepted/declined/cancelled/expired updates from the existing authority.

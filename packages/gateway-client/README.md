@@ -1,6 +1,6 @@
 # Gateway Client
 
-Socket.IO transport for the browser userscript. It places the current Supabase access token in the connection handshake, sends a token-free Contract v17 `HELLO`, validates server messages and exposes authenticated queue, invite, match, Daily Skribble, Skribbl Slots, Coin and Social state to the Duel UI. It also owns bounded private-chat history, telemetry batching/ACK flow and idempotent fallback Claim submission. Contract v17 adds profile cards, stable-ID friend-message retries, history/read commands and durable unread inbox state. Contract v16 adds privacy-safe Unblock capability and isolates Social errors from matchmaking state; Contract v15 added privacy-filtered Friends snapshots, Social events, Quick Messages and friend Match invitations.
+Socket.IO transport for the browser userscript. It places the current Supabase access token in the connection handshake, sends a token-free Contract v18 `HELLO`, validates server messages and exposes authenticated queue, invite, match, Daily Skribble, Skribbl Slots, Coin and Social state to the Duel UI. It also owns bounded private-chat history, telemetry batching/ACK flow and idempotent fallback Claim submission. Contract v17 adds profile cards, stable-ID friend-message retries, history/read commands and durable unread inbox state. Contract v16 adds privacy-safe Unblock capability and isolates Social errors from matchmaking state; Contract v15 added privacy-filtered Friends snapshots, Social events, Quick Messages and friend Match invitations.
 
 The client exposes validated queue and match snapshots plus `joinMatchmaking`, `leaveMatchmaking`, `setReady` and revision-checked `pickDraftChallenge`. Page eligibility remains a product-UI decision; the client emits the required `page: 'home'` declaration.
 
@@ -25,3 +25,7 @@ unique action IDs so safe retries are idempotent. Draw proposal state is always
 rendered from the Gateway snapshot rather than inferred locally.
 
 An empty `VITE_GATEWAY_URL` keeps the transport disabled without producing background connection failures. Set the public HTTPS Gateway URL during the userscript build after the server has been deployed.
+
+Contract 18 uses Public/Private/None lobby permissions and carries invitation
+card status/expiry events. Accept/Deny still uses the existing friend invitation
+command; no opaque invite token is stored in the browser.

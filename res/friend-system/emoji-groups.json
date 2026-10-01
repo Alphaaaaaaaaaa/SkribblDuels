@@ -1,0 +1,575 @@
+[
+  {
+    "name": "Emotions",
+    "emojis": [
+      {
+        "source": "challenge/instalike",
+        "token": ":like:"
+      },
+      {
+        "source": "challenge/my-eyes-are-bleeding",
+        "token": ":dislike:"
+      },
+      {
+        "source": "challenge/is-that-a-mod",
+        "token": ":slimy:"
+      },
+      {
+        "source": "slot/heart",
+        "token": ":heart:"
+      },
+      {
+        "source": "challenge/better-late-than-never",
+        "token": ":zzz:"
+      },
+      {
+        "source": "stat/unique-users-seen",
+        "token": ":eyes:"
+      },
+      {
+        "source": "challenge/blind-guess",
+        "token": ":blind:"
+      },
+      {
+        "source": "friend/friends-list",
+        "token": ":hug:"
+      },
+      {
+        "source": "challenge/mogged",
+        "token": ":moai:"
+      },
+      {
+        "source": "challenge/monochromism",
+        "token": ":poop:"
+      },
+      {
+        "source": "challenge/ouch",
+        "token": ":ouch:"
+      },
+      {
+        "source": "challenge/solitary",
+        "token": ":skull:"
+      },
+      {
+        "source": "challenge/ultimate-comeback",
+        "token": ":flame:"
+      },
+      {
+        "source": "stat/duel-win-streak",
+        "token": ":confetti:"
+      }
+    ]
+  },
+  {
+    "name": "Skribbl Tools",
+    "emojis": [
+      {
+        "source": "challenge/picasso",
+        "token": ":pen:"
+      },
+      {
+        "source": "slot/eraser",
+        "token": ":eraser:"
+      },
+      {
+        "source": "challenge/copy-and-paste",
+        "token": ":fill:"
+      },
+      {
+        "source": "stat/trash",
+        "token": ":trash:"
+      },
+      {
+        "source": "challenge/in-and-out",
+        "token": ":undo:"
+      },
+      {
+        "source": "challenge/my-favorite-color-is-red",
+        "token": ":dice:"
+      },
+      {
+        "source": "challenge/sniper",
+        "token": ":sniper:"
+      },
+      {
+        "source": "challenge/color-picker",
+        "token": ":palette:"
+      }
+    ]
+  },
+  {
+    "name": "Collectibles",
+    "emojis": [
+      {
+        "source": "challenge/skribbl-duels-logo",
+        "token": ":duels:"
+      },
+      {
+        "source": "skribble/skribbl-coin",
+        "token": ":coin:"
+      },
+      {
+        "source": "challenge/caught-in-4k",
+        "token": ":trophy:"
+      },
+      {
+        "source": "challenge/deserved",
+        "token": ":deserved:"
+      },
+      {
+        "source": "challenge/back-to-back",
+        "token": ":back-to-back:"
+      },
+      {
+        "source": "challenge/reflexes-like-a-cat",
+        "token": ":drop:"
+      },
+      {
+        "source": "challenge/drop-streak",
+        "token": ":drop-streak:"
+      },
+      {
+        "source": "stat/distinct-lobbies",
+        "token": ":twitch:"
+      }
+    ]
+  },
+  {
+    "name": "Skribbl Hats",
+    "emojis": [
+      {
+        "source": "challenge/owner-of-the-lobby",
+        "token": ":crown:"
+      },
+      {
+        "source": "challenge/autodraw-detected",
+        "token": ":magic:"
+      },
+      {
+        "source": "challenge/guessingoat",
+        "token": ":beard:"
+      },
+      {
+        "source": "challenge/transcended",
+        "token": ":halo:"
+      },
+      {
+        "source": "challenge/internet-explorer",
+        "token": ":clown:"
+      },
+      {
+        "source": "challenge/omg-hacker",
+        "token": ":hat:"
+      },
+      {
+        "source": "challenge/smol-words",
+        "token": ":ribbon:"
+      },
+      {
+        "source": "challenge/pointsmaxxing",
+        "token": ":pirate:"
+      },
+      {
+        "source": "stat/duel-win-rate",
+        "token": ":party:"
+      },
+      {
+        "source": "santa",
+        "token": ":santa:"
+      }
+    ]
+  },
+  {
+    "name": "Food",
+    "emojis": [
+      {
+        "source": "pizza",
+        "token": ":pizza:"
+      },
+      {
+        "source": "challenge/ate-and-left-no-crumbs",
+        "token": ":pizza_bite:"
+      },
+      {
+        "source": "stat/average-guess-time",
+        "token": ":cheese:"
+      },
+      {
+        "source": "stat/median-guess-wpm",
+        "token": ":peach:"
+      },
+      {
+        "source": "stat/median-guess-time",
+        "token": ":pineapple:"
+      },
+      {
+        "source": "challenge/big-word",
+        "token": ":eggplant:"
+      },
+      {
+        "source": "challenge/noob-vs-pro-vs-hacker",
+        "token": ":pumpkin:"
+      },
+      {
+        "source": "stat/average-guess-wpm",
+        "token": ":carrot:"
+      }
+    ]
+  },
+  {
+    "name": "Other",
+    "emojis": [
+      {
+        "source": "challenge/through-thick-and-thin",
+        "token": ":sun:"
+      },
+      {
+        "source": "moon",
+        "token": ":moon:"
+      },
+      {
+        "source": "challenge/wpmaster",
+        "token": ":zap:"
+      }
+    ]
+  },
+  {
+    "name": "Objects",
+    "emojis": [
+      {
+        "source": "challenge/bloodline",
+        "token": ":book:"
+      },
+      {
+        "source": "challenge/quickscope",
+        "token": ":clock:"
+      },
+      {
+        "source": "challenge/as-close-as-it-gets",
+        "token": ":bulb:"
+      },
+      {
+        "source": "bulb_off",
+        "token": ":bulb_off:"
+      },
+      {
+        "source": "stat/unique-words-seen",
+        "token": ":jigsaw:"
+      },
+      {
+        "source": "music",
+        "token": ":music:"
+      },
+      {
+        "source": "loud",
+        "token": ":loud:"
+      },
+      {
+        "source": "challenge/deaf-guess",
+        "token": ":mute:"
+      },
+      {
+        "source": "challenge/settings",
+        "token": ":settings:"
+      },
+      {
+        "source": "challenge/drunk-vision",
+        "token": ":potion:"
+      },
+      {
+        "source": "candle",
+        "token": ":candle:"
+      },
+      {
+        "source": "challenge/made-you-squint",
+        "token": ":magnifier:"
+      },
+      {
+        "source": "challenge/paparazzid",
+        "token": ":camera:"
+      },
+      {
+        "source": "stat/duel-matches",
+        "token": ":tools:"
+      },
+      {
+        "source": "challenge/time-waste",
+        "token": ":hourglass:"
+      },
+      {
+        "source": "stat/unique-words-guessed",
+        "token": ":scissors:"
+      },
+      {
+        "source": "letter",
+        "token": ":letter:"
+      },
+      {
+        "source": "challenge/tldr",
+        "token": ":paper:"
+      },
+      {
+        "source": "challenge/type-racer",
+        "token": ":car:"
+      },
+      {
+        "source": "stat/lobby-sessions",
+        "token": ":lantern:"
+      },
+      {
+        "source": "stat/median-typing-wpm",
+        "token": ":compass:"
+      },
+      {
+        "source": "stat/p90-guess-wpm",
+        "token": ":bomb:"
+      }
+    ]
+  },
+  {
+    "name": "Symbols",
+    "emojis": [
+      {
+        "source": "stat/pin",
+        "token": ":pin:"
+      },
+      {
+        "source": "stat/guess-time-trend",
+        "token": ":stonks:"
+      },
+      {
+        "source": "stat/guess-wpm-trend",
+        "token": ":not-stonks:"
+      },
+      {
+        "source": "stat/guessed-word-coverage",
+        "token": ":percentage_green:"
+      },
+      {
+        "source": "stat/seen-word-coverage",
+        "token": ":percentage_blue:"
+      },
+      {
+        "source": "challenge/checkmark",
+        "token": ":checkmark:"
+      },
+      {
+        "source": "challenge/crossmark",
+        "token": ":crossmark:"
+      },
+      {
+        "source": "challenge/about",
+        "token": ":about:"
+      },
+      {
+        "source": "stat/best-private-score",
+        "token": ":stat/best-private-score:"
+      },
+      {
+        "source": "stat/best-public-score",
+        "token": ":stat/best-public-score:"
+      },
+      {
+        "source": "challenge/spamguessing",
+        "token": ":alert:"
+      },
+      {
+        "source": "friend/block",
+        "token": ":error:"
+      },
+      {
+        "source": "stat/social-actions",
+        "token": ":kick:"
+      },
+      {
+        "source": "ban",
+        "token": ":ban:"
+      }
+    ]
+  },
+  {
+    "name": "Hotkeys",
+    "emojis": [
+      {
+        "source": "friend/ping",
+        "token": ":ping:"
+      },
+      {
+        "source": "skribble/correct",
+        "token": ":correct:"
+      },
+      {
+        "source": "skribble/incorrect",
+        "token": ":incorrect:"
+      },
+      {
+        "source": "skribble/semicorrect",
+        "token": ":semicorrect:"
+      },
+      {
+        "source": "challenge/need-some-space",
+        "token": ":space:"
+      },
+      {
+        "source": "challenge/countdown_1",
+        "token": ":1:"
+      },
+      {
+        "source": "challenge/countdown_2",
+        "token": ":2:"
+      },
+      {
+        "source": "challenge/countdown_3",
+        "token": ":3:"
+      },
+      {
+        "source": "challenge/countdown_4",
+        "token": ":4:"
+      },
+      {
+        "source": "challenge/countdown_5",
+        "token": ":5:"
+      },
+      {
+        "source": "challenge/cool-number-detected",
+        "token": ":6:"
+      },
+      {
+        "source": "slot/7",
+        "token": ":7:"
+      },
+      {
+        "source": "8",
+        "token": ":8:"
+      },
+      {
+        "source": "stat/p90-typing-wpm",
+        "token": ":9:"
+      },
+      {
+        "source": "0",
+        "token": ":0:"
+      },
+      {
+        "source": "challenge/alliteration",
+        "token": ":a:"
+      },
+      {
+        "source": "b",
+        "token": ":b:"
+      },
+      {
+        "source": "c",
+        "token": ":c:"
+      },
+      {
+        "source": "d",
+        "token": ":d:"
+      },
+      {
+        "source": "e",
+        "token": ":e:"
+      },
+      {
+        "source": "f",
+        "token": ":f:"
+      },
+      {
+        "source": "challenge/countdown_g",
+        "token": ":g:"
+      },
+      {
+        "source": "h",
+        "token": ":h:"
+      },
+      {
+        "source": "i",
+        "token": ":i:"
+      },
+      {
+        "source": "j",
+        "token": ":j:"
+      },
+      {
+        "source": "k",
+        "token": ":k:"
+      },
+      {
+        "source": "l",
+        "token": ":l:"
+      },
+      {
+        "source": "m",
+        "token": ":m:"
+      },
+      {
+        "source": "n",
+        "token": ":n:"
+      },
+      {
+        "source": "challenge/countdown_o",
+        "token": ":o:"
+      },
+      {
+        "source": "p",
+        "token": ":p:"
+      },
+      {
+        "source": "q",
+        "token": ":q:"
+      },
+      {
+        "source": "r",
+        "token": ":r:"
+      },
+      {
+        "source": "s",
+        "token": ":s:"
+      },
+      {
+        "source": "t",
+        "token": ":t:"
+      },
+      {
+        "source": "u",
+        "token": ":u:"
+      },
+      {
+        "source": "v",
+        "token": ":v:"
+      },
+      {
+        "source": "stat/best-guess-wpm",
+        "token": ":w:"
+      },
+      {
+        "source": "stat/average-typing-wpm",
+        "token": ":x:"
+      },
+      {
+        "source": "y",
+        "token": ":y:"
+      },
+      {
+        "source": "z",
+        "token": ":z:"
+      },
+      {
+        "source": "+",
+        "token": ":+:"
+      },
+      {
+        "source": "-",
+        "token": ":-:"
+      },
+      {
+        "source": "challenge/hint-reflexes",
+        "token": ":questionmark:"
+      },
+      {
+        "source": "challenge/countdown_exclamationmark",
+        "token": ":exclamationmark:"
+      }
+    ]
+  }
+]

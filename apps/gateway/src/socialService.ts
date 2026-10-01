@@ -82,6 +82,15 @@ export class GatewaySocialService {
     await this.publishSnapshot(identity.accountId, null);
     await this.publishInbox(identity.accountId, null);
     await this.publishToFriends(identity.accountId);
+    this.pruneMatchInvites();
+    for (const invite of this.pendingMatchInvites.values()) {
+      if (invite.recipientAccountId === identity.accountId) await this.sendEvent(identity.accountId, 'match-invite-received', invite.senderAccountId, {
+        inviteId: invite.inviteId, format: invite.format, inviteExpiresAt: invite.expiresAt
+      });
+      else if (invite.senderAccountId === identity.accountId) await this.sendEvent(identity.accountId, 'match-invite-sent', invite.recipientAccountId, {
+        inviteId: invite.inviteId, format: invite.format, inviteExpiresAt: invite.expiresAt
+      });
+    }
   }
 
   public async disconnected(accountId: string): Promise<void> {
@@ -218,12 +227,17 @@ export class GatewaySocialService {
   public async deliverMatchInvite(input: PendingFriendMatchInvite): Promise<void> {
     this.pruneMatchInvites();
     for (const [inviteId, invite] of this.pendingMatchInvites) {
-      if (invite.senderAccountId === input.senderAccountId) this.pendingMatchInvites.delete(inviteId);
+      if (invite.senderAccountId === input.senderAccountId) await this.updateMatchInviteStatus(inviteId, 'cancelled');
     }
     this.pendingMatchInvites.set(input.inviteId, { ...input });
-    await this.sendEvent(input.recipientAccountId, 'match-invite-received', input.senderAccountId, {
-      inviteId: input.inviteId, inviteToken: input.inviteToken, format: input.format
-    });
+    await Promise.all([
+      this.sendEvent(input.recipientAccountId, 'match-invite-received', input.senderAccountId, {
+        inviteId: input.inviteId, format: input.format, inviteExpiresAt: input.expiresAt
+      }),
+      this.sendEvent(input.senderAccountId, 'match-invite-sent', input.recipientAccountId, {
+        inviteId: input.inviteId, format: input.format, inviteExpiresAt: input.expiresAt
+      })
+    ]);
   }
 
   public matchInvite(inviteId: string, recipientAccountId: string): PendingFriendMatchInvite | null {
@@ -233,12 +247,21 @@ export class GatewaySocialService {
   }
 
   public async matchInviteResponded(inviteId: string, accepted: boolean): Promise<void> {
+    await this.updateMatchInviteStatus(inviteId, accepted ? 'accepted' : 'declined');
+  }
+
+  public async updateMatchInviteStatus(inviteId: string, status: 'accepted' | 'declined' | 'cancelled' | 'expired'): Promise<void> {
     const invite = this.pendingMatchInvites.get(inviteId);
     if (!invite) return;
     this.pendingMatchInvites.delete(inviteId);
-    if (!accepted) await this.sendEvent(invite.senderAccountId, 'match-invite-declined', invite.recipientAccountId, {
-      inviteId, format: invite.format
-    });
+    await Promise.all([
+      this.sendEvent(invite.senderAccountId, `match-invite-${status}`, invite.recipientAccountId, {
+        inviteId, format: invite.format, inviteExpiresAt: invite.expiresAt
+      }),
+      this.sendEvent(invite.recipientAccountId, `match-invite-${status}`, invite.senderAccountId, {
+        inviteId, format: invite.format, inviteExpiresAt: invite.expiresAt
+      })
+    ]);
   }
 
   private async search(accountId: string, requestId: string, username: string): Promise<void> {
@@ -328,7 +351,7 @@ export class GatewaySocialService {
         availability: graph.preferences.availability,
         profileStatusVisibility: graph.preferences.profileStatusVisibility,
         lobbyStatusVisibility: graph.preferences.lobbyStatusVisibility,
-        allowLobbyJoin: graph.preferences.allowLobbyJoin,
+        lobbyJoinMode: graph.preferences.lobbyJoinMode,
         receiveFriendRequests: graph.preferences.receiveFriendRequests,
         receiveMatchInvites: graph.preferences.receiveMatchInvites
       },
@@ -365,6 +388,9 @@ export class GatewaySocialService {
       || (preferences.profileStatusVisibility === 'friends' && isFriend);
     const canSeeLobby = visibleOnline && Boolean(live?.lobby) && (stored.accountId === viewerAccountId
       || preferences.lobbyStatusVisibility === 'everyone' || (preferences.lobbyStatusVisibility === 'friends' && isFriend));
+    const canJoinLobby = canSeeLobby && isFriend && Boolean(live?.lobby?.lobbyId)
+      && (preferences.lobbyJoinMode === 'private'
+        || preferences.lobbyJoinMode === 'public' && live?.lobby?.lobbyType === 'public');
     return {
       ...stored,
       statusChallengeId: canSeeStatus ? preferences.statusChallengeId : null,
@@ -373,8 +399,8 @@ export class GatewaySocialService {
       activity: visibleOnline && (stored.accountId === viewerAccountId || preferences.lobbyStatusVisibility === 'everyone'
         || (preferences.lobbyStatusVisibility === 'friends' && isFriend)) ? live!.page : null,
       lastSeenAt: visibleOnline ? null : (this.lastSeen.get(stored.accountId) ?? null),
-      lobby: canSeeLobby ? structuredClone(live!.lobby) : null,
-      canJoinLobby: canSeeLobby && Boolean(live?.lobby?.lobbyId) && preferences.allowLobbyJoin && live?.lobby?.lobbyType === 'public',
+      lobby: canSeeLobby ? { ...live!.lobby!, lobbyId: canJoinLobby ? live!.lobby!.lobbyId : null } : null,
+      canJoinLobby,
       pinned
     };
   }
@@ -383,7 +409,7 @@ export class GatewaySocialService {
     recipientAccountId: string,
     kind: GatewaySocialEventMessage['kind'],
     actorAccountId: string,
-    details: Partial<Pick<GatewaySocialEventMessage, 'friendRequestId' | 'clientMessageId' | 'message' | 'inviteId' | 'inviteToken' | 'format' | 'chatMessage'>> = {}
+    details: Partial<Pick<GatewaySocialEventMessage, 'friendRequestId' | 'clientMessageId' | 'message' | 'inviteId' | 'inviteToken' | 'format' | 'chatMessage' | 'inviteExpiresAt'>> = {}
   ): Promise<void> {
     if (!this.live.has(recipientAccountId)) return;
     const actor = (await this.options.persistence.getProfiles([actorAccountId])).get(actorAccountId);
@@ -399,6 +425,7 @@ export class GatewaySocialService {
       inviteToken: details.inviteToken ?? null,
       format: details.format ?? null,
       occurredAt: details.chatMessage?.occurredAt ?? Date.now(),
+      ...(details.inviteExpiresAt !== undefined ? { inviteExpiresAt: details.inviteExpiresAt } : {}),
       ...(details.chatMessage ? { chatMessage: details.chatMessage } : {})
     });
   }
@@ -423,6 +450,8 @@ export class GatewaySocialService {
 
   private pruneMatchInvites(): void {
     const now = Date.now();
-    for (const [id, invite] of this.pendingMatchInvites) if (invite.expiresAt <= now) this.pendingMatchInvites.delete(id);
+    for (const [id, invite] of this.pendingMatchInvites) if (invite.expiresAt <= now) {
+      void this.updateMatchInviteStatus(id, 'expired').catch(error => this.options.log('social-invite-expiry-error', { error: String(error) }));
+    }
   }
 }

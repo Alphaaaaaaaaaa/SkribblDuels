@@ -1,0 +1,26 @@
+Skribbl Duels v0.71.0 release validation
+Source commit: 63f1868e46ff2de7c2d23721e704b067f0f7253d
+Base version: v0.70.0 (1686b52c367ba6120c355ae08f6986cb4dc9dc96)
+Node runtime: v24.19.0
+
+PASS npm ci (final lockfile)
+PASS npm run typecheck
+PASS npm test (complete existing and new release suite)
+PASS npm run build (userscript and Gateway)
+PASS node --check userscript/skribbl-duels-telemetry-inspector.user.js
+PASS git diff --check
+PASS 132 embedded emoji assets against their actual source bytes
+PASS 34 newly uploaded GitHub assets against their Git blob SHA-1
+PASS live/grouped chat, delayed/reversed ACKs, Ctrl+E, Shift-click and Unicode counter
+PASS invitation accept/deny/status/error/expiry/reconnect/reload behavior
+PASS safe HTTP(S)/www links and preservation of game/Typo chat nodes
+PASS public/private/none server permission matrix
+PASS real PostgreSQL migration/reapplication/privacy/roles/Contract 18 health probe
+PASS existing 24h chat retention, pagination, offline inbox and 20,000-row capacity
+PASS existing 53-Challenge pool and Duel rules
+
+Production Supabase/Railway was not modified. Live two-account verification is an
+operator step after applying the migration and deploying Gateway v0.13.0.
+
+Archive includes full tracked source, all resources, SQL migrations, deployment
+builds, current installable userscript, upgrade guide and file checksums.

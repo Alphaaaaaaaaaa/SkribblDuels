@@ -1,3 +1,4 @@
+import { GATEWAY_PROFILE_STAT_IDS, FRIEND_MESSAGE_PAGE_SIZE } from './social';
 import { isTelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 import {
   GATEWAY_CONTRACT_VERSION,
@@ -74,7 +75,7 @@ function socialLobby(value: unknown): boolean {
   if (value === null) return true;
   const lobby = record(value);
   return Boolean(lobby
-    && nonEmptyString(lobby.lobbyId, 256)
+    && nullableString(lobby.lobbyId, 256)
     && (lobby.lobbyType === 'public' || lobby.lobbyType === 'private')
     && nonEmptyString(lobby.languageName, 64)
     && nonNegativeInteger(lobby.playerCount)
@@ -115,7 +116,29 @@ function socialProfile(value: unknown): boolean {
     && (profile.lastSeenAt === null || finiteNumber(profile.lastSeenAt))
     && socialLobby(profile.lobby)
     && typeof profile.canJoinLobby === 'boolean'
-    && typeof profile.pinned === 'boolean');
+    && typeof profile.pinned === 'boolean'
+    && (profile.activity === undefined || profile.activity === null || profile.activity === 'home' || profile.activity === 'lobby'));
+}
+
+function socialPinnedStats(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= 2
+    && value.every(item => {
+      const stat = record(item);
+      return Boolean(stat && (GATEWAY_PROFILE_STAT_IDS as readonly unknown[]).includes(stat.id)
+        && typeof stat.value === 'string' && Array.from(stat.value).length <= 64);
+    }) && new Set(value.map(item => (item as Record<string, unknown>).id)).size === value.length;
+}
+function friendChatMessage(value: unknown): boolean {
+  const item = record(value);
+  return Boolean(item && nonEmptyString(item.messageId) && nonEmptyString(item.clientMessageId)
+    && nonEmptyString(item.senderId) && nonEmptyString(item.recipientId) && item.senderId !== item.recipientId
+    && nonNegativeInteger(item.sequence) && Number(item.sequence) > 0 && Number.isSafeInteger(item.sequence)
+    && nonEmptyCodePointString(item.message, 300) && finiteNumber(item.occurredAt)
+    && (item.readAt === null || finiteNumber(item.readAt)));
+}
+function friendRelationship(value: unknown): boolean {
+  return value === 'self' || value === 'friend' || value === 'incoming-request'
+    || value === 'outgoing-request' || value === 'blocked' || value === 'none';
 }
 
 function friendRequestSummary(value: unknown): boolean {
@@ -657,6 +680,16 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
         && (message.page === 'home' || message.page === 'lobby')
         && socialLobby(message.lobby)
         && (message.page === 'lobby') === (message.lobby !== null);
+    case 'SOCIAL_PROFILE_STATS_SET':
+      return nonEmptyString(message.requestId) && socialPinnedStats(message.stats);
+    case 'FRIEND_PROFILE_GET':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId);
+    case 'FRIEND_CHAT_HISTORY_GET':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId)
+        && (message.beforeSequence === null || (Number.isSafeInteger(message.beforeSequence) && Number(message.beforeSequence) > 0));
+    case 'FRIEND_CHAT_READ':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId)
+        && Number.isSafeInteger(message.throughSequence) && Number(message.throughSequence) > 0;
     case 'FRIEND_SEARCH':
       return nonEmptyString(message.requestId)
         && nonEmptyCodePointString(message.discordUsername, 66);
@@ -809,6 +842,19 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && Array.isArray(message.requests)
         && message.requests.length <= 500
         && message.requests.every(friendRequestSummary);
+    case 'FRIEND_CHAT_HISTORY':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId)
+        && Array.isArray(message.messages) && message.messages.length <= FRIEND_MESSAGE_PAGE_SIZE
+        && message.messages.every(friendChatMessage)
+        && (message.nextBeforeSequence === null || (Number.isSafeInteger(message.nextBeforeSequence) && Number(message.nextBeforeSequence) > 0));
+    case 'FRIEND_CHAT_INBOX':
+      return (message.requestId === null || nonEmptyString(message.requestId))
+        && Array.isArray(message.unread) && message.unread.length <= 500
+        && message.unread.every(item => { const row = record(item); return Boolean(row && nonEmptyString(row.accountId) && nonNegativeInteger(row.count)); });
+    case 'FRIEND_PROFILE':
+      return nonEmptyString(message.requestId) && (message.profile === null || socialProfile(message.profile))
+        && friendRelationship(message.relationship) && typeof message.canUnblock === 'boolean'
+        && socialPinnedStats(message.pinnedStats);
     case 'FRIEND_SEARCH_RESULT':
       return nonEmptyString(message.requestId)
         && (message.profile === null || socialProfile(message.profile))
@@ -829,7 +875,8 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && (message.inviteId === null || nonEmptyString(message.inviteId))
         && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128))
         && (message.format === null || message.format === 'casual' || message.format === 'ranked')
-        && finiteNumber(message.occurredAt);
+        && finiteNumber(message.occurredAt)
+        && (message.chatMessage === undefined || friendChatMessage(message.chatMessage));
     case 'COIN_BALANCE':
       return (message.requestId === null || nonEmptyString(message.requestId))
         && nonNegativeInteger(message.balance)

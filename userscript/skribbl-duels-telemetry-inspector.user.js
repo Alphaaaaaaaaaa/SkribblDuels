@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.69.1
+// @version      0.70.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -36812,6 +36812,63 @@ var GATEWAY_SLOT_FREE_SPIN_REWARDS = {
 	book: 5,
 	slimy: 10
 };
+var GATEWAY_PROFILE_STAT_IDS = [
+	"observed-play-time",
+	"unique-users-seen",
+	"distinct-lobbies",
+	"lobby-sessions",
+	"play-days",
+	"play-day-streak",
+	"longest-session",
+	"submitted-messages",
+	"average-typing-wpm",
+	"median-typing-wpm",
+	"p90-typing-wpm",
+	"best-typing-wpm",
+	"typing-trend",
+	"guess-attempts",
+	"guess-accuracy",
+	"first-guesser-rate",
+	"average-guess-wpm",
+	"median-guess-wpm",
+	"p90-guess-wpm",
+	"best-guess-wpm",
+	"average-guess-time",
+	"median-guess-time",
+	"p90-guess-time",
+	"best-guess-time",
+	"guess-wpm-trend",
+	"guess-time-trend",
+	"drawing-effectiveness",
+	"drawing-round-score",
+	"drawing-rounds",
+	"drawing-reactions",
+	"skribbl-wins",
+	"skribbl-win-rate",
+	"skribbl-win-streak",
+	"best-public-score",
+	"best-private-score",
+	"duel-matches",
+	"duel-wins",
+	"duel-win-rate",
+	"duel-win-streak",
+	"challenges-completed",
+	"social-actions",
+	"unique-words-seen",
+	"unique-words-guessed",
+	"seen-word-coverage",
+	"guessed-word-coverage"
+];
+/** Pins take priority, followed by active Duels, online, idle and offline. */
+function compareSocialFriends(left, right) {
+	const priority = {
+		duel: 0,
+		online: 1,
+		idle: 2,
+		offline: 3
+	};
+	return Number(right.pinned) - Number(left.pinned) || (priority[left.presence] ?? 3) - (priority[right.presence] ?? 3) || left.displayName.localeCompare(right.displayName) || left.accountId.localeCompare(right.accountId);
+}
 var SLOT_ICON_IDS = new Set(GATEWAY_SLOT_ICON_IDS);
 function record(value) {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
@@ -36849,7 +36906,7 @@ function socialVisibility(value) {
 function socialLobby(value) {
 	if (value === null) return true;
 	const lobby = record(value);
-	return Boolean(lobby && nonEmptyString(lobby.lobbyId, 256) && (lobby.lobbyType === "public" || lobby.lobbyType === "private") && nonEmptyString(lobby.languageName, 64) && nonNegativeInteger(lobby.playerCount) && nonNegativeInteger(lobby.maxPlayers) && Number(lobby.maxPlayers) >= 1 && Number(lobby.maxPlayers) <= 32 && Number(lobby.playerCount) <= Number(lobby.maxPlayers));
+	return Boolean(lobby && nullableString(lobby.lobbyId, 256) && (lobby.lobbyType === "public" || lobby.lobbyType === "private") && nonEmptyString(lobby.languageName, 64) && nonNegativeInteger(lobby.playerCount) && nonNegativeInteger(lobby.maxPlayers) && Number(lobby.maxPlayers) >= 1 && Number(lobby.maxPlayers) <= 32 && Number(lobby.playerCount) <= Number(lobby.maxPlayers));
 }
 function socialPreferences(value) {
 	const preferences = record(value);
@@ -36857,7 +36914,20 @@ function socialPreferences(value) {
 }
 function socialProfile(value) {
 	const profile = record(value);
-	return Boolean(profile && nonEmptyString(profile.accountId) && nonEmptyString(profile.displayName, 128) && nonEmptyString(profile.discordUsername, 128) && (profile.avatarSource === "discord" || profile.avatarSource === "skribbl") && nullableString(profile.avatarUrl) && skribblAvatar(profile.skribblAvatar) && nullableString(profile.specialAvatarId, 64) && typeof profile.invisibleAvatarEntitled === "boolean" && nonNegativeInteger(profile.nameColorIndex) && Number(profile.nameColorIndex) <= 27 && nullableString(profile.statusChallengeId, 128) && typeof profile.statusText === "string" && Array.from(profile.statusText).length <= 80 && (socialAvailability(profile.presence) || profile.presence === "duel") && (profile.lastSeenAt === null || finiteNumber(profile.lastSeenAt)) && socialLobby(profile.lobby) && typeof profile.canJoinLobby === "boolean" && typeof profile.pinned === "boolean");
+	return Boolean(profile && nonEmptyString(profile.accountId) && nonEmptyString(profile.displayName, 128) && nonEmptyString(profile.discordUsername, 128) && (profile.avatarSource === "discord" || profile.avatarSource === "skribbl") && nullableString(profile.avatarUrl) && skribblAvatar(profile.skribblAvatar) && nullableString(profile.specialAvatarId, 64) && typeof profile.invisibleAvatarEntitled === "boolean" && nonNegativeInteger(profile.nameColorIndex) && Number(profile.nameColorIndex) <= 27 && nullableString(profile.statusChallengeId, 128) && typeof profile.statusText === "string" && Array.from(profile.statusText).length <= 80 && (socialAvailability(profile.presence) || profile.presence === "duel") && (profile.lastSeenAt === null || finiteNumber(profile.lastSeenAt)) && socialLobby(profile.lobby) && typeof profile.canJoinLobby === "boolean" && typeof profile.pinned === "boolean" && (profile.activity === void 0 || profile.activity === null || profile.activity === "home" || profile.activity === "lobby"));
+}
+function socialPinnedStats(value) {
+	return Array.isArray(value) && value.length <= 2 && value.every((item) => {
+		const stat = record(item);
+		return Boolean(stat && GATEWAY_PROFILE_STAT_IDS.includes(stat.id) && typeof stat.value === "string" && Array.from(stat.value).length <= 64);
+	}) && new Set(value.map((item) => item.id)).size === value.length;
+}
+function friendChatMessage(value) {
+	const item = record(value);
+	return Boolean(item && nonEmptyString(item.messageId) && nonEmptyString(item.clientMessageId) && nonEmptyString(item.senderId) && nonEmptyString(item.recipientId) && item.senderId !== item.recipientId && nonNegativeInteger(item.sequence) && Number(item.sequence) > 0 && Number.isSafeInteger(item.sequence) && nonEmptyCodePointString(item.message, 300) && finiteNumber(item.occurredAt) && (item.readAt === null || finiteNumber(item.readAt)));
+}
+function friendRelationship(value) {
+	return value === "self" || value === "friend" || value === "incoming-request" || value === "outgoing-request" || value === "blocked" || value === "none";
 }
 function friendRequestSummary(value) {
 	const request = record(value);
@@ -36963,7 +37033,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 16 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 17 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -36978,8 +37048,14 @@ function isGatewayServerMessage(value) {
 		case "SLOTS_STATE": return nonEmptyString(message.requestId) && slotsState(message.state);
 		case "SLOTS_SPIN_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "session-not-found" || message.reason === "insufficient-coins") && slotsState(message.state) && (message.outcome === null || slotOutcome(message.outcome)) && message.accepted === (message.outcome !== null) && nonNegativeInteger(message.coinRevision);
 		case "SOCIAL_SNAPSHOT": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.revision) && socialPreferences(message.preferences) && nullableString(message.statusChallengeId, 128) && typeof message.statusText === "string" && Array.from(message.statusText).length <= 80 && Array.isArray(message.friends) && message.friends.length <= 500 && message.friends.every(socialProfile) && Array.isArray(message.requests) && message.requests.length <= 500 && message.requests.every(friendRequestSummary);
+		case "FRIEND_CHAT_HISTORY": return nonEmptyString(message.requestId) && nonEmptyString(message.accountId) && Array.isArray(message.messages) && message.messages.length <= 200 && message.messages.every(friendChatMessage) && (message.nextBeforeSequence === null || Number.isSafeInteger(message.nextBeforeSequence) && Number(message.nextBeforeSequence) > 0);
+		case "FRIEND_CHAT_INBOX": return (message.requestId === null || nonEmptyString(message.requestId)) && Array.isArray(message.unread) && message.unread.length <= 500 && message.unread.every((item) => {
+			const row = record(item);
+			return Boolean(row && nonEmptyString(row.accountId) && nonNegativeInteger(row.count));
+		});
+		case "FRIEND_PROFILE": return nonEmptyString(message.requestId) && (message.profile === null || socialProfile(message.profile)) && friendRelationship(message.relationship) && typeof message.canUnblock === "boolean" && socialPinnedStats(message.pinnedStats);
 		case "FRIEND_SEARCH_RESULT": return nonEmptyString(message.requestId) && (message.profile === null || socialProfile(message.profile)) && typeof message.canUnblock === "boolean" && (message.relationship === "self" || message.relationship === "friend" || message.relationship === "incoming-request" || message.relationship === "outgoing-request" || message.relationship === "blocked" || message.relationship === "none");
-		case "SOCIAL_EVENT": return nonEmptyString(message.eventId) && (message.kind === "friend-request-received" || message.kind === "friend-request-accepted" || message.kind === "friend-removed" || message.kind === "friend-message-received" || message.kind === "friend-message-sent" || message.kind === "match-invite-received" || message.kind === "match-invite-declined") && socialProfile(message.profile) && (message.friendRequestId === null || nonEmptyString(message.friendRequestId)) && (message.clientMessageId === null || nonEmptyString(message.clientMessageId)) && (message.message === null || nonEmptyCodePointString(message.message, 300)) && (message.inviteId === null || nonEmptyString(message.inviteId)) && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128)) && (message.format === null || message.format === "casual" || message.format === "ranked") && finiteNumber(message.occurredAt);
+		case "SOCIAL_EVENT": return nonEmptyString(message.eventId) && (message.kind === "friend-request-received" || message.kind === "friend-request-accepted" || message.kind === "friend-removed" || message.kind === "friend-message-received" || message.kind === "friend-message-sent" || message.kind === "match-invite-received" || message.kind === "match-invite-declined") && socialProfile(message.profile) && (message.friendRequestId === null || nonEmptyString(message.friendRequestId)) && (message.clientMessageId === null || nonEmptyString(message.clientMessageId)) && (message.message === null || nonEmptyCodePointString(message.message, 300)) && (message.inviteId === null || nonEmptyString(message.inviteId)) && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128)) && (message.format === null || message.format === "casual" || message.format === "ranked") && finiteNumber(message.occurredAt) && (message.chatMessage === void 0 || friendChatMessage(message.chatMessage));
 		case "COIN_BALANCE": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.balance) && nonNegativeInteger(message.revision) && (message.transaction === null || coinTransaction(message.transaction));
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
@@ -37034,7 +37110,7 @@ function configuredValue(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.69.1";
+var GATEWAY_CLIENT_VERSION = "0.70.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -40289,6 +40365,9 @@ function initialSnapshot(endpoint) {
 		lastSlotsSpin: null,
 		social: null,
 		friendSearch: null,
+		friendChatHistory: null,
+		friendInbox: null,
+		friendProfile: null,
 		socialEvents: [],
 		socialError: null,
 		error: null
@@ -40685,15 +40764,56 @@ var SocketIoGatewayClient = class {
 		});
 		return requestId;
 	}
-	sendFriendMessage(accountId, message) {
-		const clientMessageId = this.createRequestId("friend-message");
+	sendFriendMessage(accountId, message, clientMessageId = this.createRequestId("friend-message")) {
 		this.emit({
 			type: "FRIEND_MESSAGE_SEND",
 			clientMessageId,
 			accountId,
 			message
 		});
+		if (this.state.socialError?.requestId === clientMessageId) this.update({
+			...this.state,
+			socialError: null
+		});
 		return clientMessageId;
+	}
+	setSocialPinnedStats(stats) {
+		const requestId = this.createRequestId("social-profile-stats");
+		this.emit({
+			type: "SOCIAL_PROFILE_STATS_SET",
+			requestId,
+			stats
+		});
+		return requestId;
+	}
+	getFriendProfile(accountId) {
+		const requestId = this.createRequestId("friend-profile");
+		this.emit({
+			type: "FRIEND_PROFILE_GET",
+			requestId,
+			accountId
+		});
+		return requestId;
+	}
+	getFriendChatHistory(accountId, beforeSequence = null) {
+		const requestId = this.createRequestId("friend-history");
+		this.emit({
+			type: "FRIEND_CHAT_HISTORY_GET",
+			requestId,
+			accountId,
+			beforeSequence
+		});
+		return requestId;
+	}
+	markFriendChatRead(accountId, throughSequence) {
+		const requestId = this.createRequestId("friend-read");
+		this.emit({
+			type: "FRIEND_CHAT_READ",
+			requestId,
+			accountId,
+			throughSequence
+		});
+		return requestId;
 	}
 	sendFriendMatchInvite(accountId, format) {
 		const requestId = this.createRequestId("friend-match-invite");
@@ -40767,7 +40887,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 16,
+				contractVersion: 17,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -40806,7 +40926,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v16 message.`
+				error: `Gateway sent an invalid Contract v17 message.`
 			});
 			return;
 		}
@@ -40838,6 +40958,9 @@ var SocketIoGatewayClient = class {
 				lastSlotsSpin: this.state.lastSlotsSpin,
 				social: sameAccount ? this.state.social : null,
 				friendSearch: sameAccount ? this.state.friendSearch : null,
+				friendChatHistory: sameAccount ? this.state.friendChatHistory : null,
+				friendInbox: sameAccount ? this.state.friendInbox : null,
+				friendProfile: sameAccount ? this.state.friendProfile : null,
 				socialEvents: sameAccount ? this.state.socialEvents : [],
 				socialError: sameAccount ? this.state.socialError : null,
 				error: null
@@ -40944,6 +41067,29 @@ var SocketIoGatewayClient = class {
 					transaction: null
 				} : this.state.coins,
 				error: null
+			});
+			return;
+		}
+		if (value.type === "FRIEND_CHAT_HISTORY") {
+			this.update({
+				...this.state,
+				friendChatHistory: structuredClone(value),
+				socialError: null
+			});
+			return;
+		}
+		if (value.type === "FRIEND_CHAT_INBOX") {
+			this.update({
+				...this.state,
+				friendInbox: structuredClone(value)
+			});
+			return;
+		}
+		if (value.type === "FRIEND_PROFILE") {
+			this.update({
+				...this.state,
+				friendProfile: structuredClone(value),
+				socialError: null
 			});
 			return;
 		}
@@ -41627,53 +41773,6 @@ var STAT_UTILITY_ICON_ASSET_PATHS = {
 	"pin": "res/stat-icons/pin.gif",
 	"trash": "res/stat-icons/trash.gif"
 };
-var PROFILE_STAT_IDS = [
-	"observed-play-time",
-	"unique-users-seen",
-	"distinct-lobbies",
-	"lobby-sessions",
-	"play-days",
-	"play-day-streak",
-	"longest-session",
-	"submitted-messages",
-	"average-typing-wpm",
-	"median-typing-wpm",
-	"p90-typing-wpm",
-	"best-typing-wpm",
-	"typing-trend",
-	"guess-attempts",
-	"guess-accuracy",
-	"first-guesser-rate",
-	"average-guess-wpm",
-	"median-guess-wpm",
-	"p90-guess-wpm",
-	"best-guess-wpm",
-	"average-guess-time",
-	"median-guess-time",
-	"p90-guess-time",
-	"best-guess-time",
-	"guess-wpm-trend",
-	"guess-time-trend",
-	"drawing-effectiveness",
-	"drawing-round-score",
-	"drawing-rounds",
-	"drawing-reactions",
-	"skribbl-wins",
-	"skribbl-win-rate",
-	"skribbl-win-streak",
-	"best-public-score",
-	"best-private-score",
-	"duel-matches",
-	"duel-wins",
-	"duel-win-rate",
-	"duel-win-streak",
-	"challenges-completed",
-	"social-actions",
-	"unique-words-seen",
-	"unique-words-guessed",
-	"seen-word-coverage",
-	"guessed-word-coverage"
-];
 var DEFAULT_PINNED_PROFILE_STAT_IDS = ["best-typing-wpm", "duel-wins"];
 var DEFAULT_MAIN_PROFILE_STAT_IDS = [
 	"observed-play-time",
@@ -42048,7 +42147,7 @@ var definitions = [
 var PROFILE_STAT_DEFINITIONS = definitions;
 var PROFILE_STAT_DEFINITION_BY_ID = Object.fromEntries(definitions.map((definition) => [definition.id, definition]));
 function isProfileStatId(value) {
-	return typeof value === "string" && PROFILE_STAT_IDS.includes(value);
+	return typeof value === "string" && GATEWAY_PROFILE_STAT_IDS.includes(value);
 }
 var DUEL_NAME_COLORS = [
 	{
@@ -42619,6 +42718,68 @@ var SkribblChatStatDisplay = class {
 function isTypoRuntimeDetected(dataset, typoSkribblLoaded = null) {
 	return dataset?.typo_loader === "true" || dataset?.typo_loaded === "true" || dataset?.typoLoader === "true" || dataset?.typoLoaded === "true" || typoSkribblLoaded === "true";
 }
+var PROGRESSION_ASSET_PATHS = {
+	"coin": "res/skribble-icons/skribbl-coin.gif",
+	"skribbleLogo": "res/skribble-icons/skribble.gif",
+	"skribbleReturn": "res/skribble-icons/return.gif",
+	"skribbleBackspace": "res/skribble-icons/backspace.gif",
+	"skribbleEnter": "res/skribble-icons/enter.gif",
+	"skribbleSpacebar": "res/skribble-icons/spacebar.gif",
+	"skribbleSpacebarCorrect": "res/skribble-icons/spacebar_correct.gif",
+	"skribbleSpacebarIncorrect": "res/skribble-icons/spacebar_incorrect.gif",
+	"skribbleSpacebarSemicorrect": "res/skribble-icons/spacebar_semicorrect.gif",
+	"emptyTile": "res/skribble-icons/empty.gif",
+	"correctTile": "res/skribble-icons/correct.gif",
+	"semicorrectTile": "res/skribble-icons/semicorrect.gif",
+	"incorrectTile": "res/skribble-icons/incorrect.gif",
+	"slotsLogo": "res/skribbl-slots/skribbl-slots-logo.gif",
+	"slotsWarning": "res/skribbl-slots/warning.gif",
+	"slotBulbOff": "res/skribbl-slots/bulb_off.gif",
+	"slotBulbOn": "res/skribbl-slots/bulb_on.gif",
+	"slotBook": "res/skribbl-slots/slot-icons/book.gif",
+	"slotSlimy": "res/skribbl-slots/slot-icons/slimy.gif",
+	"slotFill": "res/skribbl-slots/slot-icons/fill.gif",
+	"slotWizard": "res/skribbl-slots/slot-icons/wizard.gif",
+	"slotEraser": "res/skribbl-slots/slot-icons/eraser.gif",
+	"slotTrash": "res/skribbl-slots/slot-icons/trash.gif",
+	"slotDice": "res/skribbl-slots/slot-icons/dice.gif",
+	"slotHeart": "res/skribbl-slots/slot-icons/heart.gif",
+	"slotCoin": "res/skribbl-slots/slot-icons/skribbl-coin.gif",
+	"slotSeven": "res/skribbl-slots/slot-icons/7.gif",
+	"slotTrophy": "res/skribbl-slots/slot-icons/trophy.gif",
+	"slotCrown": "res/skribbl-slots/slot-icons/crown.gif",
+	"slotPen": "res/skribbl-slots/slot-icons/pen.gif",
+	"slotDuelsLogo": "res/skribbl-slots/slot-icons/skribbl-duels-logo.gif",
+	"slotPotion": "res/skribbl-slots/slot-icons/potion.gif",
+	"slotDrop": "res/skribbl-slots/slot-icons/drop.gif",
+	"slotPizza": "res/skribbl-slots/slot-icons/pizza.gif",
+	"slotPumpkin": "res/skribbl-slots/slot-icons/pumpkin.gif",
+	"slotEggplant": "res/skribbl-slots/slot-icons/eggplant.gif",
+	"slotPineapple": "res/skribbl-slots/slot-icons/pineapple.gif",
+	"slotPeach": "res/skribbl-slots/slot-icons/peach.gif",
+	"slotRibbon": "res/skribbl-slots/slot-icons/ribbon.gif",
+	"slotSkull": "res/skribbl-slots/slot-icons/skull.gif",
+	"slotPoop": "res/skribbl-slots/slot-icons/poop.gif",
+	"friendBlock": "res/friend-system/block.gif",
+	"friendCheckmark": "res/friend-system/checkmark.gif",
+	"friendCrossmark": "res/friend-system/crossmark.gif",
+	"friendList": "res/friend-system/friends-list.gif",
+	"friendIdle": "res/friend-system/idle.gif",
+	"friendIgnore": "res/friend-system/ignore.gif",
+	"friendJoin": "res/friend-system/join.gif",
+	"friendLocked": "res/friend-system/locked.gif",
+	"friendMessage": "res/friend-system/message.gif",
+	"friendOffline": "res/friend-system/offline.gif",
+	"friendOnline": "res/friend-system/online.gif",
+	"friendPin": "res/friend-system/pin.gif",
+	"friendPing": "res/friend-system/ping.gif",
+	"friendDuelsLogo": "res/friend-system/skribbl-duels-logo.gif",
+	"friendSlimy": "res/friend-system/slimy.gif",
+	"friendTrash": "res/friend-system/trash.gif",
+	"friendUnblock": "res/friend-system/unblock.gif",
+	"friendWithdraw": "res/friend-system/withdraw.gif",
+	"friendAdd": "res/friend-system/friend-add.gif"
+};
 var EMBEDDED_PROGRESSION_ASSETS = {
 	"coin": "data:image/gif;base64,R0lGODlhKAAoAJEAAPuyNth7FwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAKAAoAAAC65yPqcvtD6OcUtiLLXW5+3144jd5wImmZ1dh6SigGeTKsPVez2VjwR9Y1QCYBk94+akAv6GOcSRagMtpoFZURJNKle96fCKw1qA308RJNWP1upvrpGPrtppb3VrvbINeYBZHBsgnYGcDh4REN1V4+Ca4iOYYUhg46AGG9DjVwxjGRenHd8mDCSQ64NIp6fYF9ml4CBrzB4hKV8cJuLZWyzW3mAAa7AsM26Nl2ggDBJsrttvsHOW7sDri/Jyre+16TD20CWULk9fnzW2csWTNId7ePkPDHn+WFXGjL1uyLwIyyh86gAQLGjxosAAAIfkEBRQAAwAsAAAAACgAKAAAAvGcj6nL7Q+jnFHYizFluXu7Dd/oTR2Apmr6VdcKeGv3YDN5g87LZsEvQ2k4FpUvkAJmeoIGL3b5wX7KIrS5sF0FUqOFGuANE88oMvetCnUIrRnmUV8VZW53bcWE82yDO43GpIRHZgV1h1fHxYd1UIf4shTFWCjQc7aV6EPZZviVqKm3R9hpuQZ6ukXF6ehpKlkkOjhX2hMaa6Y25ueKhMsHtvfax8s4enUVLEZcjCesqczYWHvbAaZIZLr1sfpEm+WaG234DR4uu+Q1ba69HcS0TucNr6XuMg8Dt7vzkT9CQSIgMwgCS4RgR+OgwoUMIRQAADs=",
 	"skribbleLogo": "data:image/gif;base64,R0lGODlhEwEoALMAAIB3nZutt5nlUEtpL//PZ/qJANmgZu7Dmv///wAAAP///wAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAKACwAAAAAEwEoAAAE/1DJSau9OOvNu/9gKI5kaZ5oqq5s675wLM90bd94ru987//AoHBILBqPyOQlwWw6n84OdAqVUq8JK3aq3T673iY4nOWQv65zVaNGZ9pRNpy5mdPl87pdn2d9BYCBgoFib1EBiImKiYUYXweQkZKRjUtRBJiZmpmVFn+DoAKdFV+bppijFF+LrIipE6uti68jU6Ghr1OyrLlQlE+TvU+np8JOt6DGTcSmyky7s3eeUNCKtCFOA02CtoCpTgBNjAmu5NbSqk0GTb/A7ZZMBcucw/RlpE3aTIRQ3OiwTeQxsedE07cm4Z6V23WQSUJz1QJc+5BNXwJ+/bz9UwDu4biF5//uAWRiYB2TX5CcvMMXT2ACg/VQbay4TWNGUTMDuiRYUKZICR3FgWw1KqjCaEcnesg3QB/GixoxTksAoOpRieSEjvvJkWTJkyhTgj1QtKXAYi83lU3Q1Ck/jFJZFpg7kJ49e1OrJjzHMCdVqxCxUivHtRbbtvtsIiurdy+irlh55Sz5NYGksWQti+Vq9myztDA5H26aOOpbm9Pm0gVNoK5MvPgaX72KdJpsiLpCpmDS1i1OqLhy3g5JW/A0yiYvaxa7Mp1qz2pZ+5zWuzROf3Gdq3bdmrVrxnpnB64dOzzu8eRP8EYM/Fhw0cO3ojeODznmsew2p94u/XV00dUBd53/Yqjh8xx33yUIn3l8yQIeYB/1VZgI65EmIBX+2MbgVn0dRxl+VCi332pooUUde/48MUhOB3oHRXQaQkgYNMJtGBmNE3aVYzoBrtgNTjE6Rth8WHlYWTvu/DIidDCZiE+PT7mn0ZIITgFTkEllgSOW5+VWzlRxyAHlLTUBWZ6MQ8432YfLnZRfMKK1WOJnJ1qIHVxTGshfk3fJxGWEHZ4p5BXnjMSFHmO+x8+fH2k1jpHJMZfZckrqSeJnTvKI4mmcsrinXXx2x+iNgaYTX5FbXvEbopu+196CaN5IRzSQghiWiJYyCSqMT7Y6YKdxfurfrjWiWRytgmaJI4YZitmq/6qLJhuYQo4WWR+bt74pFpX9dZcpQIlaV6anlw7bHWjFDkpFodJyCBK03oiyqiMV+sZstCOdSipt/6iDraSb4TqSnKHNQw9L4d7bb2dVWulnOn8Zu+6jEJ868Y+/bSMMewIigy9QDgFGpIM/+WtSm5RmJjDICfAn3YtXQsxxiip+rKPLBff0cL4iR8Quzx4RR+1hGktpM7gze+yjtCMTVXIC9mE2ydSZ5WowMzEjbWHHSi/cYrfMLHxb05Ix7fN6Kl64z0Fb06G0ADo+LfKs1cR97SNUS2K3dqVgTcDeSH/iMeAgryaG33+HCfLcWtateFeMKxBRhWXiaeaTdjzuUP/mnZDEudefP21R5gaGHpvppnKe9G/JgIk6y6GLFHsls6NTu+y1Qxy77p9vnTEh8i5cUW/EF88e7xE3pvzygCGP3PPQP2/7E89Vb3310w9v/PYWIn/999jj3hHz5JuHfPnlMzW62lAJPxr38GefPPrkyx/9/dHLD/7+/OkO///60B3/+Cc/+tGvgAasH9rGlRg3dEUBANyeA+mQQOZNMAv4y+DJpqeAAX7vghCMYPFA6MHrgbCCyzshCsfGlKK1bw2we13cZHg75HHOhqQzFA1zp8PQceyFTkCA/G7Iks+5Loc4hMMR91BEIiaxDUvMQwvX9gQECHEjSsiiFrfIB7Y/UMGKV8QiF8dIRi1OkQlgDKMYy8jGNhIhH00AIwzdSMc6CgEKalyjHffIxxp4oY+ADOQNqCDIQhpyBo+7QAQAACH5BAkUAAoALAAAAAATASgAAAT/UMlJq7046827/2AojmRpnmiqrmzrvnAsz3Rt33iu73zv/8CgcEgsGo/IJCbBbDqfzQ90+vRQrwkrdqrdVjteaDfMHJNbZO4mLdawv5m3cy0vu+vZe52+X1UFgIGCgApRemUBiYqLiYV2S3MHkpOUko55kFEEm5ydm5eHWYOjAqBxc56pBKaZiIyvrBdVr7CGKFCjT4KOp060v7yyT5XElMEWUKrKxxW4pKTMFMnKqdETUL+01hLY2YzbIk4DTINUgY/NTQBMi+yJ7oro100GTJNQxfLcTQVMndP/MElrMi6BIGcHBc5j0i9BQCep9F1KsC5BO4vZJDqp6O2VxBDi/womJOfknMJ9TABwjIexCSN9TgzUS3APXyWY/Bo+bBLxZEhyJnUlRJbTH6cpnnCmXPkO4y+lFJkGoHLxFpMBWIECapLQpLCoUt3BY0k0gcyZNSU5uemTYQGdSR2qUopVpMmgQ9MleAt3k1ECPI+2BTvWFS2lKpleqXqiTF2tXJ8J0JglcWGLLl+2VXDWnlqan0HXJKqA71/BynAqeGzwruutm03L9TsbcG3Vlp1O1e1xc26WvDVbrVuwdeRnlBNXdPrkcNuzM0F7/syWKN+GtW2nbkv8uNbJrWFblz37tPm2yjPv9oYzvdjgwhsnIG63JPKTjpQrVh9/IHS0B0wXoP9on40nW1zbEUUfZOEdB56Bb/0l4XlE6QfPWL1V6F5Tul02XHcNmiOehr9xCN9uRP3n2XRNVJfOdX3Rlh1tCoIYlFAjDgTjhADZRqJKF2LI2EAWMoeZL2SdwseC4YE3RY4LFXnRifLQA92KU7i40I7ZBRaXXkzeiGOVbh0oI0BkggVkhyeiOJCa+3XT1FcfzUOfXfcZh56UwMFH5n8AZqnlPjDGSNtcCl0VJmwjeaUjl6gJVl6icIbVJpn6xUmlQFfcced3uQDVHp8mYvinitLR1CIxZBZ62qE9pfNpiOWE+CKksEbqI5GkrvcUpZkGyV4WT0JJGnGOSGYfbok5ctH/bh4OxNlZjlA3IIEFSnudIz0hms5qdSXLaFfGlrHthAjSKK1yzrKUEaUKsBvkpQgFpSSyDN7o6LrNXgZckvNMK1O1A9aELZml8cVtul9Ki2+IEO+7T8JvLWzbpJN+Ky+bpc7Jr0rtQotkqU0apOcps4rp4Kgbuuuym/MAiiUlq2Y7j6u3PdGwnYs6iVCruF6MJrC9LgbzPsEaiU29PsOGnyMpO22fxEgXTW86MqfKFs2U4rzTq2RGLfXKXQcttJe7zpP0lEJi2uuUIjMIqi0DMdmkZMbm516bGfp3pYDFcH0redTEWjeId+MNNOGFB5ROkXz3V3Vuke+WFUlz5w01/+J43/jjch2ZiPXf2AY+x6OMN346z6wlTsrqhF6HNjWw60156CI/vnfoiuoSsZNgti6HXnsPvxDpxqMkOx5vIp78Jcv3gVLxb7xJPRmX3002p73LcTnxy7Gx5psy1VE+93thx0aE6GfPxvdbqp8G+9aHn8b4Udr/RnF6imoyOlS4kwCZpJcnZOqARXrTEwDFQFQp0AmFiiCXHkiQAVoQgFOQoAYbQsGlIBCBGITCBw9YwWKBR2oLCYkFB5imjYwQhOiLSQNnOJMOblCDIVThCmdlwxtGMIfqeCEJYxhEIe4te7UaWwrns8MLUqqIRkzgEmlIRSD6EIdEbKITH3hFCasCMYpDfCAYkzafZflvdRXUovtqB0UjUoF8VERVG5TXRfbN8RJqFB7sclLHN+YPjH6c3hixwL8zMgEBQMQDfhQJhyUqsiyMHEwkIclISj6ygJEkCBYQgMhEPg+T0gPlJx05SpRc0pKlnAjz6LTKiRSyCZysnRJmSctajoF/nOykLG3Jy17yUpMJyKUun+bLYhrzCGE4pjKXiQQsMPOZ0BTCHaNJzWrmgG4ZiAAAOw==",
@@ -42678,7 +42839,8 @@ var EMBEDDED_PROGRESSION_ASSETS = {
 	"friendSlimy": "data:image/gif;base64,R0lGODlhHQAcAKIAAAAAAP///2q+MJnlUP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAHQAcAAADhUi63P4wykmrAzhny7TXnCYIwzAK3ySWbDl6kdbOLYpBmY2RtHtfOx2mx9o0ckLATGgDjgae2ce4CEJzUk+zA3iavDXtr9rllXbZ4BgJRg5P33XwRJouqXN6XcZ64ct6YF96VARagYgnY2QiiYGLXI2OfipsiYU4U34wFVNTHEeYoKOkEwkAIfkECRQABAAsAAAAAB0AHAAAA4dIutz+MMq5gL2WOsyxVpwgDIPYSSGpqoIHYeMqk+21WfGs1xlz5boZz4ej/YKsHqg44Mh4oxpRNHKurEoCjmpVYQFTqgkAbGJK2a2I1cqNo0q12EuurYZLsZ5nueO1cnpmgTYVMHtueoWGP4iOWQ0hjmKQkZJcHWATmZyVEZkfoaKjpKWmEAkAOw==",
 	"friendTrash": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///1FTXGlqav///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADmEi6rPCwySmhfTS3y4HW12J9WVRh5NatHsi+HMMKdF1DdExwAm7bvlsH+PgRAb9dyMhsCnnOaA4WlK4c1CxKVhQos14TFzklH829rahrMbafJ/L7SKCrzNXyT7zGd497alh+aHp2Y09uf2VxiYGFfIOOgId9k5dpLYiGlHB3mJk2XxM+eaFlmncAA6YvJVA1XzofWikUVyQJACH5BAUUAAQALAAAAAAgACAAAAOWSLpM8PC1SVu8suoF2d1aZHUgh51oha6sFwnCA8+0DGPKO9v0DvQxiQ5ILN4ADolxCRTymMskUvqE1kTUE/PkYnk/JqTvayPleMOreNwd/5pVs1RNhPTk9nE9njHRe3NqI29BhHpqU2GHf26Di4+FE3mFcIaRjkeWlIKYm4yZiWdlVZ5Zgzh3MlySZCslrVglYauytbYJADs=",
 	"friendUnblock": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///4B3nZutt////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADqki6rPAwtklJvLhWPHoXl9ZEXumBkOhAJzeggGo9wouxdqzSXTg/Od0GGBzdRDgU5aghwoYpJOATlUmpQmtzKoDdfNKvuDr51kwlMOPSLcHQ3jLt3CKZnkZ6/QJ/yNFBdm5+RoBeOCaEa1OGfICKC0Rwb4ADkCuVXpWWWZiNgomdM4aHlZejfS6DonN3N3dKeV2zXTe0s6cQt7u8tblsvbtqkWPFp0bGwwQJACH5BAkUAAQALAAAAAAgACAAAAOnSLrc/vCBSWu8pGqLnR4gKHCdUoXoME6lSQnwp1Ltu24i3U3CTL+q1W4C0rkAMRaG6AM0Ns4lIBdlbEpMoccoDSpbEV4SfOFBz7WzmvTU9FKoG9dqC93gzSr9bZelbhJTfzh4X3RwckxwhguKfX4pjC54cnhFeo2CiI6LmJObFJZabXyPnCKjezBviXGrc0err26yY4E2tbmznpm4uruSbWtoQ8MaDwkAOw==",
-	"friendWithdraw": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACqISPqcvtD6OctNqLs968exOEwVeJIymZJ/qoK8u4L5zIIa2ogmCbpL7j9W4dYHA3nF2Mx2ZQpWE6p0KiRUqd+q6mrLdqpWC/TxFmTK5mpL3mdtlFDt1hrkg+xytLXTMiDrZhs3CnxyFDGFJWdwaVo7jo4fgHGSnpRxlw9IYDGIgDYMT5I7OJWdRmygiXpHq65uI1Khjr+oqadIuSBNrr+wscLDxMXGxRAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACroSPqcvtD6OctNqLs948hd9dHxhSI1lGJ5o6K9suLxwjqzDXxy3g85ji9X6rzqmHTCJ/m6PymXxlnNCqr2gZWbdXYJbKfWIrwrDyhCkvX2LvF9yFo6fa9e/sfn/sOznNdJRnACaoN+exx9ckpVC3ZnSIGIAXEmmTOPQnUghAqLkZ0OiYGaozONqlwxbFyTHDamlIZBcrK0RUCRfXqkHEaOpbajpMXGx8jJysvJxSAAA7"
+	"friendWithdraw": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACqISPqcvtD6OctNqLs968exOEwVeJIymZJ/qoK8u4L5zIIa2ogmCbpL7j9W4dYHA3nF2Mx2ZQpWE6p0KiRUqd+q6mrLdqpWC/TxFmTK5mpL3mdtlFDt1hrkg+xytLXTMiDrZhs3CnxyFDGFJWdwaVo7jo4fgHGSnpRxlw9IYDGIgDYMT5I7OJWdRmygiXpHq65uI1Khjr+oqadIuSBNrr+wscLDxMXGxRAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACroSPqcvtD6OctNqLs948hd9dHxhSI1lGJ5o6K9suLxwjqzDXxy3g85ji9X6rzqmHTCJ/m6PymXxlnNCqr2gZWbdXYJbKfWIrwrDyhCkvX2LvF9yFo6fa9e/sfn/sOznNdJRnACaoN+exx9ckpVC3ZnSIGIAXEmmTOPQnUghAqLkZ0OiYGaozONqlwxbFyTHDamlIZBcrK0RUCRfXqkHEaOpbajpMXGx8jJysvJxSAAA7",
+	"friendAdd": "data:image/gif;base64,R0lGODlhIQAhAKIAAD8l10BY9v///wAAAP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIQAhAAADoki63P4wyjmHvZdGzLtmXYh9RBicgah1aJt6Eue2ABDG10zb8IPpO4tgmPHlgKeakGiBHF21qHIwFBQbPyivU70pssFQt/cMV89o5qKMmqbf1sGaHXDD0c0vOLm9n/N6bFscYxwgLHxiTIaHIiJjFI6KcZGSFjyQOHs0S5Qbm1BeRnSholikWlEjDqBAUlujA0iusKwWs7NXjbgzJAu8vsEfCQAh+QQJFAAEACwAAAAAIQAhAAADpUi63P4wykmrZSNrfd3+YEeA5HaVQRqUwwSqKgCU7gbH8yDsAgd9N1yGt8v8bMGUTEMkLZBBmXTIcyqgt9ymqSsaR5mkEkQs+zTiQK7MrrbAg/S6zf6ik8tu24oVdpluH1dAMHkfXG8NKGpah16JiiwsXBGSk14SliSPlX1ZjT4enp+CR3dpjIaQGKeoSo0PhK43oaxxs0m1T2G4Nx29ASLCw8QLCQA7"
 };
 var PRESETS = {
 	0: {
@@ -45137,6 +45299,682 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 		(document.head ?? document.documentElement).appendChild(style);
 	}
 };
+/** Normalize partial/public-lobby settings into a valid Social presence report. */
+function socialPresenceReport(snapshot) {
+	if (!(snapshot.active ?? snapshot.hydrated)) return {
+		page: "home",
+		lobby: null
+	};
+	const playerCount = Math.max(0, Math.min(32, Math.trunc(snapshot.playerCount) || 0));
+	const configured = snapshot.maxPlayers !== null && Number.isFinite(snapshot.maxPlayers) && snapshot.maxPlayers > 0 ? Math.trunc(snapshot.maxPlayers) : 8;
+	return {
+		page: "lobby",
+		lobby: {
+			lobbyId: snapshot.lobbyId || null,
+			lobbyType: snapshot.lobbyType === 0 ? "public" : "private",
+			languageName: snapshot.languageName?.trim() || "Unknown language",
+			playerCount,
+			maxPlayers: Math.min(32, Math.max(1, configured, playerCount))
+		}
+	};
+}
+var SOCIAL_EMOJI_DEFINITIONS = [
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/about.gif",
+		"token": ":challenge/about:",
+		"label": "about"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/alliteration.gif",
+		"token": ":challenge/alliteration:",
+		"label": "alliteration"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/as-close-as-it-gets.gif",
+		"token": ":challenge/as-close-as-it-gets:",
+		"label": "as close as it gets"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/ate-and-left-no-crumbs.gif",
+		"token": ":challenge/ate-and-left-no-crumbs:",
+		"label": "ate and left no crumbs"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/autodraw-detected.gif",
+		"token": ":challenge/autodraw-detected:",
+		"label": "autodraw detected"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/back-to-back.gif",
+		"token": ":challenge/back-to-back:",
+		"label": "back to back"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/better-late-than-never.gif",
+		"token": ":challenge/better-late-than-never:",
+		"label": "better late than never"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/big-word.gif",
+		"token": ":challenge/big-word:",
+		"label": "big word"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/blind-guess.gif",
+		"token": ":challenge/blind-guess:",
+		"label": "blind guess"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/bloodline.gif",
+		"token": ":challenge/bloodline:",
+		"label": "bloodline"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/bullet-skribbl-io.gif",
+		"token": ":challenge/bullet-skribbl-io:",
+		"label": "bullet skribbl io"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/caught-in-4k.gif",
+		"token": ":challenge/caught-in-4k:",
+		"label": "caught in 4k"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/checkmark.gif",
+		"token": ":challenge/checkmark:",
+		"label": "checkmark"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/color-picker.gif",
+		"token": ":challenge/color-picker:",
+		"label": "color picker"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/cool-number-detected.gif",
+		"token": ":challenge/cool-number-detected:",
+		"label": "cool number detected"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/copy-and-paste.gif",
+		"token": ":challenge/copy-and-paste:",
+		"label": "copy and paste"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_1.gif",
+		"token": ":challenge/countdown_1:",
+		"label": "countdown 1"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_2.gif",
+		"token": ":challenge/countdown_2:",
+		"label": "countdown 2"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_3.gif",
+		"token": ":challenge/countdown_3:",
+		"label": "countdown 3"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_4.gif",
+		"token": ":challenge/countdown_4:",
+		"label": "countdown 4"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_5.gif",
+		"token": ":challenge/countdown_5:",
+		"label": "countdown 5"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_ExclamationMark.gif",
+		"token": ":challenge/countdown_exclamationmark:",
+		"label": "countdown exclamationmark"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_G.gif",
+		"token": ":challenge/countdown_g:",
+		"label": "countdown g"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/countdown_O.gif",
+		"token": ":challenge/countdown_o:",
+		"label": "countdown o"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/crossmark.gif",
+		"token": ":challenge/crossmark:",
+		"label": "crossmark"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/deaf-guess.gif",
+		"token": ":challenge/deaf-guess:",
+		"label": "deaf guess"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/deserved.gif",
+		"token": ":challenge/deserved:",
+		"label": "deserved"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/drop-down.gif",
+		"token": ":challenge/drop-down:",
+		"label": "drop down"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/drop-streak.gif",
+		"token": ":challenge/drop-streak:",
+		"label": "drop streak"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/drunk-vision.gif",
+		"token": ":challenge/drunk-vision:",
+		"label": "drunk vision"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/fanboy.gif",
+		"token": ":challenge/fanboy:",
+		"label": "fanboy"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/guessingoat.gif",
+		"token": ":challenge/guessingoat:",
+		"label": "guessingoat"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/hint-reflexes.gif",
+		"token": ":challenge/hint-reflexes:",
+		"label": "hint reflexes"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/in-and-out.gif",
+		"token": ":challenge/in-and-out:",
+		"label": "in and out"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/instalike.png",
+		"token": ":challenge/instalike:",
+		"label": "instalike"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/internet-explorer.gif",
+		"token": ":challenge/internet-explorer:",
+		"label": "internet explorer"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/is-that-a-mod.gif",
+		"token": ":challenge/is-that-a-mod:",
+		"label": "is that a mod"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/made-you-squint.gif",
+		"token": ":challenge/made-you-squint:",
+		"label": "made you squint"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/mogged.gif",
+		"token": ":challenge/mogged:",
+		"label": "mogged"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/monochromism.gif",
+		"token": ":challenge/monochromism:",
+		"label": "monochromism"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/my-eyes-are-bleeding.png",
+		"token": ":challenge/my-eyes-are-bleeding:",
+		"label": "my eyes are bleeding"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/my-favorite-color-is-red.gif",
+		"token": ":challenge/my-favorite-color-is-red:",
+		"label": "my favorite color is red"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/need-some-space.gif",
+		"token": ":challenge/need-some-space:",
+		"label": "need some space"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/noob-vs-pro-vs-hacker.gif",
+		"token": ":challenge/noob-vs-pro-vs-hacker:",
+		"label": "noob vs pro vs hacker"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/omg-hacker.gif",
+		"token": ":challenge/omg-hacker:",
+		"label": "omg hacker"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/ouch.gif",
+		"token": ":challenge/ouch:",
+		"label": "ouch"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/owner-of-the-lobby.gif",
+		"token": ":challenge/owner-of-the-lobby:",
+		"label": "owner of the lobby"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/paparazzid.gif",
+		"token": ":challenge/paparazzid:",
+		"label": "paparazzid"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/picasso.gif",
+		"token": ":challenge/picasso:",
+		"label": "picasso"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/pointsmaxxing.gif",
+		"token": ":challenge/pointsmaxxing:",
+		"label": "pointsmaxxing"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/quickscope.gif",
+		"token": ":challenge/quickscope:",
+		"label": "quickscope"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/reflexes-like-a-cat.gif",
+		"token": ":challenge/reflexes-like-a-cat:",
+		"label": "reflexes like a cat"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/settings.gif",
+		"token": ":challenge/settings:",
+		"label": "settings"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/skribbl-duels-logo.gif",
+		"token": ":challenge/skribbl-duels-logo:",
+		"label": "skribbl duels logo"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/smol-words.gif",
+		"token": ":challenge/smol-words:",
+		"label": "smol words"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/sniper.gif",
+		"token": ":challenge/sniper:",
+		"label": "sniper"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/solitary.gif",
+		"token": ":challenge/solitary:",
+		"label": "solitary"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/spamguessing.gif",
+		"token": ":challenge/spamguessing:",
+		"label": "spamguessing"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/through-thick-and-thin.gif",
+		"token": ":challenge/through-thick-and-thin:",
+		"label": "through thick and thin"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/time-waste.gif",
+		"token": ":challenge/time-waste:",
+		"label": "time waste"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/tldr.gif",
+		"token": ":challenge/tldr:",
+		"label": "tldr"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/transcended.gif",
+		"token": ":challenge/transcended:",
+		"label": "transcended"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/type-racer.gif",
+		"token": ":challenge/type-racer:",
+		"label": "type racer"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/ultimate-comeback.gif",
+		"token": ":challenge/ultimate-comeback:",
+		"label": "ultimate comeback"
+	},
+	{
+		"group": "challenge",
+		"path": "res/challenge-icons/wpmaster.gif",
+		"token": ":challenge/wpmaster:",
+		"label": "wpmaster"
+	},
+	{
+		"group": "friend",
+		"path": "res/friend-system/block.gif",
+		"token": ":friend/block:",
+		"label": "block"
+	},
+	{
+		"group": "friend",
+		"path": "res/friend-system/friends-list.gif",
+		"token": ":friend/friends-list:",
+		"label": "friends list"
+	},
+	{
+		"group": "friend",
+		"path": "res/friend-system/ping.gif",
+		"token": ":friend/ping:",
+		"label": "ping"
+	},
+	{
+		"group": "skribble",
+		"path": "res/skribble-icons/correct.gif",
+		"token": ":skribble/correct:",
+		"label": "correct"
+	},
+	{
+		"group": "skribble",
+		"path": "res/skribble-icons/incorrect.gif",
+		"token": ":skribble/incorrect:",
+		"label": "incorrect"
+	},
+	{
+		"group": "skribble",
+		"path": "res/skribble-icons/semicorrect.gif",
+		"token": ":skribble/semicorrect:",
+		"label": "semicorrect"
+	},
+	{
+		"group": "skribble",
+		"path": "res/skribble-icons/skribbl-coin.gif",
+		"token": ":skribble/skribbl-coin:",
+		"label": "skribbl coin"
+	},
+	{
+		"group": "slot",
+		"path": "res/skribbl-slots/slot-icons/7.gif",
+		"token": ":slot/7:",
+		"label": "7"
+	},
+	{
+		"group": "slot",
+		"path": "res/skribbl-slots/slot-icons/eraser.gif",
+		"token": ":slot/eraser:",
+		"label": "eraser"
+	},
+	{
+		"group": "slot",
+		"path": "res/skribbl-slots/slot-icons/heart.gif",
+		"token": ":slot/heart:",
+		"label": "heart"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/average-guess-time.gif",
+		"token": ":stat/average-guess-time:",
+		"label": "average guess time"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/average-guess-wpm.gif",
+		"token": ":stat/average-guess-wpm:",
+		"label": "average guess wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/average-typing-wpm.gif",
+		"token": ":stat/average-typing-wpm:",
+		"label": "average typing wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/best-guess-wpm.gif",
+		"token": ":stat/best-guess-wpm:",
+		"label": "best guess wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/best-private-score.gif",
+		"token": ":stat/best-private-score:",
+		"label": "best private score"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/best-public-score.gif",
+		"token": ":stat/best-public-score:",
+		"label": "best public score"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/best-typing-wpm.gif",
+		"token": ":stat/best-typing-wpm:",
+		"label": "best typing wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/distinct-lobbies.gif",
+		"token": ":stat/distinct-lobbies:",
+		"label": "distinct lobbies"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/duel-matches.gif",
+		"token": ":stat/duel-matches:",
+		"label": "duel matches"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/duel-win-rate.gif",
+		"token": ":stat/duel-win-rate:",
+		"label": "duel win rate"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/duel-win-streak.gif",
+		"token": ":stat/duel-win-streak:",
+		"label": "duel win streak"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/duel-wins.gif",
+		"token": ":stat/duel-wins:",
+		"label": "duel wins"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/guess-time-trend.gif",
+		"token": ":stat/guess-time-trend:",
+		"label": "guess time trend"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/guess-wpm-trend.gif",
+		"token": ":stat/guess-wpm-trend:",
+		"label": "guess wpm trend"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/guessed-word-coverage.gif",
+		"token": ":stat/guessed-word-coverage:",
+		"label": "guessed word coverage"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/lobby-sessions.gif",
+		"token": ":stat/lobby-sessions:",
+		"label": "lobby sessions"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/median-guess-time.gif",
+		"token": ":stat/median-guess-time:",
+		"label": "median guess time"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/median-guess-wpm.gif",
+		"token": ":stat/median-guess-wpm:",
+		"label": "median guess wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/median-typing-wpm.gif",
+		"token": ":stat/median-typing-wpm:",
+		"label": "median typing wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/p90-guess-wpm.gif",
+		"token": ":stat/p90-guess-wpm:",
+		"label": "p90 guess wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/p90-typing-wpm.gif",
+		"token": ":stat/p90-typing-wpm:",
+		"label": "p90 typing wpm"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/pin.gif",
+		"token": ":stat/pin:",
+		"label": "pin"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/seen-word-coverage.gif",
+		"token": ":stat/seen-word-coverage:",
+		"label": "seen word coverage"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/social-actions.gif",
+		"token": ":stat/social-actions:",
+		"label": "social actions"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/trash.gif",
+		"token": ":stat/trash:",
+		"label": "trash"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/typing-trend.gif",
+		"token": ":stat/typing-trend:",
+		"label": "typing trend"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/unique-users-seen.gif",
+		"token": ":stat/unique-users-seen:",
+		"label": "unique users seen"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/unique-words-guessed.gif",
+		"token": ":stat/unique-words-guessed:",
+		"label": "unique words guessed"
+	},
+	{
+		"group": "stat",
+		"path": "res/stat-icons/unique-words-seen.gif",
+		"token": ":stat/unique-words-seen:",
+		"label": "unique words seen"
+	}
+];
+var ADDITIONAL_SOCIAL_EMOJI_ASSETS = {};
+var progressionByPath = Object.fromEntries(Object.entries(PROGRESSION_ASSET_PATHS).map(([id, path]) => [path, EMBEDDED_PROGRESSION_ASSETS[id]]));
+var sources = {
+	...EMBEDDED_ICON_ASSETS,
+	...EMBEDDED_STAT_ICON_ASSETS,
+	...progressionByPath,
+	...ADDITIONAL_SOCIAL_EMOJI_ASSETS
+};
+var SOCIAL_EMOJIS = SOCIAL_EMOJI_DEFINITIONS.map((item) => ({
+	...item,
+	source: sources[item.path] ?? ""
+}));
+var byToken = new Map(SOCIAL_EMOJIS.map((item) => [item.token, item]));
+/** Only registered tokens create images; all remaining user text stays plain text. */
+function appendSocialMessage(target, text) {
+	const expression = /:(?:challenge|friend|skribble|slot|stat)\/[a-z0-9_-]+:/g;
+	let start = 0;
+	for (const match of text.matchAll(expression)) {
+		const item = byToken.get(match[0]);
+		if (!item?.source) continue;
+		target.appendChild(document.createTextNode(text.slice(start, match.index)));
+		const image = document.createElement("img");
+		image.className = "scd-social-emoji";
+		image.src = item.source;
+		image.alt = item.token;
+		image.title = item.label;
+		target.appendChild(image);
+		start = match.index + match[0].length;
+	}
+	target.appendChild(document.createTextNode(text.slice(start)));
+}
 var MESSAGE_STORAGE_PREFIX = "skribblDuelsFriendMessagesV1:";
 var UI_STORAGE_KEY = "skribblDuelsSocialUiV1";
 var EVENT_LIMIT = 100;
@@ -45188,14 +46026,18 @@ function loadUiPreferences() {
 			"top-right"
 		]);
 		return {
-			version: 1,
-			showHomepageList: typeof parsed?.showHomepageList === "boolean" ? parsed.showHomepageList : true,
+			version: 2,
+			showFriendsList: [
+				"always",
+				"homepage",
+				"never"
+			].includes(String(parsed?.showFriendsList)) ? parsed.showFriendsList : parsed?.showHomepageList === false ? "never" : "homepage",
 			homepageAnchor: anchors.has(String(parsed?.homepageAnchor)) ? parsed.homepageAnchor : "bottom-left"
 		};
 	} catch {
 		return {
-			version: 1,
-			showHomepageList: true,
+			version: 2,
+			showFriendsList: "homepage",
 			homepageAnchor: "bottom-left"
 		};
 	}
@@ -45229,17 +46071,45 @@ var SocialFeatureUi = class {
 	searchQuery = "";
 	matchInviteAcceptancePending = false;
 	optimisticAvailability = null;
+	activeConversationId = null;
+	conversationProfile = null;
+	activeProfileId = null;
+	profileRequestId = null;
+	profileCard = null;
+	historyRequests = /* @__PURE__ */ new Map();
+	historyPrependRequests = /* @__PURE__ */ new Set();
+	nextHistorySequence = null;
+	historyLoading = false;
+	activeHistoryRequestId = null;
+	conversationDrafts = /* @__PURE__ */ new Map();
+	readTimer = null;
+	presenceRequestId = null;
+	pendingPresenceFingerprint = "";
+	presenceSentAt = 0;
+	lastStatsFingerprint = "";
+	statsSentAt = 0;
+	optimisticPins = /* @__PURE__ */ new Map();
+	toastTimers = /* @__PURE__ */ new Map();
 	constructor(options) {
 		this.options = options;
 	}
 	start() {
 		this.ensureStyles();
+		window.addEventListener("keydown", this.messageKeydown, true);
 		this.loadMessages();
 		this.syncPresence();
 		this.presencePoll = window.setInterval(() => this.syncPresence(), 2e3);
 		this.renderHomepageList();
 	}
 	stop() {
+		window.removeEventListener("keydown", this.messageKeydown, true);
+		for (const [toast, timer] of this.toastTimers) {
+			window.clearTimeout(timer);
+			toast.remove();
+		}
+		this.toastTimers.clear();
+		if (this.readTimer !== null) window.clearTimeout(this.readTimer);
+		this.readTimer = null;
 		if (this.presencePoll !== null) window.clearInterval(this.presencePoll);
 		this.presencePoll = null;
 		this.closeAll();
@@ -45260,7 +46130,44 @@ var SocialFeatureUi = class {
 	handleGatewayUpdate(previous, next) {
 		if (previous.identity?.accountId !== next.identity?.accountId) {
 			this.optimisticAvailability = null;
+			this.optimisticPins.clear();
+			this.unread.clear();
+			this.handledEvents.clear();
+			this.historyRequests.clear();
+			this.lastStatsFingerprint = "";
+			this.presenceRequestId = null;
+			this.lastPresenceFingerprint = "";
+			this.conversationDrafts.clear();
+			this.historyPrependRequests.clear();
+			this.closeDetail();
 			this.loadMessages();
+		}
+		if (next.social?.requestId === this.presenceRequestId && this.presenceRequestId !== null) {
+			this.lastPresenceFingerprint = this.pendingPresenceFingerprint;
+			this.presenceRequestId = null;
+		}
+		if (next.friendInbox !== previous.friendInbox && next.friendInbox) {
+			this.unread = new Set(next.friendInbox.unread.filter((row) => row.count > 0 && row.accountId !== this.activeConversationId).map((row) => row.accountId));
+			this.renderHomepageList();
+			if (this.modal?.isConnected) this.renderModal();
+		}
+		if (next.friendChatHistory !== previous.friendChatHistory && next.friendChatHistory) {
+			const result = next.friendChatHistory;
+			if (this.historyRequests.get(result.requestId) === result.accountId) {
+				this.historyRequests.delete(result.requestId);
+				const prepended = this.historyPrependRequests.delete(result.requestId);
+				for (const message of result.messages) this.recordChatMessage(message);
+				if (this.activeConversationId === result.accountId && result.requestId === this.activeHistoryRequestId) {
+					this.nextHistorySequence = result.nextBeforeSequence;
+					this.historyLoading = false;
+					this.refreshConversationHistory(false, prepended);
+					this.scheduleConversationRead();
+				}
+			}
+		}
+		if (next.friendProfile !== previous.friendProfile && next.friendProfile?.requestId === this.profileRequestId) {
+			this.profileCard = next.friendProfile;
+			this.refreshProfileCard();
 		}
 		for (const event of next.socialEvents) {
 			if (this.handledEvents.has(event.eventId)) continue;
@@ -45269,9 +46176,28 @@ var SocialFeatureUi = class {
 		}
 		if (next.socialError && next.socialError.requestId !== previous.socialError?.requestId) {
 			this.optimisticAvailability = null;
+			if (next.socialError.requestId === this.presenceRequestId) {
+				this.presenceRequestId = null;
+				this.lastPresenceFingerprint = "";
+			}
+			if (next.socialError.requestId?.startsWith("social-profile-stats")) this.lastStatsFingerprint = "";
+			for (const [accountId, pin] of this.optimisticPins) if (pin.requestId === next.socialError.requestId) this.optimisticPins.delete(accountId);
+			const failed = this.messages.find((item) => item.direction === "outgoing" && (item.clientMessageId ?? item.id) === next.socialError.requestId && item.status === "pending");
+			if (failed) {
+				failed.status = "failed";
+				this.saveMessages();
+				this.refreshConversationHistory();
+			}
+			if (next.socialError.requestId && this.historyRequests.has(next.socialError.requestId)) {
+				this.historyRequests.delete(next.socialError.requestId);
+				this.historyPrependRequests.delete(next.socialError.requestId);
+				this.historyLoading = false;
+				this.refreshConversationHistory();
+			}
 			if (next.socialError.requestId === this.searchRequestId) this.searchRequestId = null;
 			this.refreshProfileControls();
 			this.options.showToast("Social action unavailable", next.socialError.message, 7e3);
+			this.renderHomepageList();
 			if (this.modal?.isConnected) this.renderModal();
 		}
 		if (next.socialError && next.socialError.requestId !== previous.socialError?.requestId || previous.match?.matchId !== next.match?.matchId) this.matchInviteAcceptancePending = false;
@@ -45284,14 +46210,28 @@ var SocialFeatureUi = class {
 		const friendSearchChanged = JSON.stringify(previous.friendSearch) !== JSON.stringify(next.friendSearch);
 		if (this.optimisticAvailability !== null && next.social?.preferences.availability === this.optimisticAvailability) this.optimisticAvailability = null;
 		if (socialChanged) {
+			for (const friend of next.social?.friends ?? []) if (this.optimisticPins.get(friend.accountId)?.pinned === friend.pinned) this.optimisticPins.delete(friend.accountId);
+			this.refreshConversationHeader();
+			this.refreshProfileCard();
 			this.renderHomepageList();
 			if (this.modal?.isConnected) this.renderModal();
 			this.refreshProfileControls();
 		}
 		if (friendSearchChanged && this.modal?.isConnected) this.renderModal();
+		if (previous.status !== next.status) {
+			this.refreshConversationHeader();
+			if (next.status !== "connected") {
+				for (const entry of this.messages) if (entry.direction === "outgoing" && entry.status === "pending") entry.status = "failed";
+				this.saveMessages();
+				this.refreshConversationHistory();
+			}
+		}
 		if (next.status === "connected" && previous.status !== "connected") {
 			this.lastPresenceFingerprint = "";
+			this.presenceRequestId = null;
+			this.lastStatsFingerprint = "";
 			this.syncPresence();
+			if (this.activeConversationId) this.requestConversationHistory();
 		}
 	}
 	decorateProfileAvatar(avatar) {
@@ -45302,6 +46242,7 @@ var SocialFeatureUi = class {
 		const presence = availability === "offline" ? "offline" : activeDuel ? "duel" : availability;
 		const badge = element$1("button", "scd-social-presence-badge");
 		badge.type = "button";
+		badge.dataset.scdOwnPresence = "true";
 		badge.appendChild(icon(presenceAsset({ presence }), presenceLabel({ presence })));
 		badge.addEventListener("click", () => this.openPresencePicker());
 		this.options.registerTooltip(badge, `Presence: ${presenceLabel({ presence })}\nClick to change your visible availability.`, "Y");
@@ -45352,6 +46293,7 @@ var SocialFeatureUi = class {
 		if (!snapshot || state.status !== "connected") {
 			card.appendChild(element$1("div", "scd-muted", "Connect the authenticated Gateway to manage Social settings."));
 			target.appendChild(card);
+			this.renderListSettings(target);
 			return;
 		}
 		const draft = { ...snapshot.preferences };
@@ -45396,24 +46338,51 @@ var SocialFeatureUi = class {
 			draft.receiveMatchInvites = value;
 			save();
 		}));
-		const homepage = element$1("div", "scd-card scd-stack");
-		homepage.appendChild(element$1("strong", "", "Homepage friends list"));
-		homepage.appendChild(this.checkbox("Show friends list on homepage", this.uiPreferences.showHomepageList, (value) => {
-			this.uiPreferences.showHomepageList = value;
+		target.appendChild(card);
+		this.renderListSettings(target);
+	}
+	renderListSettings(target) {
+		const card = element$1("div", "scd-card scd-stack");
+		card.appendChild(element$1("strong", "", "Friends list"));
+		const display = element$1("label", "scd-label");
+		const mode = element$1("select");
+		for (const [value, label] of [
+			["always", "Always"],
+			["homepage", "Homepage"],
+			["never", "Never"]
+		]) {
+			const option = element$1("option", "", label);
+			option.value = value;
+			option.selected = this.uiPreferences.showFriendsList === value;
+			mode.appendChild(option);
+		}
+		mode.addEventListener("change", () => {
+			this.uiPreferences.showFriendsList = mode.value;
 			this.saveUiPreferences();
 			this.renderHomepageList();
-		}));
-		homepage.appendChild(select("Position", this.uiPreferences.homepageAnchor, [
+		});
+		display.append(element$1("span", "", "Show friends list"), mode);
+		const position = element$1("label", "scd-label");
+		const anchor = element$1("select");
+		for (const value of [
 			"bottom-left",
 			"bottom-right",
 			"top-left",
 			"top-right"
-		], (value) => {
-			this.uiPreferences.homepageAnchor = value;
+		]) {
+			const option = element$1("option", "", value.replace("-", " "));
+			option.value = value;
+			option.selected = value === this.uiPreferences.homepageAnchor;
+			anchor.appendChild(option);
+		}
+		anchor.addEventListener("change", () => {
+			this.uiPreferences.homepageAnchor = anchor.value;
 			this.saveUiPreferences();
 			this.renderHomepageList();
-		}));
-		target.append(card, homepage);
+		});
+		position.append(element$1("span", "", "Position"), anchor);
+		card.append(display, position);
+		target.appendChild(card);
 	}
 	checkbox(labelText, checked, onChange) {
 		const label = element$1("label", "scd-label");
@@ -45429,7 +46398,7 @@ var SocialFeatureUi = class {
 		const activeDuel = Boolean(current.match && current.match.state.phase !== "finished" && current.match.state.phase !== "cancelled");
 		const availability = this.effectiveAvailability(current);
 		const presence = availability === "offline" ? "offline" : activeDuel ? "duel" : availability;
-		document.querySelectorAll(".scd-social-presence-badge").forEach((badge) => {
+		document.querySelectorAll(".scd-social-presence-badge[data-scd-own-presence=\"true\"]").forEach((badge) => {
 			badge.replaceChildren(icon(presenceAsset({ presence }), presenceLabel({ presence })));
 			this.options.registerTooltip(badge, `Presence: ${presenceLabel({ presence })}\nClick to change your visible availability.`, "Y");
 		});
@@ -45494,7 +46463,7 @@ var SocialFeatureUi = class {
 		else if (this.searchRequestId) body.appendChild(this.createSearchSkeleton());
 		const list = element$1("div", "scd-social-list");
 		if (friends.length === 0) list.appendChild(element$1("div", "scd-card scd-muted", "No friends yet. Search by Discord username to send a request."));
-		for (const friend of friends) list.appendChild(this.createFriendRow(friend, true));
+		for (const friend of this.sortedFriends(friends)) list.appendChild(this.createFriendRow(friend, true));
 		body.appendChild(list);
 	}
 	createSearchResult(profile, relationship, canUnblock) {
@@ -45556,7 +46525,7 @@ var SocialFeatureUi = class {
 		const row = element$1("div", `scd-social-row presence-${friend.presence}`);
 		row.appendChild(this.createIdentity(friend));
 		const actions = element$1("div", "scd-social-actions");
-		actions.appendChild(this.iconButton("friendPin", friend.pinned ? "Unpin friend" : "Pin friend", () => this.options.gateway.setFriendPinned(friend.accountId, !friend.pinned), friend.pinned ? "selected" : ""));
+		row.appendChild(this.createFriendPin(friend));
 		if (friend.presence === "online" || friend.presence === "idle") actions.appendChild(this.iconButton("friendDuelsLogo", "Invite to a Duel", () => this.openMatchInvitePicker(friend)));
 		actions.appendChild(this.iconButton("friendMessage", "Open Quick Messages", () => this.openMessages(friend), this.unread.has(friend.accountId) ? "unread" : ""));
 		if (friend.lobby) actions.appendChild(this.iconButton(friend.canJoinLobby ? "friendJoin" : "friendLocked", friend.canJoinLobby ? "Join public lobby" : "This friend disabled lobby joining", () => friend.canJoinLobby ? this.joinLobby(friend) : this.showLocked(friend)));
@@ -45564,15 +46533,20 @@ var SocialFeatureUi = class {
 		row.appendChild(actions);
 		return row;
 	}
-	createIdentity(profile) {
+	createIdentity(profile, showActivity = true, clickable = true) {
 		const identity = element$1("div", "scd-social-identity");
-		const avatarWrap = element$1("div", "scd-social-avatar-wrap");
+		const avatarWrap = element$1(clickable && profile.accountId !== this.options.getGatewayState().identity?.accountId ? "button" : "div", "scd-social-avatar-wrap");
+		if (avatarWrap instanceof HTMLButtonElement) {
+			avatarWrap.type = "button";
+			avatarWrap.addEventListener("click", () => this.openProfile(profile.accountId, profile));
+			this.options.registerTooltip(avatarWrap, `Open ${profile.displayName}'s profile`, "Y");
+		}
 		avatarWrap.append(this.options.createAvatar(profile, "scd-social-avatar"), icon(presenceAsset(profile), presenceLabel(profile), "scd-social-status-icon"));
 		const copy = element$1("div", "scd-social-copy");
 		const name = element$1("div", "scd-social-name");
 		appendColoredDuelName(name, profile.displayName, profile.nameColorIndex);
-		const lobby = profile.presence === "duel" ? "Active Duel" : profile.lobby ? `${profile.lobby.languageName} ${profile.lobby.lobbyType === "public" ? "Public" : "Private"} ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}` : profile.presence === "online" || profile.presence === "idle" ? "Viewing Homepage" : "Offline";
-		copy.append(name, element$1("div", "scd-muted scd-social-lobby", lobby));
+		copy.appendChild(name);
+		if (showActivity) copy.appendChild(element$1("div", "scd-muted scd-social-lobby", this.activityLabel(profile)));
 		if (profile.statusChallengeId || profile.statusText) {
 			const status = element$1("div", "scd-social-visible-status");
 			if (profile.statusChallengeId) status.appendChild(this.options.createStatusIcon(profile.statusChallengeId));
@@ -45627,40 +46601,298 @@ var SocialFeatureUi = class {
 		});
 	}
 	openMessages(friend) {
-		this.unread.delete(friend.accountId);
-		this.renderHomepageList();
-		this.openDetail(`Quick Messages \u00B7 ${friend.displayName}`, (body) => {
+		this.openDetail("", (body) => {
 			const history = element$1("div", "scd-social-message-history");
-			const entries = this.messages.filter((item) => item.accountId === friend.accountId);
-			if (entries.length === 0) history.appendChild(element$1("div", "scd-muted", "Messages are stored only in this browser and are delivered only while both friends are online."));
-			for (const message of entries) {
-				const row = element$1("div", `scd-social-message ${message.direction}`);
-				row.append(element$1("span", "scd-social-message-author", message.direction === "outgoing" ? "You" : friend.displayName), element$1("span", "", message.message));
-				history.appendChild(row);
-			}
+			history.setAttribute("role", "log");
+			history.setAttribute("aria-live", "polite");
+			const more = element$1("button", "scd-button scd-social-load-history", "Load older messages");
+			more.type = "button";
+			more.addEventListener("click", () => {
+				if (this.nextHistorySequence !== null) this.requestConversationHistory(this.nextHistorySequence);
+			});
 			const form = element$1("form", "scd-social-message-form");
 			const input = element$1("input");
 			input.type = "text";
 			input.maxLength = 300;
-			input.placeholder = friend.presence === "offline" ? "Friend is offline" : "Write a Quick Message\u2026";
-			input.disabled = friend.presence === "offline";
+			input.placeholder = "Write a message\u2026";
+			input.dataset.scdFriendMessageInput = "true";
+			input.value = this.conversationDrafts.get(friend.accountId) ?? "";
+			input.addEventListener("input", () => this.conversationDrafts.set(friend.accountId, input.value));
+			const picker = this.createEmojiPicker(input);
+			const emojis = this.iconButton("friendSlimy", "Choose a Skribbl emoji", () => {
+				picker.hidden = !picker.hidden;
+				emojis.setAttribute("aria-expanded", String(!picker.hidden));
+			}, "scd-social-emoji-toggle");
+			emojis.setAttribute("aria-expanded", "false");
 			const send = element$1("button", "scd-button primary", "Send");
 			send.type = "submit";
-			send.disabled = input.disabled;
 			form.addEventListener("submit", (event) => {
 				event.preventDefault();
+				event.stopPropagation();
 				const message = input.value.trim();
-				if (!message) return;
-				this.options.gateway.sendFriendMessage(friend.accountId, message);
+				if (!message || send.disabled) return;
+				const id = `friend-message-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+				this.recordMessage({
+					id,
+					clientMessageId: id,
+					accountId: friend.accountId,
+					direction: "outgoing",
+					message,
+					occurredAt: Date.now(),
+					status: "pending"
+				});
 				input.value = "";
+				this.conversationDrafts.delete(friend.accountId);
+				picker.hidden = true;
+				emojis.setAttribute("aria-expanded", "false");
+				this.refreshConversationHistory(true);
+				this.sendPendingMessage(id);
+				input.focus({ preventScroll: true });
 			});
-			form.append(input, send);
-			body.append(history, form);
-			queueMicrotask(() => {
-				history.scrollTop = history.scrollHeight;
-				input.focus();
-			});
+			form.append(input, emojis, send);
+			const retention = element$1("div", "scd-muted scd-social-chat-retention", "The latest 24 hours are synced between browsers; older messages may remain in this browser.");
+			body.append(more, history, form, picker, retention);
 		});
+		this.activeConversationId = friend.accountId;
+		this.conversationProfile = friend;
+		this.nextHistorySequence = null;
+		this.unread.delete(friend.accountId);
+		this.renderHomepageList();
+		if (this.modal?.isConnected) this.renderModal();
+		this.refreshConversationHeader();
+		this.refreshConversationHistory(true);
+		this.requestConversationHistory();
+		queueMicrotask(() => this.detailModal?.querySelector("[data-scd-friend-message-input]")?.focus());
+	}
+	messageKeydown = (event) => {
+		const input = event.target instanceof HTMLInputElement ? event.target : null;
+		if (!input?.matches("[data-scd-friend-message-input]") || !this.detailModal?.contains(input)) return;
+		event.stopPropagation();
+		if (event.key === "Enter" && !event.isComposing) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			input.form?.requestSubmit();
+		} else if (event.key === "Escape") {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			const picker = this.detailModal.querySelector(".scd-social-emoji-picker");
+			if (picker && !picker.hidden) {
+				picker.hidden = true;
+				this.detailModal.querySelector(".scd-social-emoji-toggle")?.setAttribute("aria-expanded", "false");
+			} else input.blur();
+		}
+	};
+	createEmojiPicker(input) {
+		const picker = element$1("div", "scd-social-emoji-picker");
+		picker.hidden = true;
+		picker.setAttribute("aria-label", "Skribbl emojis");
+		const grid = element$1("div", "scd-social-emoji-grid");
+		for (const emoji of SOCIAL_EMOJIS) {
+			if (!emoji.source) continue;
+			const button = element$1("button", "scd-icon-button scd-social-emoji-choice");
+			button.type = "button";
+			const image = element$1("img");
+			image.src = emoji.source;
+			image.alt = emoji.label;
+			button.appendChild(image);
+			button.addEventListener("click", () => {
+				const start = input.selectionStart ?? input.value.length;
+				const end = input.selectionEnd ?? start;
+				const value = input.value.slice(0, start) + emoji.token + input.value.slice(end);
+				if (Array.from(value).length > 300) {
+					this.options.showToast("Message too long", "A message can contain up to 300 characters.");
+					return;
+				}
+				input.value = value;
+				if (this.activeConversationId) this.conversationDrafts.set(this.activeConversationId, value);
+				picker.hidden = true;
+				this.detailModal?.querySelector(".scd-social-emoji-toggle")?.setAttribute("aria-expanded", "false");
+				input.focus({ preventScroll: true });
+				input.setSelectionRange(start + emoji.token.length, start + emoji.token.length);
+			});
+			this.options.registerTooltip(button, emoji.label, "Y");
+			grid.appendChild(button);
+		}
+		picker.appendChild(grid);
+		return picker;
+	}
+	sendPendingMessage(id) {
+		const entry = this.messages.find((item) => item.direction === "outgoing" && (item.clientMessageId ?? item.id) === id);
+		if (!entry) return;
+		entry.status = "pending";
+		this.refreshConversationHistory(true);
+		try {
+			this.options.gateway.sendFriendMessage(entry.accountId, entry.message, id);
+		} catch {
+			entry.status = "failed";
+			this.saveMessages();
+			this.refreshConversationHistory();
+			this.options.showToast("Message not sent", "Reconnect the Gateway, then retry your message.");
+		}
+	}
+	requestConversationHistory(beforeSequence = null) {
+		if (!this.activeConversationId) return;
+		try {
+			this.historyLoading = true;
+			const requestId = this.options.gateway.getFriendChatHistory(this.activeConversationId, beforeSequence);
+			this.activeHistoryRequestId = requestId;
+			this.historyRequests.set(requestId, this.activeConversationId);
+			if (beforeSequence !== null) this.historyPrependRequests.add(requestId);
+		} catch {
+			this.historyLoading = false;
+		}
+		this.refreshConversationHistory();
+	}
+	refreshConversationHeader() {
+		if (!this.activeConversationId || !this.detailModal) return;
+		const state = this.options.getGatewayState();
+		const friend = state.social?.friends.find((item) => item.accountId === this.activeConversationId) ?? this.conversationProfile;
+		if (!friend) return;
+		this.conversationProfile = friend;
+		this.detailModal.querySelector(".scd-modal-title")?.replaceChildren(this.createIdentity(friend, false));
+		const connectedFriend = state.status === "connected" && Boolean(state.social?.friends.some((item) => item.accountId === friend.accountId));
+		const input = this.detailModal.querySelector("[data-scd-friend-message-input]");
+		const send = this.detailModal.querySelector(".scd-social-message-form button[type=\"submit\"]");
+		if (input) {
+			input.disabled = !connectedFriend;
+			input.placeholder = connectedFriend ? "Write a message\u2026" : "Messaging unavailable";
+		}
+		if (send) send.disabled = !connectedFriend;
+	}
+	refreshConversationHistory(forceBottom = false, prepended = false) {
+		if (!this.detailModal || !this.activeConversationId) return;
+		const history = this.detailModal.querySelector(".scd-social-message-history");
+		if (!history) return;
+		const follow = forceBottom || !prepended && history.scrollHeight - history.scrollTop - history.clientHeight < 40;
+		const oldHeight = history.scrollHeight;
+		const oldTop = history.scrollTop;
+		history.replaceChildren();
+		const entries = this.messages.filter((item) => item.accountId === this.activeConversationId);
+		if (entries.length === 0) history.appendChild(element$1("div", "scd-muted", this.historyLoading ? "Loading messages\u2026" : "Start a conversation."));
+		for (const message of entries) {
+			const row = element$1("div", `scd-social-message ${message.direction}${message.status === "pending" ? " pending" : ""}${message.status === "failed" ? " failed" : ""}`);
+			row.dataset.messageId = message.clientMessageId ?? message.id;
+			const copy = element$1("span", "scd-social-message-text");
+			appendSocialMessage(copy, message.message);
+			row.append(element$1("span", "scd-social-message-author", message.direction === "outgoing" ? "You" : this.conversationProfile?.displayName ?? "Friend"), copy);
+			if (message.status === "pending") row.appendChild(element$1("span", "scd-muted scd-social-message-state", "Sending\u2026"));
+			if (message.status === "failed") {
+				const retry = element$1("button", "scd-button scd-social-message-retry", "Retry");
+				retry.type = "button";
+				retry.addEventListener("click", () => this.sendPendingMessage(message.clientMessageId ?? message.id));
+				row.appendChild(retry);
+			}
+			history.appendChild(row);
+		}
+		const more = this.detailModal.querySelector(".scd-social-load-history");
+		if (more) {
+			more.hidden = this.nextHistorySequence === null;
+			more.disabled = this.historyLoading;
+		}
+		history.scrollTop = follow ? history.scrollHeight : oldTop + (prepended ? Math.max(0, history.scrollHeight - oldHeight) : 0);
+	}
+	scheduleConversationRead() {
+		if (!this.activeConversationId) return;
+		this.unread.delete(this.activeConversationId);
+		if (this.readTimer !== null) window.clearTimeout(this.readTimer);
+		this.readTimer = window.setTimeout(() => {
+			this.readTimer = null;
+			const friendId = this.activeConversationId;
+			if (!friendId) return;
+			const through = Math.max(0, ...this.messages.filter((item) => item.accountId === friendId && item.direction === "incoming").map((item) => item.sequence ?? 0));
+			if (through > 0) try {
+				this.options.gateway.markFriendChatRead(friendId, through);
+			} catch {}
+		}, 250);
+	}
+	openProfile(accountId, preview) {
+		if (accountId === this.options.getGatewayState().identity?.accountId) return;
+		this.openDetail("Player profile", (body) => {
+			if (preview) body.appendChild(this.createIdentity(preview, false, false));
+			else body.appendChild(this.createSearchSkeleton());
+		});
+		this.activeProfileId = accountId;
+		try {
+			this.profileRequestId = this.options.gateway.getFriendProfile(accountId);
+		} catch {
+			this.options.showToast("Profile unavailable", "Reconnect the Gateway to view this profile.");
+		}
+	}
+	refreshProfileCard() {
+		if (!this.activeProfileId || !this.detailModal || !this.profileCard) return;
+		const body = this.detailModal.querySelector(".scd-social-detail-body");
+		if (!body) return;
+		body.replaceChildren();
+		const profile = this.profileCard.profile;
+		if (!profile) {
+			body.appendChild(element$1("div", "scd-muted", "This profile is unavailable."));
+			return;
+		}
+		const latest = this.options.getGatewayState().social?.friends.find((item) => item.accountId === profile.accountId) ?? profile;
+		const card = element$1("div", "scd-social-profile-card");
+		const identity = this.createIdentity(latest, false, false);
+		card.appendChild(identity);
+		const stats = element$1("div", "scd-social-profile-stats");
+		const pinned = this.profileCard.pinnedStats.length === 2 ? this.profileCard.pinnedStats : DEFAULT_PINNED_PROFILE_STAT_IDS.map((id) => ({
+			id,
+			value: this.profileCard.pinnedStats.find((item) => item.id === id)?.value ?? "\u2014"
+		}));
+		for (const stat of pinned) {
+			if (!isProfileStatId(stat.id)) continue;
+			const definition = PROFILE_STAT_DEFINITION_BY_ID[stat.id];
+			const statCard = element$1("div", "scd-profile-stat scd-social-public-stat");
+			const image = element$1("img", "scd-social-stat-icon");
+			image.src = EMBEDDED_STAT_ICON_ASSETS[STAT_ICON_ASSET_PATHS[stat.id]] ?? "";
+			image.alt = definition.label;
+			const pin = icon("friendPin", "Pinned statistic", "scd-profile-pin-icon scd-icon");
+			statCard.append(pin, image, element$1("span", "scd-profile-stat-label", definition.label), element$1("span", "scd-profile-stat-value", stat.value));
+			this.options.registerTooltip(statCard, definition.description, "Y");
+			stats.appendChild(statCard);
+		}
+		const friend = this.profileCard.relationship === "friend";
+		const action = this.iconButton(friend ? "friendList" : "friendAdd", friend ? "Already friends" : "Send friend request", () => {
+			if (friend) {
+				this.closeDetail();
+				this.openFriends();
+			} else {
+				this.options.gateway.sendFriendRequest(profile.accountId);
+				action.disabled = true;
+			}
+		}, "scd-social-profile-friend-action");
+		action.disabled = !friend && this.profileCard.relationship !== "none";
+		if (action.disabled) this.options.registerTooltip(action, this.profileCard.relationship === "blocked" ? "Friend requests unavailable" : "Friend request pending", "Y");
+		card.append(action, stats);
+		body.appendChild(card);
+	}
+	activityLabel(profile) {
+		if (profile.presence === "duel") return "Active Duel";
+		if (profile.presence === "offline") return "Offline";
+		if (profile.lobby) return `${profile.lobby.languageName} ${profile.lobby.lobbyType === "public" ? "Public" : "Private"} ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}`;
+		return profile.activity === "lobby" ? "Playing Skribbl" : profile.activity === "home" ? "Viewing Homepage" : presenceLabel(profile);
+	}
+	sortedFriends(friends) {
+		return friends.map((friend) => ({
+			...friend,
+			pinned: this.optimisticPins.get(friend.accountId)?.pinned ?? friend.pinned
+		})).sort(compareSocialFriends);
+	}
+	createFriendPin(friend) {
+		return this.iconButton("friendPin", friend.pinned ? "Unpin friend" : "Pin friend", () => {
+			const update = {
+				pinned: !friend.pinned,
+				requestId: null
+			};
+			this.optimisticPins.set(friend.accountId, update);
+			this.renderHomepageList();
+			if (this.modal?.isConnected) this.renderModal();
+			try {
+				update.requestId = this.options.gateway.setFriendPinned(friend.accountId, update.pinned);
+			} catch {
+				this.optimisticPins.delete(friend.accountId);
+				this.renderHomepageList();
+				if (this.modal?.isConnected) this.renderModal();
+			}
+		}, `scd-social-pin${friend.pinned ? " pinned" : ""}`);
 	}
 	openMatchInvitePicker(friend) {
 		this.openDetail(`Invite ${friend.displayName}`, (body) => {
@@ -45724,6 +46956,13 @@ var SocialFeatureUi = class {
 		this.options.onModalVisibilityChanged();
 	}
 	closeDetail() {
+		if (this.readTimer !== null) window.clearTimeout(this.readTimer);
+		this.readTimer = null;
+		this.activeConversationId = null;
+		this.conversationProfile = null;
+		this.activeProfileId = null;
+		this.profileRequestId = null;
+		this.profileCard = null;
 		this.detailModal?.remove();
 		this.detailModal = null;
 		this.options.onModalVisibilityChanged();
@@ -45738,28 +46977,30 @@ var SocialFeatureUi = class {
 		this.closeFriends();
 	}
 	handleSocialEvent(event) {
-		if (event.kind === "friend-message-received" && event.message && event.clientMessageId) {
-			this.recordMessage({
+		if ((event.kind === "friend-message-received" || event.kind === "friend-message-sent") && event.message && event.clientMessageId) {
+			const direction = event.kind === "friend-message-received" ? "incoming" : "outgoing";
+			const fresh = event.chatMessage ? this.recordChatMessage(event.chatMessage) : this.recordMessage({
 				id: event.clientMessageId,
+				clientMessageId: event.clientMessageId,
 				accountId: event.profile.accountId,
-				direction: "incoming",
+				direction,
 				message: event.message,
-				occurredAt: event.occurredAt
+				occurredAt: event.occurredAt,
+				status: "sent"
 			});
-			this.unread.add(event.profile.accountId);
-			this.actionToast(`${event.profile.displayName} sent a message`, event.message, event.profile, [{
-				label: "Reply",
-				action: () => this.openMessages(event.profile),
-				primary: true
-			}]);
-		} else if (event.kind === "friend-message-sent" && event.message && event.clientMessageId) this.recordMessage({
-			id: event.clientMessageId,
-			accountId: event.profile.accountId,
-			direction: "outgoing",
-			message: event.message,
-			occurredAt: event.occurredAt
-		});
-		else if (event.kind === "friend-request-received" && event.friendRequestId) this.actionToast("Friend request", `${event.profile.displayName} sent you a friend request.`, event.profile, [
+			if (direction === "incoming" && fresh && this.activeConversationId !== event.profile.accountId) {
+				this.unread.add(event.profile.accountId);
+				this.actionToast(`${event.profile.displayName} sent a message`, event.message, event.profile, [{
+					label: "Reply",
+					action: () => this.openMessages(event.profile),
+					primary: true
+				}]);
+			}
+			if (this.activeConversationId === event.profile.accountId) {
+				this.refreshConversationHistory(direction === "outgoing");
+				this.scheduleConversationRead();
+			}
+		} else if (event.kind === "friend-request-received" && event.friendRequestId) this.actionToast("Friend request", `${event.profile.displayName} sent you a friend request.`, event.profile, [
 			{
 				label: "Accept",
 				action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId, "accept"),
@@ -45805,13 +47046,19 @@ var SocialFeatureUi = class {
 		const toast = element$1("div", "typo-toast scd-duel-toast scd-social-toast");
 		toast.dataset.scdRuntimeId = this.options.runtimeId;
 		const closeToast = () => {
+			if (!toast.isConnected || toast.classList.contains("closing")) return;
+			const timer = this.toastTimers.get(toast);
+			if (timer !== void 0) window.clearTimeout(timer);
+			this.toastTimers.delete(toast);
 			toast.classList.add("closing");
 			window.setTimeout(() => toast.remove(), 150);
 		};
 		const close = element$1("span", "close-toast", "\u00D7");
 		close.addEventListener("click", closeToast);
 		const identity = element$1("div", "scd-toast-profile");
-		identity.append(this.options.createAvatar(profile, "scd-toast-avatar"), element$1("strong", "", titleText));
+		const avatar = this.createIdentity(profile, false);
+		avatar.querySelector(".scd-social-copy")?.remove();
+		identity.append(avatar, element$1("strong", "", titleText));
 		const buttons = element$1("div", "typo-toast-confirm");
 		for (const item of actions) {
 			const button = element$1("button", `scd-button${item.primary ? " primary" : ""}`, item.label);
@@ -45822,14 +47069,17 @@ var SocialFeatureUi = class {
 			});
 			buttons.appendChild(button);
 		}
-		toast.append(identity, close, element$1("span", "", message), buttons);
+		const copy = element$1("span");
+		appendSocialMessage(copy, message);
+		toast.append(identity, close, copy, buttons);
 		container.appendChild(toast);
+		this.toastTimers.set(toast, window.setTimeout(closeToast, 3500));
 	}
 	renderHomepageList() {
 		this.homepageList?.remove();
 		this.homepageList = null;
 		const state = this.options.getGatewayState();
-		if (!this.uiPreferences.showHomepageList || !this.options.isHomepageVisible() || state.status !== "connected" || !state.social) return;
+		if (this.uiPreferences.showFriendsList === "never" || this.uiPreferences.showFriendsList === "homepage" && !this.options.isHomepageVisible() || state.status !== "connected" || !state.social) return;
 		const panel = element$1("aside", `scd-home-friends ${this.uiPreferences.homepageAnchor}`);
 		panel.dataset.scdRuntimeId = this.options.runtimeId;
 		const header = element$1("button", "scd-home-friends-header");
@@ -45839,9 +47089,9 @@ var SocialFeatureUi = class {
 		this.options.registerTooltip(header, "Open friends list", "Y");
 		const list = element$1("div", "scd-home-friends-list");
 		if (state.social.friends.length === 0) list.appendChild(element$1("div", "scd-muted scd-home-friends-empty", "No friends yet"));
-		for (const friend of state.social.friends) {
+		for (const friend of this.sortedFriends(state.social.friends)) {
 			const row = element$1("div", `scd-home-friend presence-${friend.presence}`);
-			row.appendChild(this.createIdentity(friend));
+			row.append(this.createFriendPin(friend), this.createIdentity(friend));
 			const actions = element$1("div", "scd-home-friend-actions");
 			if (friend.presence === "online" || friend.presence === "idle") actions.appendChild(this.iconButton("friendDuelsLogo", "Invite to a Duel", () => this.openMatchInvitePicker(friend)));
 			actions.appendChild(this.iconButton("friendMessage", "Open Quick Messages", () => this.openMessages(friend), this.unread.has(friend.accountId) ? "unread" : ""));
@@ -45877,33 +47127,59 @@ var SocialFeatureUi = class {
 			if (homepageVisibilityChanged || this.homepageList) this.renderHomepageList();
 			return;
 		}
-		const lobby = this.options.getLobbySnapshot();
-		const page = lobby.hydrated && lobby.lobbyId ? "lobby" : "home";
-		const socialLobby = page === "lobby" ? {
-			lobbyId: lobby.lobbyId,
-			lobbyType: lobby.lobbyType === 0 ? "public" : "private",
-			languageName: lobby.languageName ?? "Unknown language",
-			playerCount: Math.max(0, lobby.playerCount),
-			maxPlayers: Math.max(1, Math.min(32, lobby.maxPlayers ?? 8))
-		} : null;
+		const report = socialPresenceReport(this.options.getLobbySnapshot());
 		const fingerprint = JSON.stringify([
 			state.connectionId,
-			page,
-			socialLobby
+			report.page,
+			report.lobby
 		]);
-		if (fingerprint !== this.lastPresenceFingerprint) {
-			this.lastPresenceFingerprint = fingerprint;
-			try {
-				this.options.gateway.setSocialPresence(page, socialLobby);
+		if (this.presenceRequestId !== null && Date.now() - this.presenceSentAt >= 1e4) {
+			this.presenceRequestId = null;
+			this.lastPresenceFingerprint = "";
+		}
+		if (fingerprint !== this.lastPresenceFingerprint && this.presenceRequestId === null) try {
+			this.presenceRequestId = this.options.gateway.setSocialPresence(report.page, report.lobby);
+			this.pendingPresenceFingerprint = fingerprint;
+			this.presenceSentAt = Date.now();
+		} catch (error) {
+			console.warn("[Skribbl Duels Social] Presence report deferred", error instanceof Error ? error.message : String(error));
+		}
+		const stats = this.options.getPinnedStats?.();
+		if (stats) {
+			const statsFingerprint = JSON.stringify([state.identity?.accountId, stats]);
+			if (statsFingerprint !== this.lastStatsFingerprint && Date.now() - this.statsSentAt >= 15e3) try {
+				this.options.gateway.setSocialPinnedStats(stats);
+				this.lastStatsFingerprint = statsFingerprint;
+				this.statsSentAt = Date.now();
 			} catch {}
 		}
 		if (homepageVisibilityChanged) this.renderHomepageList();
 	}
 	recordMessage(message) {
-		if (this.messages.some((item) => item.id === message.id)) return;
-		this.messages.push(message);
-		this.messages = this.messages.slice(-500);
+		const index = this.messages.findIndex((item) => item.accountId === message.accountId && item.direction === message.direction && ((item.clientMessageId ?? item.id) === (message.clientMessageId ?? message.id) || item.id === message.id));
+		const fresh = index < 0;
+		if (index >= 0) this.messages[index] = {
+			...this.messages[index],
+			...message
+		};
+		else this.messages.push(message);
+		this.messages.sort((a, b) => a.occurredAt - b.occurredAt || (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER));
 		this.saveMessages();
+		return fresh;
+	}
+	recordChatMessage(message) {
+		const self = this.options.getGatewayState().identity?.accountId;
+		if (!self || message.senderId !== self && message.recipientId !== self) return false;
+		return this.recordMessage({
+			id: message.messageId,
+			clientMessageId: message.clientMessageId,
+			sequence: message.sequence,
+			accountId: message.senderId === self ? message.recipientId : message.senderId,
+			direction: message.senderId === self ? "outgoing" : "incoming",
+			message: message.message,
+			occurredAt: message.occurredAt,
+			status: "sent"
+		});
 	}
 	loadMessages() {
 		this.messages = [];
@@ -45911,14 +47187,17 @@ var SocialFeatureUi = class {
 		if (!accountId) return;
 		try {
 			const parsed = JSON.parse(localStorage.getItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`) ?? "[]");
-			this.messages = Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.id === "string" && typeof item.accountId === "string" && (item.direction === "incoming" || item.direction === "outgoing") && typeof item.message === "string" && Number.isFinite(item.occurredAt)).slice(-500) : [];
+			this.messages = Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.id === "string" && typeof item.accountId === "string" && (item.direction === "incoming" || item.direction === "outgoing") && typeof item.message === "string" && Number.isFinite(item.occurredAt)).slice(-1e3).map((item) => item.status === "pending" ? {
+				...item,
+				status: "failed"
+			} : item) : [];
 		} catch {}
 	}
 	saveMessages() {
 		const accountId = this.options.getGatewayState().identity?.accountId;
 		if (!accountId) return;
 		try {
-			localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages));
+			localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages.slice(-1e3)));
 		} catch {}
 	}
 	effectiveAvailability(state = this.options.getGatewayState()) {
@@ -45946,6 +47225,17 @@ var SocialFeatureUi = class {
 .scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message{align-self:flex-start;max-width:85%;display:flex;flex-direction:column;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
 .scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow:auto}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
 .scd-social-locked-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 22px rgba(255,255,255,.45))}@keyframes scd-social-lock-glow{0%{opacity:0;transform:scale(.75)}18%,72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
+.scd-social-avatar-wrap{border:0;padding:0;background:transparent;color:inherit;cursor:pointer;overflow:visible}.scd-social-avatar-wrap>.scd-social-avatar{pointer-events:none}
+.scd-social-row,.scd-home-friend{position:relative;padding-right:24px}.scd-social-list{padding:8px 5px 2px}.scd-home-friends-list{padding:8px 5px 2px}.scd-home-friend{border-radius:7px;margin-bottom:6px}
+.scd-social-pin{position:absolute!important;right:-5px;top:-7px;width:22px!important;height:22px!important;padding:0!important;z-index:3;opacity:.6;background:transparent!important;transition:opacity .18s ease,transform .18s ease;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.35))}.scd-social-pin.pinned{opacity:1}.scd-social-pin:hover{transform:translateY(-1px)}.scd-social-pin .scd-icon{width:22px!important;height:22px!important}
+.scd-social-detail-header .scd-modal-title{min-width:0}.scd-social-detail-header .scd-social-identity{width:100%}.scd-social-detail-header .scd-social-status-text{max-width:360px}
+.scd-social-detail-body{position:relative}.scd-social-message-form{grid-template-columns:minmax(0,1fr) 36px auto;align-items:center}.scd-social-message-form .scd-social-emoji-toggle{width:36px;height:36px}
+.scd-social-emoji-picker{position:absolute;left:12px;right:12px;bottom:62px;z-index:5;padding:10px;border-radius:9px;background:var(--COLOR_PANEL_BG);box-shadow:0 5px 20px rgba(0,0,0,.3);max-height:240px;overflow:auto}.scd-social-emoji-picker[hidden],.scd-social-load-history[hidden]{display:none!important}
+.scd-social-emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:5px}.scd-social-emoji-choice{display:grid;place-items:center;width:38px;height:38px;padding:3px}.scd-social-emoji-choice img{width:32px;height:32px;object-fit:contain;transition:transform .15s}.scd-social-emoji-choice:hover img{transform:scale(1.1)}.scd-social-emoji{display:inline-block;width:26px;height:26px;object-fit:contain;vertical-align:middle;margin:0 2px}
+.scd-social-message.pending{opacity:.65}.scd-social-message.failed{outline:1px solid #de523d}.scd-social-message-state{font-size:10px}.scd-social-message-retry{padding:3px 8px;font-size:11px}.scd-social-load-history{width:100%;margin-bottom:8px}.scd-social-chat-retention{font-size:10px;margin-top:6px}
+.scd-social-profile-card{position:relative;display:flex;flex-direction:column;gap:18px;padding:12px 7px}.scd-social-profile-card>.scd-social-identity{padding-right:45px}.scd-social-profile-card .scd-social-avatar-wrap,.scd-social-profile-card .scd-social-avatar{width:82px!important;height:82px!important}.scd-social-profile-card .scd-social-status-icon{width:30px;height:30px;right:-4px;bottom:-4px}.scd-social-profile-card .scd-social-status-icon[aria-label='Online']{width:39px}.scd-social-profile-card .scd-social-name{font-size:20px}.scd-social-profile-card .scd-social-status-text{font-size:13px;max-width:350px}
+.scd-social-profile-friend-action{position:absolute;right:3px;top:12px}.scd-social-profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:4px 5px}.scd-social-public-stat{position:relative;min-width:0;overflow:visible}.scd-social-stat-icon{grid-row:1/3;width:32px;height:32px;object-fit:contain}.scd-social-public-stat .scd-profile-pin-icon .scd-icon-image{width:100%;height:100%;object-fit:contain}
+
 @media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:minmax(0,1fr) 34px}}
 `;
 		document.head.appendChild(style);
@@ -46360,6 +47650,8 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
 .scd-settings-tabs { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px; }
 .scd-settings-tabs .scd-tab { font-weight:800; }
+.scd-settings-tabs .scd-tab.active { background:#53e237; }
+.scd-settings-tabs .scd-tab.active:hover:not(:disabled) { background:#38c41c; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
 .scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
@@ -47076,6 +48368,10 @@ var DuelProductFoundation = class {
 			gateway: this.gatewayClient,
 			getGatewayState: () => this.gatewayState,
 			getLobbySnapshot: () => options.getSocialLobbySnapshot(),
+			getPinnedStats: () => this.profileUiPreferences.mainStatIds.slice(0, 2).map((id) => ({
+				id,
+				value: PROFILE_STAT_DEFINITION_BY_ID[id].value(this.localStatsSnapshot)
+			})),
 			isHomepageVisible: () => this.isHomepageDomVisible(),
 			createAvatar: (profile, className) => this.createParticipantAvatar(profile.displayName, {
 				avatarSource: profile.avatarSource,
@@ -47216,9 +48512,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.69.1",
+			version: "0.70.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 16,
+			gatewayContractVersion: 17,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -47367,7 +48663,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.69.1") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.70.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -48016,6 +49312,20 @@ var DuelProductFoundation = class {
 	}
 	createParticipantAvatar(displayName, participant, className = "scd-result-avatar") {
 		const avatar = element("div", `avatar fit scd-avatar-fallback ${className}`, displayName.slice(0, 1).toUpperCase());
+		if (participant?.accountId && participant.accountId !== this.gatewayState.identity?.accountId) {
+			const accountId = participant.accountId;
+			avatar.setAttribute("role", "button");
+			avatar.tabIndex = 0;
+			avatar.style.cursor = "pointer";
+			avatar.addEventListener("click", () => this.socialUi.openProfile(accountId));
+			avatar.addEventListener("keydown", (event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					this.socialUi.openProfile(accountId);
+				}
+			});
+			this.tooltips.register(avatar, `Open ${displayName}'s profile`, "Y");
+		}
 		const avatarUrl = participant?.avatarSource === "discord" ? participant.avatarUrl : null;
 		if (avatarUrl) {
 			avatar.classList.remove("scd-avatar-fallback");
@@ -49825,7 +51135,7 @@ var DuelProductFoundation = class {
 		const layout = element("div", "scd-about-layout");
 		const copy = element("div", "scd-about-copy");
 		const connection = element("div", "scd-card");
-		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v16`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
+		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v17`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		copy.append(connection, freeze);
@@ -51206,7 +52516,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.69.1";
+var BUILD_VERSION = "0.70.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
@@ -51639,12 +52949,16 @@ async function bootstrap(runtime, authClient) {
 		getSocialLobbySnapshot() {
 			const lobby = lobbyStore.getSnapshot();
 			const configuredMaxPlayers = lobby.settings[1];
+			const game = document.querySelector("#game");
+			const active = game ? game.getClientRects().length > 0 && getComputedStyle(game).display !== "none" : lobby.hydrated;
+			const observedPlayers = !lobby.hydrated ? document.querySelectorAll("#game-players .player").length : lobby.userOrder.length;
 			return {
 				hydrated: lobby.hydrated,
+				active,
 				lobbyId: lobby.lobbyId,
 				lobbyType: lobby.lobbyType,
 				languageName: lobby.languageName,
-				playerCount: lobby.userOrder.length,
+				playerCount: observedPlayers,
 				maxPlayers: typeof configuredMaxPlayers === "number" && Number.isInteger(configuredMaxPlayers) ? configuredMaxPlayers : null
 			};
 		},

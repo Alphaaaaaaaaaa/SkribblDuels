@@ -6,7 +6,7 @@ import {
   type GatewaySocialProfile
 } from '@skribbl-duels/gateway-contracts';
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 16);
+assert.equal(GATEWAY_CONTRACT_VERSION, 17);
 
 const preferences = {
   availability: 'online',
@@ -58,7 +58,7 @@ for (const message of [
   { type: 'FRIEND_MATCH_INVITE_SEND', requestId: 'match-invite-1', accountId: profile.accountId, format: 'ranked' },
   { type: 'FRIEND_MATCH_INVITE_RESPOND', requestId: 'match-response-1', inviteId: 'invite-1', accept: true }
 ] as const) {
-  assert.equal(isGatewayClientMessage(message), true, `${message.type} should satisfy Contract v16.`);
+  assert.equal(isGatewayClientMessage(message), true, `${message.type} should satisfy Contract v17.`);
 }
 
 assert.equal(isGatewayClientMessage({
@@ -101,6 +101,6 @@ assert.equal(isGatewayServerMessage({
 
 assert.equal(isGatewayServerMessage({
   type: 'FRIEND_SEARCH_RESULT', requestId: 'search-missing-unblock', profile, relationship: 'blocked'
-}), false, 'Contract v16 requires an explicit privacy-safe unblock capability flag.');
+}), false, 'Contract v17 requires an explicit privacy-safe unblock capability flag.');
 
-console.log('Gateway Contract v16 Social message guards passed.');
+console.log('Gateway Contract v17 Social message guards passed.');

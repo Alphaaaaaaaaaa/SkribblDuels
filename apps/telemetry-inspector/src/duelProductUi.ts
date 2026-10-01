@@ -110,6 +110,7 @@ interface ProductFoundationOptions {
   getLobbyAuthoritySnapshot(): HomepageAuthorityLobbySnapshot;
   getSocialLobbySnapshot(): {
     hydrated: boolean;
+    active?: boolean;
     lobbyId: string | null;
     lobbyType: number | null;
     languageName: string | null;
@@ -746,6 +747,8 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
 .scd-settings-tabs { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px; }
 .scd-settings-tabs .scd-tab { font-weight:800; }
+.scd-settings-tabs .scd-tab.active { background:#53e237; }
+.scd-settings-tabs .scd-tab.active:hover:not(:disabled) { background:#38c41c; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
 .scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
@@ -1491,6 +1494,9 @@ export class DuelProductFoundation {
       gateway: this.gatewayClient,
       getGatewayState: () => this.gatewayState,
       getLobbySnapshot: () => options.getSocialLobbySnapshot(),
+      getPinnedStats: () => this.profileUiPreferences.mainStatIds.slice(0, 2).map(id => ({
+        id, value: PROFILE_STAT_DEFINITION_BY_ID[id].value(this.localStatsSnapshot)
+      })),
       isHomepageVisible: () => this.isHomepageDomVisible(),
       createAvatar: (profile: GatewaySocialProfile, className: string) =>
         this.createParticipantAvatar(profile.displayName, {
@@ -1672,7 +1678,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.69.1',
+      version: '0.70.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1833,7 +1839,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.69.1') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.70.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2593,7 +2599,7 @@ export class DuelProductFoundation {
 
   private createParticipantAvatar(
     displayName: string,
-    participant: Pick<GatewayMatchmakingParticipant, 'avatarSource' | 'avatarUrl' | 'skribblAvatar'> | null,
+    participant: (Pick<GatewayMatchmakingParticipant, 'avatarSource' | 'avatarUrl' | 'skribblAvatar'> & { accountId?: string }) | null,
     className = 'scd-result-avatar'
   ): HTMLDivElement {
     const avatar = element(
@@ -2601,6 +2607,12 @@ export class DuelProductFoundation {
       `avatar fit scd-avatar-fallback ${className}`,
       displayName.slice(0, 1).toUpperCase()
     );
+    if (participant?.accountId && participant.accountId !== this.gatewayState.identity?.accountId) {
+      const accountId = participant.accountId; avatar.setAttribute('role', 'button'); avatar.tabIndex = 0; avatar.style.cursor = 'pointer';
+      avatar.addEventListener('click', () => this.socialUi.openProfile(accountId));
+      avatar.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.socialUi.openProfile(accountId); } });
+      this.tooltips.register(avatar, `Open ${displayName}'s profile`, 'Y');
+    }
     const avatarUrl = participant?.avatarSource === 'discord' ? participant.avatarUrl : null;
     if (avatarUrl) {
       avatar.classList.remove('scd-avatar-fallback');

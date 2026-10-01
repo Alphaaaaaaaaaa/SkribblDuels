@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { compareSocialFriends } from '@skribbl-duels/gateway-contracts';
 import { STARTER_CHALLENGE_IDS } from '@skribbl-duels/challenge-definitions';
 import type {
   GatewayClientIdentity,
@@ -47,6 +48,7 @@ type SocialCommand = Extract<GatewayClientMessage, { type:
   | 'SOCIAL_SYNC' | 'SOCIAL_PREFERENCES_SET' | 'SOCIAL_PROFILE_STATUS_SET' | 'SOCIAL_PRESENCE_SET'
   | 'FRIEND_SEARCH' | 'FRIEND_REQUEST_SEND' | 'FRIEND_REQUEST_RESPOND' | 'FRIEND_REQUEST_WITHDRAW'
   | 'FRIEND_UNBLOCK' | 'FRIEND_REMOVE' | 'FRIEND_PIN_SET' | 'FRIEND_MESSAGE_SEND'
+  | 'SOCIAL_PROFILE_STATS_SET' | 'FRIEND_PROFILE_GET' | 'FRIEND_CHAT_HISTORY_GET' | 'FRIEND_CHAT_READ'
 }>;
 
 const SOCIAL_STATUS_CHALLENGE_IDS = new Set<string>(STARTER_CHALLENGE_IDS);
@@ -62,15 +64,23 @@ function commandRequestId(message: SocialCommand): string {
 export class GatewaySocialService {
   private readonly live = new Map<string, LiveSocialPresence>();
   private readonly lastSeen = new Map<string, number>();
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private lastPurgeAt = 0;
   private readonly pendingMatchInvites = new Map<string, PendingFriendMatchInvite>();
 
   public constructor(private readonly options: GatewaySocialServiceOptions) {}
 
   public async connected(identity: GatewayClientIdentity): Promise<void> {
     const now = Date.now();
+    if (this.maintenanceTimer === null) {
+      this.maintenanceTimer = setInterval(() => { void this.purgeExpiredMessages(); }, 5 * 60_000);
+      this.maintenanceTimer.unref();
+    }
+    await this.purgeExpiredMessages();
     this.live.set(identity.accountId, { identity: structuredClone(identity), page: 'home', lobby: null, connectedAt: now, updatedAt: now });
     this.lastSeen.set(identity.accountId, now);
     await this.publishSnapshot(identity.accountId, null);
+    await this.publishInbox(identity.accountId, null);
     await this.publishToFriends(identity.accountId);
   }
 
@@ -81,6 +91,8 @@ export class GatewaySocialService {
   }
 
   public clear(): void {
+    if (this.maintenanceTimer !== null) clearInterval(this.maintenanceTimer);
+    this.maintenanceTimer = null;
     this.live.clear();
     this.pendingMatchInvites.clear();
   }
@@ -93,6 +105,21 @@ export class GatewaySocialService {
     try {
       if (message.type === 'SOCIAL_SYNC') {
         await this.publishSnapshot(accountId, message.requestId);
+        await this.publishInbox(accountId, message.requestId);
+      } else if (message.type === 'SOCIAL_PROFILE_STATS_SET') {
+        await this.options.persistence.setPinnedStats(accountId, message.stats);
+        await this.publishSnapshot(accountId, message.requestId);
+      } else if (message.type === 'FRIEND_PROFILE_GET') {
+        const profile = (await this.options.persistence.getProfiles([message.accountId])).get(message.accountId) ?? null;
+        await this.sendSearchResult(accountId, message.requestId, profile, true);
+      } else if (message.type === 'FRIEND_CHAT_HISTORY_GET') {
+        await this.requireFriend(accountId, message.accountId);
+        const history = await this.options.persistence.getMessageHistory(accountId, message.accountId, message.beforeSequence);
+        this.options.send(accountId, { type: 'FRIEND_CHAT_HISTORY', requestId: message.requestId, accountId: message.accountId, ...history });
+      } else if (message.type === 'FRIEND_CHAT_READ') {
+        await this.requireFriend(accountId, message.accountId);
+        await this.options.persistence.markMessagesRead(accountId, message.accountId, message.throughSequence);
+        await this.publishInbox(accountId, message.requestId);
       } else if (message.type === 'SOCIAL_PREFERENCES_SET') {
         await this.options.persistence.setPreferences(accountId, message.preferences);
         await this.publishSnapshot(accountId, message.requestId);
@@ -146,18 +173,17 @@ export class GatewaySocialService {
         await this.options.persistence.setFriendPin(accountId, message.accountId, message.pinned);
         await this.publishSnapshot(accountId, message.requestId);
       } else if (message.type === 'FRIEND_MESSAGE_SEND') {
-        if (await this.options.persistence.relationship(accountId, message.accountId) !== 'friend') {
-          throw new SocialPersistenceError('FRIEND_NOT_FOUND', 'Quick Messages can only be sent to friends.');
+        await this.requireFriend(accountId, message.accountId);
+        const chatMessage = await this.options.persistence.storeMessage(accountId, message.accountId, message.clientMessageId, message.message.trim());
+        const details = { clientMessageId: chatMessage.clientMessageId, message: chatMessage.message, chatMessage };
+        await this.sendEvent(accountId, 'friend-message-sent', message.accountId, details);
+        try {
+          await this.sendEvent(message.accountId, 'friend-message-received', accountId, details);
+          await this.publishInbox(message.accountId, null);
+        } catch (error) {
+          // The accepted message remains in history/inbox and is recovered on reconnect.
+          this.options.log('social-message-notification-error', { error: error instanceof Error ? error.message : String(error) });
         }
-        if (!this.live.has(message.accountId)) {
-          throw new SocialPersistenceError('FRIEND_OFFLINE', 'This friend is offline. Quick Messages are not stored on the server.');
-        }
-        await this.sendEvent(message.accountId, 'friend-message-received', accountId, {
-          clientMessageId: message.clientMessageId, message: message.message.trim()
-        });
-        await this.sendEvent(accountId, 'friend-message-sent', message.accountId, {
-          clientMessageId: message.clientMessageId, message: message.message.trim()
-        });
       }
     } catch (error) {
       const code = error instanceof SocialPersistenceError ? error.code : 'SOCIAL_ACTION_FAILED';
@@ -223,7 +249,8 @@ export class GatewaySocialService {
   private async sendSearchResult(
     accountId: string,
     requestId: string,
-    found: GatewaySocialStoredProfile | null
+    found: GatewaySocialStoredProfile | null,
+    profileCard = false
   ): Promise<void> {
     let relationship: GatewayFriendSearchResultMessage['relationship'] = 'none';
     let profile: GatewaySocialProfile | null = null;
@@ -246,13 +273,17 @@ export class GatewaySocialService {
           statusChallengeId: null,
           statusText: '',
           presence: 'offline',
+          activity: null,
           lastSeenAt: null,
           lobby: null,
           canJoinLobby: false
         };
       }
     }
-    this.options.send(accountId, { type: 'FRIEND_SEARCH_RESULT', requestId, profile, relationship, canUnblock });
+    if (profileCard) {
+      const pinnedStats = found && relationship !== 'blocked' ? await this.options.persistence.getPinnedStats(found.accountId) : [];
+      this.options.send(accountId, { type: 'FRIEND_PROFILE', requestId, profile, relationship, canUnblock, pinnedStats });
+    } else this.options.send(accountId, { type: 'FRIEND_SEARCH_RESULT', requestId, profile, relationship, canUnblock });
   }
 
   private async publishSnapshot(accountId: string, requestId: string | null): Promise<void> {
@@ -279,7 +310,7 @@ export class GatewaySocialService {
       ));
     }
     const friends = graph.friendIds.map(id => profiles.get(id)).filter((profile): profile is GatewaySocialProfile => Boolean(profile))
-      .sort((left, right) => Number(right.pinned) - Number(left.pinned) || left.displayName.localeCompare(right.displayName));
+      .sort(compareSocialFriends);
     const requests = graph.requests.map(request => {
       const otherId = request.senderId === accountId ? request.recipientId : request.senderId;
       const profile = profiles.get(otherId);
@@ -339,9 +370,11 @@ export class GatewaySocialService {
       statusChallengeId: canSeeStatus ? preferences.statusChallengeId : null,
       statusText: canSeeStatus ? preferences.statusText : '',
       presence,
+      activity: visibleOnline && (stored.accountId === viewerAccountId || preferences.lobbyStatusVisibility === 'everyone'
+        || (preferences.lobbyStatusVisibility === 'friends' && isFriend)) ? live!.page : null,
       lastSeenAt: visibleOnline ? null : (this.lastSeen.get(stored.accountId) ?? null),
       lobby: canSeeLobby ? structuredClone(live!.lobby) : null,
-      canJoinLobby: canSeeLobby && preferences.allowLobbyJoin && live?.lobby?.lobbyType === 'public',
+      canJoinLobby: canSeeLobby && Boolean(live?.lobby?.lobbyId) && preferences.allowLobbyJoin && live?.lobby?.lobbyType === 'public',
       pinned
     };
   }
@@ -350,7 +383,7 @@ export class GatewaySocialService {
     recipientAccountId: string,
     kind: GatewaySocialEventMessage['kind'],
     actorAccountId: string,
-    details: Partial<Pick<GatewaySocialEventMessage, 'friendRequestId' | 'clientMessageId' | 'message' | 'inviteId' | 'inviteToken' | 'format'>> = {}
+    details: Partial<Pick<GatewaySocialEventMessage, 'friendRequestId' | 'clientMessageId' | 'message' | 'inviteId' | 'inviteToken' | 'format' | 'chatMessage'>> = {}
   ): Promise<void> {
     if (!this.live.has(recipientAccountId)) return;
     const actor = (await this.options.persistence.getProfiles([actorAccountId])).get(actorAccountId);
@@ -365,8 +398,27 @@ export class GatewaySocialService {
       inviteId: details.inviteId ?? null,
       inviteToken: details.inviteToken ?? null,
       format: details.format ?? null,
-      occurredAt: Date.now()
+      occurredAt: details.chatMessage?.occurredAt ?? Date.now(),
+      ...(details.chatMessage ? { chatMessage: details.chatMessage } : {})
     });
+  }
+
+  private async requireFriend(accountId: string, friendId: string): Promise<void> {
+    if (await this.options.persistence.relationship(accountId, friendId) !== 'friend') {
+      throw new SocialPersistenceError('FRIEND_NOT_FOUND', 'Messages can only be exchanged with current friends.');
+    }
+  }
+
+  private async publishInbox(accountId: string, requestId: string | null): Promise<void> {
+    if (!this.live.has(accountId)) return;
+    this.options.send(accountId, { type: 'FRIEND_CHAT_INBOX', requestId, unread: await this.options.persistence.getUnreadMessages(accountId) });
+  }
+
+  private async purgeExpiredMessages(): Promise<void> {
+    if (Date.now() - this.lastPurgeAt < 60_000) return;
+    this.lastPurgeAt = Date.now();
+    try { await this.options.persistence.purgeMessages(); }
+    catch (error) { this.options.log('social-chat-cleanup-error', { error: error instanceof Error ? error.message : String(error) }); }
   }
 
   private pruneMatchInvites(): void {

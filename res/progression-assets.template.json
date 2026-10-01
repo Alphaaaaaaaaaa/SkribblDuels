@@ -57,5 +57,6 @@
   "friendSlimy": "res/friend-system/slimy.gif",
   "friendTrash": "res/friend-system/trash.gif",
   "friendUnblock": "res/friend-system/unblock.gif",
-  "friendWithdraw": "res/friend-system/withdraw.gif"
+  "friendWithdraw": "res/friend-system/withdraw.gif",
+  "friendAdd": "res/friend-system/friend-add.gif"
 }

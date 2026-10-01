@@ -1,9 +1,30 @@
-# Skribbl Duels v0.69.1
+# Skribbl Duels v0.70.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v16, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v17, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.70.0
+
+- Keeps Quick Messages live while typing, shows outgoing messages immediately,
+  reconciles confirmed sends without duplicates, and provides retry after a
+  failed send or lost connection.
+- Adds a rolling 24-hour Supabase history with offline delivery, unread pings,
+  read synchronization, paginated older messages and conservative storage caps.
+- Opens a public profile card from other users' Versus avatars, with presence,
+  chosen profile status, two pinned statistics and the correct Friends/Add icon.
+- Embeds 104 custom chat emojis from the requested asset selection. Slimy opens
+  the picker immediately left of Send, and unrecognized text remains plain text.
+- Fixes invalid playing reports from partial lobby settings and retries rejected
+  presence. Friends sort by Pin, Active Duel, Online, Idle, then Offline.
+- Adds Always/Homepage/Never friend-list visibility, green General/Social tabs,
+  floating opacity-transition pins, and automatic Social-toast expiry.
+
+v0.70.0 requires `202610010002_add_friend_chat_history.sql`, Gateway v0.12.0
+and Contract v17. Apply the migration after the v0.69.1 hotfix, deploy the
+Gateway, then distribute the userscript. No new Railway variable is required.
+See `docs/social-chat-profiles-v0.70.0.md` for storage checks and upgrade steps.
 
 ## v0.69.1
 
@@ -832,8 +853,8 @@ Gateway is deployed. v0.54.0 additionally requires
 `supabase/migrations/202608210001_create_gateway_abuse_controls.sql`.
 Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
-Current v0.69.1 installations must finish the ordered chain through
-`supabase/migrations/202610010001_fix_social_friend_response.sql`.
+Current v0.70.0 installations must finish the ordered chain through
+`supabase/migrations/202610010002_add_friend_chat_history.sql`.
 
 ## Local verification
 
@@ -848,7 +869,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/social-hotfix-v0.69.1.md`,
+See `docs/social-chat-profiles-v0.70.0.md`,
+`docs/social-hotfix-v0.69.1.md`,
 `docs/friends-social-v0.69.0.md`,
 `docs/firefox-auth-terminal-slots-ui-v0.68.0.md`,
 `docs/ui-tutorial-typo-metrics-v0.63.0.md`,

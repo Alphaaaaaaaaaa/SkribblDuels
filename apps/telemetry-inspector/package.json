@@ -1,6 +1,6 @@
 {
   "name": "@skribbl-duels/telemetry-inspector",
-  "version": "0.69.1",
+  "version": "0.70.0",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -11,8 +11,8 @@
     "@skribbl-duels/challenge-engine": "file:../../packages/challenge-engine",
     "@skribbl-duels/challenge-definitions": "file:../../packages/challenge-definitions",
     "@skribbl-duels/product-core": "file:../../packages/product-core",
-    "@skribbl-duels/gateway-contracts": "file:../../packages/gateway-contracts",
-    "@skribbl-duels/gateway-client": "file:../../packages/gateway-client",
+    "@skribbl-duels/gateway-contracts": "0.10.0",
+    "@skribbl-duels/gateway-client": "0.11.0",
     "@skribbl-duels/auth-client": "file:../../packages/auth-client"
   }
 }

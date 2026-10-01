@@ -1,6 +1,8 @@
 import * as assert from 'node:assert/strict';
 import type {
   GatewayClientIdentity,
+  GatewayFriendChatMessage,
+  GatewaySocialPinnedStat,
   GatewayServerMessage,
   GatewaySocialPreferences
 } from '@skribbl-duels/gateway-contracts';
@@ -36,6 +38,49 @@ class FakeSocialPersistence implements GatewaySocialPersistence {
   public readonly requests = new Map<string, GatewaySocialStoredRequest>();
   public readonly blocks = new Set<string>();
   private nextRequest = 1;
+  private messages: GatewayFriendChatMessage[] = [];
+  private nextSequence = 1;
+  private pinnedStats = new Map<string, GatewaySocialPinnedStat[]>();
+
+  public async purgeMessages(): Promise<void> {
+    this.messages = this.messages.filter(message => message.occurredAt >= Date.now() - 86_400_000);
+  }
+
+  public async storeMessage(senderId: string, recipientId: string, clientMessageId: string, message: string): Promise<GatewayFriendChatMessage> {
+    if (await this.relationship(senderId, recipientId) !== 'friend') throw new SocialPersistenceError('FRIEND_NOT_FOUND', 'Friend not found.');
+    const existing = this.messages.find(row => row.senderId === senderId && row.clientMessageId === clientMessageId);
+    if (existing) {
+      if (existing.recipientId !== recipientId || existing.message !== message) throw new SocialPersistenceError('FRIEND_MESSAGE_ID_CONFLICT', 'Identifier already used.');
+      return structuredClone(existing);
+    }
+    const row: GatewayFriendChatMessage = { messageId: `stored-${this.nextSequence}`, sequence: this.nextSequence++, clientMessageId,
+      senderId, recipientId, message, occurredAt: Date.now(), readAt: null };
+    this.messages.push(row); return structuredClone(row);
+  }
+
+  public async getMessageHistory(accountId: string, friendId: string, beforeSequence: number | null): Promise<{ messages: GatewayFriendChatMessage[]; nextBeforeSequence: number | null }> {
+    await this.purgeMessages();
+    const rows = this.messages.filter(row => pairKey(row.senderId, row.recipientId) === pairKey(accountId, friendId)
+      && (beforeSequence === null || row.sequence < beforeSequence)).sort((a, b) => b.sequence - a.sequence);
+    const page = rows.slice(0, 200);
+    return { messages: structuredClone(page.reverse()), nextBeforeSequence: rows.length > 200 ? Math.min(...page.map(row => row.sequence)) : null };
+  }
+
+  public async getUnreadMessages(accountId: string): Promise<{ accountId: string; count: number }[]> {
+    await this.purgeMessages();
+    const counts = new Map<string, number>();
+    for (const row of this.messages) if (row.recipientId === accountId && row.readAt === null
+      && await this.relationship(accountId, row.senderId) === 'friend') counts.set(row.senderId, (counts.get(row.senderId) ?? 0) + 1);
+    return [...counts].map(([accountId, count]) => ({ accountId, count }));
+  }
+
+  public async markMessagesRead(accountId: string, friendId: string, throughSequence: number): Promise<void> {
+    for (const row of this.messages) if (row.recipientId === accountId && row.senderId === friendId && row.sequence <= throughSequence) row.readAt = Date.now();
+  }
+
+  public async getPinnedStats(accountId: string): Promise<GatewaySocialPinnedStat[]> { return structuredClone(this.pinnedStats.get(accountId) ?? []); }
+  public async setPinnedStats(accountId: string, stats: readonly GatewaySocialPinnedStat[]): Promise<void> { this.pinnedStats.set(accountId, structuredClone([...stats])); }
+
 
   public async getProfiles(accountIds: readonly string[]): Promise<Map<string, GatewaySocialStoredProfile>> {
     return new Map(accountIds.flatMap(id => {
@@ -304,7 +349,33 @@ await service.disconnected('bravo');
 await service.handle('alpha', {
   type: 'FRIEND_MESSAGE_SEND', clientMessageId: 'quick-message-offline', accountId: 'bravo', message: 'Still there?'
 });
-const offlineError = latest('alpha', 'ERROR');
-assert.equal(offlineError.code, 'FRIEND_OFFLINE');
+const offlineMessage = latest('alpha', 'SOCIAL_EVENT');
+assert.equal(offlineMessage.kind, 'friend-message-sent');
+assert.equal(offlineMessage.chatMessage?.message, 'Still there?');
+await service.connected(identity('bravo'));
+assert.deepEqual(latest('bravo', 'FRIEND_CHAT_INBOX').unread, [{ accountId: 'alpha', count: 2 }]);
+await service.handle('bravo', { type: 'FRIEND_CHAT_HISTORY_GET', requestId: 'history-1', accountId: 'alpha', beforeSequence: null });
+const history = latest('bravo', 'FRIEND_CHAT_HISTORY');
+assert.deepEqual(history.messages.map(row => row.message), ['Want to Duel?', 'Still there?']);
+await service.handle('alpha', { type: 'FRIEND_MESSAGE_SEND', clientMessageId: 'quick-message-offline', accountId: 'bravo', message: 'Still there?' });
+assert.equal(latest('alpha', 'SOCIAL_EVENT').chatMessage?.messageId, offlineMessage.chatMessage?.messageId, 'A retry must acknowledge the same stored message.');
+await service.handle('bravo', { type: 'FRIEND_CHAT_READ', requestId: 'read-1', accountId: 'alpha', throughSequence: history.messages.at(-1)!.sequence });
+assert.deepEqual(latest('bravo', 'FRIEND_CHAT_INBOX').unread, []);
+await service.handle('alpha', { type: 'SOCIAL_PROFILE_STATS_SET', requestId: 'stats-1', stats: [{ id: 'duel-wins', value: '5' }, { id: 'best-public-score', value: '3,100' }] });
+await service.handle('bravo', { type: 'FRIEND_PROFILE_GET', requestId: 'profile-1', accountId: 'alpha' });
+assert.deepEqual(latest('bravo', 'FRIEND_PROFILE').pinnedStats, [{ id: 'duel-wins', value: '5' }, { id: 'best-public-score', value: '3,100' }]);
+assert.equal(latest('bravo', 'FRIEND_PROFILE').relationship, 'friend');
+activeMatches.delete('alpha');
+await service.handle('alpha', { type: 'SOCIAL_PRESENCE_SET', requestId: 'presence-unknown-id', page: 'lobby',
+  lobby: { lobbyId: null, lobbyType: 'public', languageName: 'English', playerCount: 7, maxPlayers: 8 } });
+const unknownLobby = latest('bravo', 'SOCIAL_SNAPSHOT').friends[0]!;
+assert.equal(unknownLobby.activity, 'lobby');
+assert.equal(unknownLobby.canJoinLobby, false, 'Unknown lobby IDs show playing without exposing a broken join link.');
+await service.handle('alpha', { type: 'FRIEND_REMOVE', requestId: 'remove-1', accountId: 'bravo' });
+await service.handle('bravo', { type: 'FRIEND_CHAT_HISTORY_GET', requestId: 'history-removed', accountId: 'alpha', beforeSequence: null });
+assert.equal(latest('bravo', 'ERROR').code, 'FRIEND_NOT_FOUND');
+await service.handle('alpha', { type: 'FRIEND_MESSAGE_SEND', clientMessageId: 'after-removal', accountId: 'bravo', message: 'Not allowed' });
+assert.equal(latest('alpha', 'ERROR').code, 'FRIEND_NOT_FOUND');
+service.clear();
 
-console.log('v0.69.1 Social service friendship, unblock, privacy, presence, Quick Message and invite flow passed.');
+console.log('Social friendship, privacy, presence, profile cards, offline messaging, reads and invite flow passed.');

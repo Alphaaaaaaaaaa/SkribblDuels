@@ -47,8 +47,8 @@ assert.ok(
   'Heart progress changes only after the smooth reel animation begins.'
 );
 
-assert.match(userscript, /BUILD_VERSION = '0\.69\.1'/);
-assert.match(product, /version: '0\.69\.1'/);
-assert.equal(JSON.parse(rootPackage).version, '0.69.1');
+assert.match(userscript, /BUILD_VERSION = '0\.70\.0'/);
+assert.match(product, /version: '0\.70\.0'/);
+assert.equal(JSON.parse(rootPackage).version, '0.70.0');
 
-console.log('v0.68.0 Firefox OAuth hardening and terminal/Slots UI regressions remain intact in v0.69.1.');
+console.log('v0.68.0 Firefox OAuth hardening and terminal/Slots UI regressions remain intact in v0.70.0.');

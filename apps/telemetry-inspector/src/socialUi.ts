@@ -1,5 +1,8 @@
 import type {
   GatewayFriendRequestSummary,
+  GatewayFriendChatMessage,
+  GatewayFriendProfileMessage,
+  GatewaySocialPinnedStat,
   GatewaySocialEventMessage,
   GatewaySocialAvailability,
   GatewaySocialLobbyPresence,
@@ -9,21 +12,19 @@ import type {
 import { type SocketIoGatewayClient, type GatewayConnectionSnapshot } from '@skribbl-duels/gateway-client';
 import { EMBEDDED_PROGRESSION_ASSETS, type ProgressionAssetId } from './generatedProgressionAssets';
 import { appendColoredDuelName } from './nameColors';
+import { compareSocialFriends } from '@skribbl-duels/gateway-contracts';
+import { socialPresenceReport, type SocialLobbySnapshot } from './socialLobbyPresence';
+import { SOCIAL_EMOJIS, appendSocialMessage } from './socialEmojis';
+import { PROFILE_STAT_DEFINITION_BY_ID, DEFAULT_PINNED_PROFILE_STAT_IDS, isProfileStatId } from './profileStats';
+import { EMBEDDED_STAT_ICON_ASSETS, STAT_ICON_ASSET_PATHS } from './generatedStatIconAssets';
 
-interface SocialLobbySnapshot {
-  hydrated: boolean;
-  lobbyId: string | null;
-  lobbyType: number | null;
-  languageName: string | null;
-  playerCount: number;
-  maxPlayers: number | null;
-}
 
 interface SocialUiOptions {
   runtimeId: string;
   gateway: SocketIoGatewayClient;
   getGatewayState(): GatewayConnectionSnapshot;
   getLobbySnapshot(): SocialLobbySnapshot;
+  getPinnedStats?(): readonly GatewaySocialPinnedStat[];
   isHomepageVisible(): boolean;
   createAvatar(profile: GatewaySocialProfile, className: string): HTMLElement;
   createStatusIcon(challengeId: string): HTMLElement;
@@ -39,11 +40,14 @@ interface LocalFriendMessage {
   direction: 'incoming' | 'outgoing';
   message: string;
   occurredAt: number;
+  clientMessageId?: string;
+  sequence?: number;
+  status?: 'pending' | 'sent' | 'failed';
 }
 
 interface LocalSocialUiPreferences {
-  version: 1;
-  showHomepageList: boolean;
+  version: 2;
+  showFriendsList: 'always' | 'homepage' | 'never';
   homepageAnchor: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
 }
 
@@ -86,16 +90,17 @@ function icon(id: ProgressionAssetId, label: string, className = 'scd-icon'): HT
 
 function loadUiPreferences(): LocalSocialUiPreferences {
   try {
-    const parsed = JSON.parse(localStorage.getItem(UI_STORAGE_KEY) ?? 'null') as Partial<LocalSocialUiPreferences> | null;
+    const parsed = JSON.parse(localStorage.getItem(UI_STORAGE_KEY) ?? 'null') as (Partial<LocalSocialUiPreferences> & { showHomepageList?: boolean }) | null;
     const anchors = new Set(['bottom-left', 'bottom-right', 'top-left', 'top-right']);
     return {
-      version: 1,
-      showHomepageList: typeof parsed?.showHomepageList === 'boolean' ? parsed.showHomepageList : true,
+      version: 2,
+      showFriendsList: ['always', 'homepage', 'never'].includes(String(parsed?.showFriendsList))
+        ? parsed!.showFriendsList! : parsed?.showHomepageList === false ? 'never' : 'homepage',
       homepageAnchor: anchors.has(String(parsed?.homepageAnchor))
         ? parsed!.homepageAnchor as LocalSocialUiPreferences['homepageAnchor'] : 'bottom-left'
     };
   } catch {
-    return { version: 1, showHomepageList: true, homepageAnchor: 'bottom-left' };
+    return { version: 2, showFriendsList: 'homepage', homepageAnchor: 'bottom-left' };
   }
 }
 
@@ -136,11 +141,31 @@ export class SocialFeatureUi {
   private searchQuery = '';
   private matchInviteAcceptancePending = false;
   private optimisticAvailability: GatewaySocialAvailability | null = null;
+  private activeConversationId: string | null = null;
+  private conversationProfile: GatewaySocialProfile | null = null;
+  private activeProfileId: string | null = null;
+  private profileRequestId: string | null = null;
+  private profileCard: GatewayFriendProfileMessage | null = null;
+  private historyRequests = new Map<string, string>();
+  private historyPrependRequests = new Set<string>();
+  private nextHistorySequence: number | null = null;
+  private historyLoading = false;
+  private activeHistoryRequestId: string | null = null;
+  private conversationDrafts = new Map<string, string>();
+  private readTimer: number | null = null;
+  private presenceRequestId: string | null = null;
+  private pendingPresenceFingerprint = '';
+  private presenceSentAt = 0;
+  private lastStatsFingerprint = '';
+  private statsSentAt = 0;
+  private optimisticPins = new Map<string, { pinned: boolean; requestId: string | null }>();
+  private toastTimers = new Map<HTMLElement, number>();
 
   public constructor(private readonly options: SocialUiOptions) {}
 
   public start(): void {
     this.ensureStyles();
+    window.addEventListener('keydown', this.messageKeydown, true);
     this.loadMessages();
     this.syncPresence();
     this.presencePoll = window.setInterval(() => this.syncPresence(), 2_000);
@@ -148,6 +173,11 @@ export class SocialFeatureUi {
   }
 
   public stop(): void {
+    window.removeEventListener('keydown', this.messageKeydown, true);
+    for (const [toast, timer] of this.toastTimers) { window.clearTimeout(timer); toast.remove(); }
+    this.toastTimers.clear();
+    if (this.readTimer !== null) window.clearTimeout(this.readTimer);
+    this.readTimer = null;
     if (this.presencePoll !== null) window.clearInterval(this.presencePoll);
     this.presencePoll = null;
     this.closeAll();
@@ -170,7 +200,32 @@ export class SocialFeatureUi {
   public handleGatewayUpdate(previous: GatewayConnectionSnapshot, next: GatewayConnectionSnapshot): void {
     if (previous.identity?.accountId !== next.identity?.accountId) {
       this.optimisticAvailability = null;
-      this.loadMessages();
+      this.optimisticPins.clear(); this.unread.clear(); this.handledEvents.clear(); this.historyRequests.clear();
+      this.lastStatsFingerprint = ''; this.presenceRequestId = null;
+      this.lastPresenceFingerprint = ''; this.conversationDrafts.clear(); this.historyPrependRequests.clear();
+      this.closeDetail(); this.loadMessages();
+    }
+    if (next.social?.requestId === this.presenceRequestId && this.presenceRequestId !== null) {
+      this.lastPresenceFingerprint = this.pendingPresenceFingerprint; this.presenceRequestId = null;
+    }
+    if (next.friendInbox !== previous.friendInbox && next.friendInbox) {
+      this.unread = new Set(next.friendInbox.unread.filter(row => row.count > 0 && row.accountId !== this.activeConversationId).map(row => row.accountId));
+      this.renderHomepageList(); if (this.modal?.isConnected) this.renderModal();
+    }
+    if (next.friendChatHistory !== previous.friendChatHistory && next.friendChatHistory) {
+      const result = next.friendChatHistory;
+      if (this.historyRequests.get(result.requestId) === result.accountId) {
+        this.historyRequests.delete(result.requestId);
+        const prepended = this.historyPrependRequests.delete(result.requestId);
+        for (const message of result.messages) this.recordChatMessage(message);
+        if (this.activeConversationId === result.accountId && result.requestId === this.activeHistoryRequestId) {
+          this.nextHistorySequence = result.nextBeforeSequence; this.historyLoading = false;
+          this.refreshConversationHistory(false, prepended); this.scheduleConversationRead();
+        }
+      }
+    }
+    if (next.friendProfile !== previous.friendProfile && next.friendProfile?.requestId === this.profileRequestId) {
+      this.profileCard = next.friendProfile; this.refreshProfileCard();
     }
     for (const event of next.socialEvents) {
       if (this.handledEvents.has(event.eventId)) continue;
@@ -179,9 +234,21 @@ export class SocialFeatureUi {
     }
     if (next.socialError && next.socialError.requestId !== previous.socialError?.requestId) {
       this.optimisticAvailability = null;
+      if (next.socialError.requestId === this.presenceRequestId) {
+        this.presenceRequestId = null; this.lastPresenceFingerprint = '';
+      }
+      if (next.socialError.requestId?.startsWith('social-profile-stats')) this.lastStatsFingerprint = '';
+      for (const [accountId, pin] of this.optimisticPins) if (pin.requestId === next.socialError.requestId) this.optimisticPins.delete(accountId);
+      const failed = this.messages.find(item => item.direction === 'outgoing'
+        && (item.clientMessageId ?? item.id) === next.socialError!.requestId && item.status === 'pending');
+      if (failed) { failed.status = 'failed'; this.saveMessages(); this.refreshConversationHistory(); }
+      if (next.socialError.requestId && this.historyRequests.has(next.socialError.requestId)) {
+        this.historyRequests.delete(next.socialError.requestId); this.historyPrependRequests.delete(next.socialError.requestId); this.historyLoading = false; this.refreshConversationHistory();
+      }
       if (next.socialError.requestId === this.searchRequestId) this.searchRequestId = null;
       this.refreshProfileControls();
       this.options.showToast('Social action unavailable', next.socialError.message, 7_000);
+      this.renderHomepageList();
       if (this.modal?.isConnected) this.renderModal();
     }
     if ((next.socialError && next.socialError.requestId !== previous.socialError?.requestId)
@@ -202,14 +269,26 @@ export class SocialFeatureUi {
       this.optimisticAvailability = null;
     }
     if (socialChanged) {
+      for (const friend of next.social?.friends ?? []) {
+        if (this.optimisticPins.get(friend.accountId)?.pinned === friend.pinned) this.optimisticPins.delete(friend.accountId);
+      }
+      this.refreshConversationHeader(); this.refreshProfileCard();
       this.renderHomepageList();
       if (this.modal?.isConnected) this.renderModal();
       this.refreshProfileControls();
     }
     if (friendSearchChanged && this.modal?.isConnected) this.renderModal();
+    if (previous.status !== next.status) {
+      this.refreshConversationHeader();
+      if (next.status !== 'connected') {
+        for (const entry of this.messages) if (entry.direction === 'outgoing' && entry.status === 'pending') entry.status = 'failed';
+        this.saveMessages(); this.refreshConversationHistory();
+      }
+    }
     if (next.status === 'connected' && previous.status !== 'connected') {
-      this.lastPresenceFingerprint = '';
+      this.lastPresenceFingerprint = ''; this.presenceRequestId = null; this.lastStatsFingerprint = '';
       this.syncPresence();
+      if (this.activeConversationId) this.requestConversationHistory();
     }
   }
 
@@ -220,7 +299,7 @@ export class SocialFeatureUi {
     const availability = this.effectiveAvailability(current);
     const presence = availability === 'offline' ? 'offline' : activeDuel ? 'duel' : availability;
     const badge = element('button', 'scd-social-presence-badge') as HTMLButtonElement;
-    badge.type = 'button';
+    badge.type = 'button'; badge.dataset.scdOwnPresence = 'true';
     badge.appendChild(icon(presenceAsset({ presence }), presenceLabel({ presence })));
     badge.addEventListener('click', () => this.openPresencePicker());
     this.options.registerTooltip(badge, `Presence: ${presenceLabel({ presence })}\nClick to change your visible availability.`, 'Y');
@@ -271,7 +350,7 @@ export class SocialFeatureUi {
     card.appendChild(element('strong', '', 'Social privacy'));
     if (!snapshot || state.status !== 'connected') {
       card.appendChild(element('div', 'scd-muted', 'Connect the authenticated Gateway to manage Social settings.'));
-      target.appendChild(card);
+      target.appendChild(card); this.renderListSettings(target);
       return;
     }
     const draft = { ...snapshot.preferences };
@@ -299,16 +378,25 @@ export class SocialFeatureUi {
       this.checkbox('Receive friend requests', draft.receiveFriendRequests, value => { draft.receiveFriendRequests = value; save(); }),
       this.checkbox('Receive Match invitations', draft.receiveMatchInvites, value => { draft.receiveMatchInvites = value; save(); })
     );
-    const homepage = element('div', 'scd-card scd-stack');
-    homepage.appendChild(element('strong', '', 'Homepage friends list'));
-    homepage.appendChild(this.checkbox('Show friends list on homepage', this.uiPreferences.showHomepageList, value => {
-      this.uiPreferences.showHomepageList = value; this.saveUiPreferences(); this.renderHomepageList();
-    }));
-    homepage.appendChild(select('Position', this.uiPreferences.homepageAnchor,
-      ['bottom-left', 'bottom-right', 'top-left', 'top-right'] as const, value => {
-        this.uiPreferences.homepageAnchor = value; this.saveUiPreferences(); this.renderHomepageList();
-      }));
-    target.append(card, homepage);
+    target.appendChild(card); this.renderListSettings(target);
+  }
+
+  private renderListSettings(target: HTMLElement): void {
+    const card = element('div', 'scd-card scd-stack');
+    card.appendChild(element('strong', '', 'Friends list'));
+    const display = element('label', 'scd-label');
+    const mode = element('select');
+    for (const [value, label] of [['always', 'Always'], ['homepage', 'Homepage'], ['never', 'Never']] as const) {
+      const option = element('option', '', label); option.value = value; option.selected = this.uiPreferences.showFriendsList === value; mode.appendChild(option);
+    }
+    mode.addEventListener('change', () => { this.uiPreferences.showFriendsList = mode.value as LocalSocialUiPreferences['showFriendsList']; this.saveUiPreferences(); this.renderHomepageList(); });
+    display.append(element('span', '', 'Show friends list'), mode);
+    const position = element('label', 'scd-label'); const anchor = element('select');
+    for (const value of ['bottom-left', 'bottom-right', 'top-left', 'top-right'] as const) {
+      const option = element('option', '', value.replace('-', ' ')); option.value = value; option.selected = value === this.uiPreferences.homepageAnchor; anchor.appendChild(option);
+    }
+    anchor.addEventListener('change', () => { this.uiPreferences.homepageAnchor = anchor.value as LocalSocialUiPreferences['homepageAnchor']; this.saveUiPreferences(); this.renderHomepageList(); });
+    position.append(element('span', '', 'Position'), anchor); card.append(display, position); target.appendChild(card);
   }
 
   private checkbox(labelText: string, checked: boolean, onChange: (value: boolean) => void): HTMLLabelElement {
@@ -325,7 +413,7 @@ export class SocialFeatureUi {
     const activeDuel = Boolean(current.match && current.match.state.phase !== 'finished' && current.match.state.phase !== 'cancelled');
     const availability = this.effectiveAvailability(current);
     const presence = availability === 'offline' ? 'offline' : activeDuel ? 'duel' : availability;
-    document.querySelectorAll<HTMLButtonElement>('.scd-social-presence-badge').forEach(badge => {
+    document.querySelectorAll<HTMLButtonElement>('.scd-social-presence-badge[data-scd-own-presence="true"]').forEach(badge => {
       badge.replaceChildren(icon(presenceAsset({ presence }), presenceLabel({ presence })));
       this.options.registerTooltip(badge, `Presence: ${presenceLabel({ presence })}\nClick to change your visible availability.`, 'Y');
     });
@@ -387,7 +475,7 @@ export class SocialFeatureUi {
     } else if (this.searchRequestId) body.appendChild(this.createSearchSkeleton());
     const list = element('div', 'scd-social-list');
     if (friends.length === 0) list.appendChild(element('div', 'scd-card scd-muted', 'No friends yet. Search by Discord username to send a request.'));
-    for (const friend of friends) list.appendChild(this.createFriendRow(friend, true));
+    for (const friend of this.sortedFriends(friends)) list.appendChild(this.createFriendRow(friend, true));
     body.appendChild(list);
   }
 
@@ -463,8 +551,7 @@ export class SocialFeatureUi {
     const row = element('div', `scd-social-row presence-${friend.presence}`);
     row.appendChild(this.createIdentity(friend));
     const actions = element('div', 'scd-social-actions');
-    actions.appendChild(this.iconButton('friendPin', friend.pinned ? 'Unpin friend' : 'Pin friend',
-      () => this.options.gateway.setFriendPinned(friend.accountId, !friend.pinned), friend.pinned ? 'selected' : ''));
+    row.appendChild(this.createFriendPin(friend));
     if (friend.presence === 'online' || friend.presence === 'idle') {
       actions.appendChild(this.iconButton('friendDuelsLogo', 'Invite to a Duel', () => this.openMatchInvitePicker(friend)));
     }
@@ -477,17 +564,19 @@ export class SocialFeatureUi {
     return row;
   }
 
-  private createIdentity(profile: GatewaySocialProfile): HTMLElement {
+  private createIdentity(profile: GatewaySocialProfile, showActivity = true, clickable = true): HTMLElement {
     const identity = element('div', 'scd-social-identity');
-    const avatarWrap = element('div', 'scd-social-avatar-wrap');
+    const avatarWrap = element(clickable && profile.accountId !== this.options.getGatewayState().identity?.accountId ? 'button' : 'div', 'scd-social-avatar-wrap');
+    if (avatarWrap instanceof HTMLButtonElement) {
+      avatarWrap.type = 'button'; avatarWrap.addEventListener('click', () => this.openProfile(profile.accountId, profile));
+      this.options.registerTooltip(avatarWrap, `Open ${profile.displayName}'s profile`, 'Y');
+    }
     avatarWrap.append(this.options.createAvatar(profile, 'scd-social-avatar'), icon(presenceAsset(profile), presenceLabel(profile), 'scd-social-status-icon'));
     const copy = element('div', 'scd-social-copy');
     const name = element('div', 'scd-social-name');
     appendColoredDuelName(name, profile.displayName, profile.nameColorIndex);
-    const lobby = profile.presence === 'duel' ? 'Active Duel'
-      : profile.lobby ? `${profile.lobby.languageName} ${profile.lobby.lobbyType === 'public' ? 'Public' : 'Private'} ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}`
-      : profile.presence === 'online' || profile.presence === 'idle' ? 'Viewing Homepage' : 'Offline';
-    copy.append(name, element('div', 'scd-muted scd-social-lobby', lobby));
+    copy.appendChild(name);
+    if (showActivity) copy.appendChild(element('div', 'scd-muted scd-social-lobby', this.activityLabel(profile)));
     if (profile.statusChallengeId || profile.statusText) {
       const status = element('div', 'scd-social-visible-status');
       if (profile.statusChallengeId) status.appendChild(this.options.createStatusIcon(profile.statusChallengeId));
@@ -536,29 +625,203 @@ export class SocialFeatureUi {
   }
 
   private openMessages(friend: GatewaySocialProfile): void {
-    this.unread.delete(friend.accountId); this.renderHomepageList();
-    this.openDetail(`Quick Messages · ${friend.displayName}`, body => {
+    this.openDetail('', body => {
       const history = element('div', 'scd-social-message-history');
-      const entries = this.messages.filter(item => item.accountId === friend.accountId);
-      if (entries.length === 0) history.appendChild(element('div', 'scd-muted', 'Messages are stored only in this browser and are delivered only while both friends are online.'));
-      for (const message of entries) {
-        const row = element('div', `scd-social-message ${message.direction}`);
-        row.append(element('span', 'scd-social-message-author', message.direction === 'outgoing' ? 'You' : friend.displayName), element('span', '', message.message));
-        history.appendChild(row);
-      }
-      const form = element('form', 'scd-social-message-form') as HTMLFormElement;
-      const input = element('input') as HTMLInputElement;
-      input.type = 'text'; input.maxLength = 300; input.placeholder = friend.presence === 'offline' ? 'Friend is offline' : 'Write a Quick Message…'; input.disabled = friend.presence === 'offline';
-      const send = element('button', 'scd-button primary', 'Send') as HTMLButtonElement;
-      send.type = 'submit'; send.disabled = input.disabled;
+      history.setAttribute('role', 'log'); history.setAttribute('aria-live', 'polite');
+      const more = element('button', 'scd-button scd-social-load-history', 'Load older messages'); more.type = 'button';
+      more.addEventListener('click', () => { if (this.nextHistorySequence !== null) this.requestConversationHistory(this.nextHistorySequence); });
+      const form = element('form', 'scd-social-message-form');
+      const input = element('input'); input.type = 'text'; input.maxLength = 300; input.placeholder = 'Write a message…';
+      input.dataset.scdFriendMessageInput = 'true'; input.value = this.conversationDrafts.get(friend.accountId) ?? '';
+      input.addEventListener('input', () => this.conversationDrafts.set(friend.accountId, input.value));
+      const picker = this.createEmojiPicker(input);
+      const emojis = this.iconButton('friendSlimy', 'Choose a Skribbl emoji', () => {
+        picker.hidden = !picker.hidden; emojis.setAttribute('aria-expanded', String(!picker.hidden));
+      }, 'scd-social-emoji-toggle'); emojis.setAttribute('aria-expanded', 'false');
+      const send = element('button', 'scd-button primary', 'Send'); send.type = 'submit';
       form.addEventListener('submit', event => {
-        event.preventDefault(); const message = input.value.trim(); if (!message) return;
-        this.options.gateway.sendFriendMessage(friend.accountId, message); input.value = '';
+        event.preventDefault(); event.stopPropagation();
+        const message = input.value.trim(); if (!message || send.disabled) return;
+        const id = `friend-message-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+        this.recordMessage({ id, clientMessageId: id, accountId: friend.accountId, direction: 'outgoing', message, occurredAt: Date.now(), status: 'pending' });
+        input.value = ''; this.conversationDrafts.delete(friend.accountId); picker.hidden = true; emojis.setAttribute('aria-expanded', 'false');
+        this.refreshConversationHistory(true); this.sendPendingMessage(id); input.focus({ preventScroll: true });
       });
-      form.append(input, send); body.append(history, form);
-      queueMicrotask(() => { history.scrollTop = history.scrollHeight; input.focus(); });
+      form.append(input, emojis, send);
+      const retention = element('div', 'scd-muted scd-social-chat-retention', 'The latest 24 hours are synced between browsers; older messages may remain in this browser.');
+      body.append(more, history, form, picker, retention);
     });
+    this.activeConversationId = friend.accountId; this.conversationProfile = friend; this.nextHistorySequence = null;
+    this.unread.delete(friend.accountId); this.renderHomepageList(); if (this.modal?.isConnected) this.renderModal();
+    this.refreshConversationHeader(); this.refreshConversationHistory(true); this.requestConversationHistory();
+    queueMicrotask(() => this.detailModal?.querySelector<HTMLInputElement>('[data-scd-friend-message-input]')?.focus());
   }
+
+  private readonly messageKeydown = (event: KeyboardEvent): void => {
+    const input = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!input?.matches('[data-scd-friend-message-input]') || !this.detailModal?.contains(input)) return;
+    event.stopPropagation();
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault(); event.stopImmediatePropagation(); input.form?.requestSubmit();
+    } else if (event.key === 'Escape') {
+      event.preventDefault(); event.stopImmediatePropagation();
+      const picker = this.detailModal.querySelector<HTMLElement>('.scd-social-emoji-picker');
+      if (picker && !picker.hidden) { picker.hidden = true; this.detailModal.querySelector('.scd-social-emoji-toggle')?.setAttribute('aria-expanded', 'false'); }
+      else input.blur();
+    }
+  };
+
+  private createEmojiPicker(input: HTMLInputElement): HTMLElement {
+    const picker = element('div', 'scd-social-emoji-picker'); picker.hidden = true;
+    picker.setAttribute('aria-label', 'Skribbl emojis');
+    const grid = element('div', 'scd-social-emoji-grid');
+    for (const emoji of SOCIAL_EMOJIS) {
+      if (!emoji.source) continue;
+      const button = element('button', 'scd-icon-button scd-social-emoji-choice'); button.type = 'button';
+      const image = element('img'); image.src = emoji.source; image.alt = emoji.label; button.appendChild(image);
+      button.addEventListener('click', () => {
+        const start = input.selectionStart ?? input.value.length; const end = input.selectionEnd ?? start;
+        const value = input.value.slice(0, start) + emoji.token + input.value.slice(end);
+        if (Array.from(value).length > 300) { this.options.showToast('Message too long', 'A message can contain up to 300 characters.'); return; }
+        input.value = value; if (this.activeConversationId) this.conversationDrafts.set(this.activeConversationId, value);
+        picker.hidden = true; this.detailModal?.querySelector('.scd-social-emoji-toggle')?.setAttribute('aria-expanded', 'false');
+        input.focus({ preventScroll: true }); input.setSelectionRange(start + emoji.token.length, start + emoji.token.length);
+      });
+      this.options.registerTooltip(button, emoji.label, 'Y'); grid.appendChild(button);
+    }
+    picker.appendChild(grid); return picker;
+  }
+
+  private sendPendingMessage(id: string): void {
+    const entry = this.messages.find(item => item.direction === 'outgoing' && (item.clientMessageId ?? item.id) === id);
+    if (!entry) return; entry.status = 'pending'; this.refreshConversationHistory(true);
+    try { this.options.gateway.sendFriendMessage(entry.accountId, entry.message, id); }
+    catch {
+      entry.status = 'failed'; this.saveMessages(); this.refreshConversationHistory();
+      this.options.showToast('Message not sent', 'Reconnect the Gateway, then retry your message.');
+    }
+  }
+
+  private requestConversationHistory(beforeSequence: number | null = null): void {
+    if (!this.activeConversationId) return;
+    try {
+      this.historyLoading = true;
+      const requestId = this.options.gateway.getFriendChatHistory(this.activeConversationId, beforeSequence);
+      this.activeHistoryRequestId = requestId; this.historyRequests.set(requestId, this.activeConversationId);
+      if (beforeSequence !== null) this.historyPrependRequests.add(requestId);
+    } catch { this.historyLoading = false; }
+    this.refreshConversationHistory();
+  }
+
+  private refreshConversationHeader(): void {
+    if (!this.activeConversationId || !this.detailModal) return;
+    const state = this.options.getGatewayState();
+    const friend = state.social?.friends.find(item => item.accountId === this.activeConversationId) ?? this.conversationProfile;
+    if (!friend) return; this.conversationProfile = friend;
+    this.detailModal.querySelector('.scd-modal-title')?.replaceChildren(this.createIdentity(friend, false));
+    const connectedFriend = state.status === 'connected' && Boolean(state.social?.friends.some(item => item.accountId === friend.accountId));
+    const input = this.detailModal.querySelector<HTMLInputElement>('[data-scd-friend-message-input]');
+    const send = this.detailModal.querySelector<HTMLButtonElement>('.scd-social-message-form button[type="submit"]');
+    if (input) { input.disabled = !connectedFriend; input.placeholder = connectedFriend ? 'Write a message…' : 'Messaging unavailable'; }
+    if (send) send.disabled = !connectedFriend;
+  }
+
+  private refreshConversationHistory(forceBottom = false, prepended = false): void {
+    if (!this.detailModal || !this.activeConversationId) return;
+    const history = this.detailModal.querySelector<HTMLElement>('.scd-social-message-history');
+    if (!history) return;
+    const follow = forceBottom || !prepended && history.scrollHeight - history.scrollTop - history.clientHeight < 40;
+    const oldHeight = history.scrollHeight; const oldTop = history.scrollTop; history.replaceChildren();
+    const entries = this.messages.filter(item => item.accountId === this.activeConversationId);
+    if (entries.length === 0) history.appendChild(element('div', 'scd-muted', this.historyLoading ? 'Loading messages…' : 'Start a conversation.'));
+    for (const message of entries) {
+      const row = element('div', `scd-social-message ${message.direction}${message.status === 'pending' ? ' pending' : ''}${message.status === 'failed' ? ' failed' : ''}`);
+      row.dataset.messageId = message.clientMessageId ?? message.id;
+      const copy = element('span', 'scd-social-message-text'); appendSocialMessage(copy, message.message);
+      row.append(element('span', 'scd-social-message-author', message.direction === 'outgoing' ? 'You' : this.conversationProfile?.displayName ?? 'Friend'), copy);
+      if (message.status === 'pending') row.appendChild(element('span', 'scd-muted scd-social-message-state', 'Sending…'));
+      if (message.status === 'failed') {
+        const retry = element('button', 'scd-button scd-social-message-retry', 'Retry'); retry.type = 'button';
+        retry.addEventListener('click', () => this.sendPendingMessage(message.clientMessageId ?? message.id)); row.appendChild(retry);
+      }
+      history.appendChild(row);
+    }
+    const more = this.detailModal.querySelector<HTMLButtonElement>('.scd-social-load-history');
+    if (more) { more.hidden = this.nextHistorySequence === null; more.disabled = this.historyLoading; }
+    history.scrollTop = follow ? history.scrollHeight : oldTop + (prepended ? Math.max(0, history.scrollHeight - oldHeight) : 0);
+  }
+
+  private scheduleConversationRead(): void {
+    if (!this.activeConversationId) return;
+    this.unread.delete(this.activeConversationId);
+    if (this.readTimer !== null) window.clearTimeout(this.readTimer);
+    this.readTimer = window.setTimeout(() => {
+      this.readTimer = null; const friendId = this.activeConversationId; if (!friendId) return;
+      const through = Math.max(0, ...this.messages.filter(item => item.accountId === friendId && item.direction === 'incoming').map(item => item.sequence ?? 0));
+      if (through > 0) { try { this.options.gateway.markFriendChatRead(friendId, through); } catch {} }
+    }, 250);
+  }
+
+  public openProfile(accountId: string, preview?: GatewaySocialProfile): void {
+    if (accountId === this.options.getGatewayState().identity?.accountId) return;
+    this.openDetail('Player profile', body => {
+      if (preview) body.appendChild(this.createIdentity(preview, false, false));
+      else body.appendChild(this.createSearchSkeleton());
+    });
+    this.activeProfileId = accountId;
+    try { this.profileRequestId = this.options.gateway.getFriendProfile(accountId); }
+    catch { this.options.showToast('Profile unavailable', 'Reconnect the Gateway to view this profile.'); }
+  }
+
+  private refreshProfileCard(): void {
+    if (!this.activeProfileId || !this.detailModal || !this.profileCard) return;
+    const body = this.detailModal.querySelector<HTMLElement>('.scd-social-detail-body'); if (!body) return;
+    body.replaceChildren(); const profile = this.profileCard.profile;
+    if (!profile) { body.appendChild(element('div', 'scd-muted', 'This profile is unavailable.')); return; }
+    const latest = this.options.getGatewayState().social?.friends.find(item => item.accountId === profile.accountId) ?? profile;
+    const card = element('div', 'scd-social-profile-card');
+    const identity = this.createIdentity(latest, false, false); card.appendChild(identity);
+    const stats = element('div', 'scd-social-profile-stats');
+    const pinned = this.profileCard.pinnedStats.length === 2 ? this.profileCard.pinnedStats
+      : DEFAULT_PINNED_PROFILE_STAT_IDS.map(id => ({ id, value: this.profileCard!.pinnedStats.find(item => item.id === id)?.value ?? '—' }));
+    for (const stat of pinned) {
+      if (!isProfileStatId(stat.id)) continue;
+      const definition = PROFILE_STAT_DEFINITION_BY_ID[stat.id]; const statCard = element('div', 'scd-profile-stat scd-social-public-stat');
+      const image = element('img', 'scd-social-stat-icon'); image.src = EMBEDDED_STAT_ICON_ASSETS[STAT_ICON_ASSET_PATHS[stat.id]] ?? ''; image.alt = definition.label;
+      const pin = icon('friendPin', 'Pinned statistic', 'scd-profile-pin-icon scd-icon');
+      statCard.append(pin, image, element('span', 'scd-profile-stat-label', definition.label), element('span', 'scd-profile-stat-value', stat.value));
+      this.options.registerTooltip(statCard, definition.description, 'Y'); stats.appendChild(statCard);
+    }
+    const friend = this.profileCard.relationship === 'friend';
+    const action = this.iconButton(friend ? 'friendList' : 'friendAdd', friend ? 'Already friends' : 'Send friend request', () => {
+      if (friend) { this.closeDetail(); this.openFriends(); }
+      else { this.options.gateway.sendFriendRequest(profile.accountId); action.disabled = true; }
+    }, 'scd-social-profile-friend-action');
+    action.disabled = !friend && this.profileCard.relationship !== 'none';
+    if (action.disabled) this.options.registerTooltip(action, this.profileCard.relationship === 'blocked' ? 'Friend requests unavailable' : 'Friend request pending', 'Y');
+    card.append(action, stats); body.appendChild(card);
+  }
+
+  private activityLabel(profile: GatewaySocialProfile): string {
+    if (profile.presence === 'duel') return 'Active Duel';
+    if (profile.presence === 'offline') return 'Offline';
+    if (profile.lobby) return `${profile.lobby.languageName} ${profile.lobby.lobbyType === 'public' ? 'Public' : 'Private'} ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}`;
+    return profile.activity === 'lobby' ? 'Playing Skribbl' : profile.activity === 'home' ? 'Viewing Homepage' : presenceLabel(profile);
+  }
+
+  private sortedFriends(friends: readonly GatewaySocialProfile[]): GatewaySocialProfile[] {
+    return friends.map(friend => ({ ...friend, pinned: this.optimisticPins.get(friend.accountId)?.pinned ?? friend.pinned })).sort(compareSocialFriends);
+  }
+
+  private createFriendPin(friend: GatewaySocialProfile): HTMLButtonElement {
+    return this.iconButton('friendPin', friend.pinned ? 'Unpin friend' : 'Pin friend', () => {
+      const update = { pinned: !friend.pinned, requestId: null as string | null };
+      this.optimisticPins.set(friend.accountId, update); this.renderHomepageList(); if (this.modal?.isConnected) this.renderModal();
+      try { update.requestId = this.options.gateway.setFriendPinned(friend.accountId, update.pinned); }
+      catch { this.optimisticPins.delete(friend.accountId); this.renderHomepageList(); if (this.modal?.isConnected) this.renderModal(); }
+    }, `scd-social-pin${friend.pinned ? ' pinned' : ''}`);
+  }
+
 
   private openMatchInvitePicker(friend: GatewaySocialProfile): void {
     this.openDetail(`Invite ${friend.displayName}`, body => {
@@ -608,18 +871,28 @@ export class SocialFeatureUi {
     this.detailModal = overlay; this.options.onModalVisibilityChanged();
   }
 
-  private closeDetail(): void { this.detailModal?.remove(); this.detailModal = null; this.options.onModalVisibilityChanged(); }
+  private closeDetail(): void {
+    if (this.readTimer !== null) window.clearTimeout(this.readTimer); this.readTimer = null;
+    this.activeConversationId = null; this.conversationProfile = null; this.activeProfileId = null;
+    this.profileRequestId = null; this.profileCard = null;
+    this.detailModal?.remove(); this.detailModal = null; this.options.onModalVisibilityChanged();
+  }
   private closeFriends(): void { this.closeDetail(); this.modal?.remove(); this.modal = null; this.options.onModalVisibilityChanged(); }
   private closeAll(): void { this.closeFriends(); }
 
   private handleSocialEvent(event: GatewaySocialEventMessage): void {
-    if (event.kind === 'friend-message-received' && event.message && event.clientMessageId) {
-      this.recordMessage({ id: event.clientMessageId, accountId: event.profile.accountId, direction: 'incoming', message: event.message, occurredAt: event.occurredAt });
-      this.unread.add(event.profile.accountId);
-      this.actionToast(`${event.profile.displayName} sent a message`, event.message, event.profile,
-        [{ label: 'Reply', action: () => this.openMessages(event.profile), primary: true }]);
-    } else if (event.kind === 'friend-message-sent' && event.message && event.clientMessageId) {
-      this.recordMessage({ id: event.clientMessageId, accountId: event.profile.accountId, direction: 'outgoing', message: event.message, occurredAt: event.occurredAt });
+    if ((event.kind === 'friend-message-received' || event.kind === 'friend-message-sent') && event.message && event.clientMessageId) {
+      const direction = event.kind === 'friend-message-received' ? 'incoming' as const : 'outgoing' as const;
+      const fresh = event.chatMessage ? this.recordChatMessage(event.chatMessage) : this.recordMessage({
+        id: event.clientMessageId, clientMessageId: event.clientMessageId, accountId: event.profile.accountId,
+        direction, message: event.message, occurredAt: event.occurredAt, status: 'sent'
+      });
+      if (direction === 'incoming' && fresh && this.activeConversationId !== event.profile.accountId) {
+        this.unread.add(event.profile.accountId);
+        this.actionToast(`${event.profile.displayName} sent a message`, event.message, event.profile,
+          [{ label: 'Reply', action: () => this.openMessages(event.profile), primary: true }]);
+      }
+      if (this.activeConversationId === event.profile.accountId) { this.refreshConversationHistory(direction === 'outgoing'); this.scheduleConversationRead(); }
     } else if (event.kind === 'friend-request-received' && event.friendRequestId) {
       this.actionToast('Friend request', `${event.profile.displayName} sent you a friend request.`, event.profile, [
         { label: 'Accept', action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId!, 'accept'), primary: true },
@@ -647,22 +920,31 @@ export class SocialFeatureUi {
     if (!container) { container = element('div', 'typo-toast-container'); (document.body ?? document.documentElement).appendChild(container); }
     const toast = element('div', 'typo-toast scd-duel-toast scd-social-toast');
     toast.dataset.scdRuntimeId = this.options.runtimeId;
-    const closeToast = (): void => { toast.classList.add('closing'); window.setTimeout(() => toast.remove(), 150); };
+    const closeToast = (): void => {
+      if (!toast.isConnected || toast.classList.contains('closing')) return;
+      const timer = this.toastTimers.get(toast); if (timer !== undefined) window.clearTimeout(timer);
+      this.toastTimers.delete(toast); toast.classList.add('closing'); window.setTimeout(() => toast.remove(), 150);
+    };
     const close = element('span', 'close-toast', '×'); close.addEventListener('click', closeToast);
     const identity = element('div', 'scd-toast-profile');
-    identity.append(this.options.createAvatar(profile, 'scd-toast-avatar'), element('strong', '', titleText));
+    const avatar = this.createIdentity(profile, false); avatar.querySelector('.scd-social-copy')?.remove();
+    identity.append(avatar, element('strong', '', titleText));
     const buttons = element('div', 'typo-toast-confirm');
     for (const item of actions) {
       const button = element('button', `scd-button${item.primary ? ' primary' : ''}`, item.label) as HTMLButtonElement;
       button.type = 'button'; button.addEventListener('click', () => { item.action(); closeToast(); }); buttons.appendChild(button);
     }
-    toast.append(identity, close, element('span', '', message), buttons); container.appendChild(toast);
+    const copy = element('span'); appendSocialMessage(copy, message);
+    toast.append(identity, close, copy, buttons); container.appendChild(toast);
+    this.toastTimers.set(toast, window.setTimeout(closeToast, 3_500));
   }
 
   private renderHomepageList(): void {
     this.homepageList?.remove(); this.homepageList = null;
     const state = this.options.getGatewayState();
-    if (!this.uiPreferences.showHomepageList || !this.options.isHomepageVisible() || state.status !== 'connected' || !state.social) return;
+    if (this.uiPreferences.showFriendsList === 'never'
+        || (this.uiPreferences.showFriendsList === 'homepage' && !this.options.isHomepageVisible())
+        || state.status !== 'connected' || !state.social) return;
     const panel = element('aside', `scd-home-friends ${this.uiPreferences.homepageAnchor}`);
     panel.dataset.scdRuntimeId = this.options.runtimeId;
     const header = element('button', 'scd-home-friends-header') as HTMLButtonElement;
@@ -670,9 +952,9 @@ export class SocialFeatureUi {
     header.addEventListener('click', () => this.openFriends()); this.options.registerTooltip(header, 'Open friends list', 'Y');
     const list = element('div', 'scd-home-friends-list');
     if (state.social.friends.length === 0) list.appendChild(element('div', 'scd-muted scd-home-friends-empty', 'No friends yet'));
-    for (const friend of state.social.friends) {
+    for (const friend of this.sortedFriends(state.social.friends)) {
       const row = element('div', `scd-home-friend presence-${friend.presence}`);
-      row.appendChild(this.createIdentity(friend));
+      row.append(this.createFriendPin(friend), this.createIdentity(friend));
       const actions = element('div', 'scd-home-friend-actions');
       if (friend.presence === 'online' || friend.presence === 'idle') actions.appendChild(this.iconButton('friendDuelsLogo', 'Invite to a Duel', () => this.openMatchInvitePicker(friend)));
       actions.appendChild(this.iconButton('friendMessage', 'Open Quick Messages', () => this.openMessages(friend), this.unread.has(friend.accountId) ? 'unread' : ''));
@@ -704,24 +986,43 @@ export class SocialFeatureUi {
       if (homepageVisibilityChanged || this.homepageList) this.renderHomepageList();
       return;
     }
-    const lobby = this.options.getLobbySnapshot();
-    const page: 'home' | 'lobby' = lobby.hydrated && lobby.lobbyId ? 'lobby' : 'home';
-    const socialLobby: GatewaySocialLobbyPresence | null = page === 'lobby' ? {
-      lobbyId: lobby.lobbyId!, lobbyType: lobby.lobbyType === 0 ? 'public' : 'private',
-      languageName: lobby.languageName ?? 'Unknown language', playerCount: Math.max(0, lobby.playerCount),
-      maxPlayers: Math.max(1, Math.min(32, lobby.maxPlayers ?? 8))
-    } : null;
-    const fingerprint = JSON.stringify([state.connectionId, page, socialLobby]);
-    if (fingerprint !== this.lastPresenceFingerprint) {
-      this.lastPresenceFingerprint = fingerprint;
-      try { this.options.gateway.setSocialPresence(page, socialLobby); } catch {}
+    const report = socialPresenceReport(this.options.getLobbySnapshot());
+    const fingerprint = JSON.stringify([state.connectionId, report.page, report.lobby]);
+    if (this.presenceRequestId !== null && Date.now() - this.presenceSentAt >= 10_000) {
+      this.presenceRequestId = null; this.lastPresenceFingerprint = '';
+    }
+    if (fingerprint !== this.lastPresenceFingerprint && this.presenceRequestId === null) {
+      try {
+        this.presenceRequestId = this.options.gateway.setSocialPresence(report.page, report.lobby);
+        this.pendingPresenceFingerprint = fingerprint; this.presenceSentAt = Date.now();
+      } catch (error) { console.warn('[Skribbl Duels Social] Presence report deferred', error instanceof Error ? error.message : String(error)); }
+    }
+    const stats = this.options.getPinnedStats?.();
+    if (stats) {
+      const statsFingerprint = JSON.stringify([state.identity?.accountId, stats]);
+      if (statsFingerprint !== this.lastStatsFingerprint && Date.now() - this.statsSentAt >= 15_000) {
+        try { this.options.gateway.setSocialPinnedStats(stats); this.lastStatsFingerprint = statsFingerprint; this.statsSentAt = Date.now(); } catch {}
+      }
     }
     if (homepageVisibilityChanged) this.renderHomepageList();
   }
 
-  private recordMessage(message: LocalFriendMessage): void {
-    if (this.messages.some(item => item.id === message.id)) return;
-    this.messages.push(message); this.messages = this.messages.slice(-500); this.saveMessages();
+  private recordMessage(message: LocalFriendMessage): boolean {
+    const index = this.messages.findIndex(item => item.accountId === message.accountId && item.direction === message.direction
+      && ((item.clientMessageId ?? item.id) === (message.clientMessageId ?? message.id) || item.id === message.id));
+    const fresh = index < 0;
+    if (index >= 0) this.messages[index] = { ...this.messages[index], ...message };
+    else this.messages.push(message);
+    this.messages.sort((a, b) => a.occurredAt - b.occurredAt || (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER));
+    this.saveMessages(); return fresh;
+  }
+
+  private recordChatMessage(message: GatewayFriendChatMessage): boolean {
+    const self = this.options.getGatewayState().identity?.accountId;
+    if (!self || (message.senderId !== self && message.recipientId !== self)) return false;
+    return this.recordMessage({ id: message.messageId, clientMessageId: message.clientMessageId, sequence: message.sequence,
+      accountId: message.senderId === self ? message.recipientId : message.senderId,
+      direction: message.senderId === self ? 'outgoing' : 'incoming', message: message.message, occurredAt: message.occurredAt, status: 'sent' });
   }
 
   private loadMessages(): void {
@@ -732,14 +1033,15 @@ export class SocialFeatureUi {
       const parsed = JSON.parse(localStorage.getItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`) ?? '[]') as LocalFriendMessage[];
       this.messages = Array.isArray(parsed) ? parsed.filter(item => item && typeof item.id === 'string'
         && typeof item.accountId === 'string' && (item.direction === 'incoming' || item.direction === 'outgoing')
-        && typeof item.message === 'string' && Number.isFinite(item.occurredAt)).slice(-500) : [];
+        && typeof item.message === 'string' && Number.isFinite(item.occurredAt)).slice(-1_000)
+        .map(item => item.status === 'pending' ? { ...item, status: 'failed' as const } : item) : [];
     } catch {}
   }
 
   private saveMessages(): void {
     const accountId = this.options.getGatewayState().identity?.accountId;
     if (!accountId) return;
-    try { localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages)); } catch {}
+    try { localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages.slice(-1_000))); } catch {}
   }
   private effectiveAvailability(state = this.options.getGatewayState()): GatewaySocialAvailability {
     return this.optimisticAvailability ?? state.social?.preferences.availability ?? 'offline';
@@ -762,6 +1064,17 @@ export class SocialFeatureUi {
 .scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message{align-self:flex-start;max-width:85%;display:flex;flex-direction:column;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
 .scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow:auto}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
 .scd-social-locked-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 22px rgba(255,255,255,.45))}@keyframes scd-social-lock-glow{0%{opacity:0;transform:scale(.75)}18%,72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
+.scd-social-avatar-wrap{border:0;padding:0;background:transparent;color:inherit;cursor:pointer;overflow:visible}.scd-social-avatar-wrap>.scd-social-avatar{pointer-events:none}
+.scd-social-row,.scd-home-friend{position:relative;padding-right:24px}.scd-social-list{padding:8px 5px 2px}.scd-home-friends-list{padding:8px 5px 2px}.scd-home-friend{border-radius:7px;margin-bottom:6px}
+.scd-social-pin{position:absolute!important;right:-5px;top:-7px;width:22px!important;height:22px!important;padding:0!important;z-index:3;opacity:.6;background:transparent!important;transition:opacity .18s ease,transform .18s ease;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.35))}.scd-social-pin.pinned{opacity:1}.scd-social-pin:hover{transform:translateY(-1px)}.scd-social-pin .scd-icon{width:22px!important;height:22px!important}
+.scd-social-detail-header .scd-modal-title{min-width:0}.scd-social-detail-header .scd-social-identity{width:100%}.scd-social-detail-header .scd-social-status-text{max-width:360px}
+.scd-social-detail-body{position:relative}.scd-social-message-form{grid-template-columns:minmax(0,1fr) 36px auto;align-items:center}.scd-social-message-form .scd-social-emoji-toggle{width:36px;height:36px}
+.scd-social-emoji-picker{position:absolute;left:12px;right:12px;bottom:62px;z-index:5;padding:10px;border-radius:9px;background:var(--COLOR_PANEL_BG);box-shadow:0 5px 20px rgba(0,0,0,.3);max-height:240px;overflow:auto}.scd-social-emoji-picker[hidden],.scd-social-load-history[hidden]{display:none!important}
+.scd-social-emoji-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:5px}.scd-social-emoji-choice{display:grid;place-items:center;width:38px;height:38px;padding:3px}.scd-social-emoji-choice img{width:32px;height:32px;object-fit:contain;transition:transform .15s}.scd-social-emoji-choice:hover img{transform:scale(1.1)}.scd-social-emoji{display:inline-block;width:26px;height:26px;object-fit:contain;vertical-align:middle;margin:0 2px}
+.scd-social-message.pending{opacity:.65}.scd-social-message.failed{outline:1px solid #de523d}.scd-social-message-state{font-size:10px}.scd-social-message-retry{padding:3px 8px;font-size:11px}.scd-social-load-history{width:100%;margin-bottom:8px}.scd-social-chat-retention{font-size:10px;margin-top:6px}
+.scd-social-profile-card{position:relative;display:flex;flex-direction:column;gap:18px;padding:12px 7px}.scd-social-profile-card>.scd-social-identity{padding-right:45px}.scd-social-profile-card .scd-social-avatar-wrap,.scd-social-profile-card .scd-social-avatar{width:82px!important;height:82px!important}.scd-social-profile-card .scd-social-status-icon{width:30px;height:30px;right:-4px;bottom:-4px}.scd-social-profile-card .scd-social-status-icon[aria-label='Online']{width:39px}.scd-social-profile-card .scd-social-name{font-size:20px}.scd-social-profile-card .scd-social-status-text{font-size:13px;max-width:350px}
+.scd-social-profile-friend-action{position:absolute;right:3px;top:12px}.scd-social-profile-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:4px 5px}.scd-social-public-stat{position:relative;min-width:0;overflow:visible}.scd-social-stat-icon{grid-row:1/3;width:32px;height:32px;object-fit:contain}.scd-social-public-stat .scd-profile-pin-icon .scd-icon-image{width:100%;height:100%;object-fit:contain}
+
 @media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:minmax(0,1fr) 34px}}
 `;
     document.head.appendChild(style);

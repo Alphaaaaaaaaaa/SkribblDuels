@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type {
+  GatewayFriendChatMessage,
+  GatewaySocialPinnedStat,
   GatewaySocialAvailability,
   GatewaySocialPreferences,
   GatewaySocialVisibility
@@ -47,6 +49,13 @@ export class SocialPersistenceError extends Error {
 
 export interface GatewaySocialPersistence {
   checkHealth?(): Promise<void>;
+  purgeMessages(): Promise<void>;
+  storeMessage(senderId: string, recipientId: string, clientMessageId: string, message: string): Promise<GatewayFriendChatMessage>;
+  getMessageHistory(accountId: string, friendId: string, beforeSequence: number | null): Promise<{ messages: GatewayFriendChatMessage[]; nextBeforeSequence: number | null }>;
+  getUnreadMessages(accountId: string): Promise<{ accountId: string; count: number }[]>;
+  markMessagesRead(accountId: string, friendId: string, throughSequence: number): Promise<void>;
+  getPinnedStats(accountId: string): Promise<GatewaySocialPinnedStat[]>;
+  setPinnedStats(accountId: string, stats: readonly GatewaySocialPinnedStat[]): Promise<void>;
   getProfiles(accountIds: readonly string[]): Promise<Map<string, GatewaySocialStoredProfile>>;
   getPreferencesForAccounts(accountIds: readonly string[]): Promise<Map<string, GatewaySocialStoredPreferences>>;
   findProfileByDiscordUsername(username: string): Promise<GatewaySocialStoredProfile | null>;
@@ -133,10 +142,72 @@ export class SupabaseGatewaySocialPersistence implements GatewaySocialPersistenc
       this.client.rpc('gateway_social_contract_version')
     ]);
     if (error) throw new Error(`Social persistence health check failed: ${error.message}`);
-    if (contract.error) throw new Error(`Social Contract v16 health check failed: ${contract.error.message}`);
-    if (Number(contract.data) !== 16) {
-      throw new Error(`Social Contract v16 is required; database reported v${String(contract.data)}.`);
+    if (contract.error) throw new Error(`Social Contract v17 health check failed: ${contract.error.message}`);
+    if (Number(contract.data) !== 17) {
+      throw new Error(`Social Contract v17 is required; database reported v${String(contract.data)}.`);
     }
+  }
+
+  public async purgeMessages(): Promise<void> {
+    const { error } = await this.client.rpc('gateway_purge_duel_friend_messages');
+    if (error) throw new Error(`Unable to expire friend messages: ${error.message}`);
+  }
+
+  public async storeMessage(senderId: string, recipientId: string, clientMessageId: string, message: string): Promise<GatewayFriendChatMessage> {
+    const { data, error } = await this.client.rpc('gateway_store_duel_friend_message', {
+      actor_id: senderId, target_id: recipientId, client_id: clientMessageId, body: message
+    });
+    if (error) {
+      if (error.message.includes('SOCIAL_CHAT_STORAGE_FULL')) throw new SocialPersistenceError('SOCIAL_CHAT_STORAGE_FULL', 'Chat storage is temporarily full. Please try again later.');
+      if (error.message.includes('FRIEND_NOT_FOUND')) throw new SocialPersistenceError('FRIEND_NOT_FOUND', 'Messages can only be sent to current friends.');
+      if (error.message.includes('FRIEND_MESSAGE_ID_CONFLICT')) throw new SocialPersistenceError('FRIEND_MESSAGE_ID_CONFLICT', 'This message identifier was already used.');
+      throw new Error(`Unable to store friend message: ${error.message}`);
+    }
+    return this.messageRow(Array.isArray(data) ? data[0] : data);
+  }
+
+  public async getMessageHistory(accountId: string, friendId: string, beforeSequence: number | null): Promise<{ messages: GatewayFriendChatMessage[]; nextBeforeSequence: number | null }> {
+    const { data, error } = await this.client.rpc('gateway_get_duel_friend_messages', {
+      actor_id: accountId, target_id: friendId, before_seq: beforeSequence
+    });
+    if (error) throw new Error(`Unable to load friend chat history: ${error.message}`);
+    const rows = (Array.isArray(data) ? data : []).map(row => this.messageRow(row));
+    const messages = rows.slice(0, 200);
+    return { messages: messages.reverse(), nextBeforeSequence: rows.length > 200 ? Math.min(...messages.map(item => item.sequence)) : null };
+  }
+
+  public async getUnreadMessages(accountId: string): Promise<{ accountId: string; count: number }[]> {
+    const { data, error } = await this.client.rpc('gateway_duel_friend_chat_inbox', { actor_id: accountId });
+    if (error) throw new Error(`Unable to load unread friend messages: ${error.message}`);
+    return (Array.isArray(data) ? data : []).map(row => ({ accountId: String(row.friend_id), count: Number(row.unread_count) }));
+  }
+
+  public async markMessagesRead(accountId: string, friendId: string, throughSequence: number): Promise<void> {
+    const { error } = await this.client.from('duel_friend_messages').update({ read_at: new Date().toISOString() })
+      .eq('recipient_id', accountId).eq('sender_id', friendId).is('read_at', null).lte('message_sequence', throughSequence);
+    if (error) throw new Error(`Unable to mark friend messages read: ${error.message}`);
+  }
+
+  public async getPinnedStats(accountId: string): Promise<GatewaySocialPinnedStat[]> {
+    const { data, error } = await this.client.from('duel_social_preferences').select('pinned_stats').eq('profile_id', accountId).maybeSingle();
+    if (error) throw new Error(`Unable to load pinned profile stats: ${error.message}`);
+    return Array.isArray(data?.pinned_stats) ? data.pinned_stats.slice(0, 2) as GatewaySocialPinnedStat[] : [];
+  }
+
+  public async setPinnedStats(accountId: string, stats: readonly GatewaySocialPinnedStat[]): Promise<void> {
+    await this.getPreferences(accountId);
+    const { error } = await this.client.from('duel_social_preferences').update({ pinned_stats: stats }).eq('profile_id', accountId);
+    if (error) throw new Error(`Unable to save pinned profile stats: ${error.message}`);
+  }
+
+  private messageRow(value: unknown): GatewayFriendChatMessage {
+    if (!value || typeof value !== 'object') throw new Error('Invalid stored friend message.');
+    const row = value as Record<string, unknown>;
+    const sequence = Number(row.message_sequence);
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) throw new Error('Invalid stored friend-message sequence.');
+    return { messageId: String(row.message_id), clientMessageId: String(row.client_message_id), sequence,
+      senderId: String(row.sender_id), recipientId: String(row.recipient_id), message: String(row.message_text),
+      occurredAt: timestamp(row.created_at), readAt: row.read_at === null ? null : timestamp(row.read_at) };
   }
 
   public async getProfiles(accountIds: readonly string[]): Promise<Map<string, GatewaySocialStoredProfile>> {

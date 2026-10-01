@@ -14,12 +14,15 @@ import type {
   GatewaySlotsStateMessage,
   GatewayErrorMessage,
   GatewayFriendSearchResultMessage,
+  GatewayFriendChatHistoryMessage,
+  GatewayFriendChatInboxMessage,
+  GatewayFriendProfileMessage,
   GatewaySocialEventMessage,
   GatewaySocialSnapshotMessage,
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.69.1' as const;
+export const GATEWAY_CLIENT_VERSION = '0.70.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'
@@ -49,6 +52,9 @@ export interface GatewayConnectionSnapshot {
   lastSlotsSpin: GatewaySlotsSpinResultMessage | null;
   social: GatewaySocialSnapshotMessage | null;
   friendSearch: GatewayFriendSearchResultMessage | null;
+  friendChatHistory: GatewayFriendChatHistoryMessage | null;
+  friendInbox: GatewayFriendChatInboxMessage | null;
+  friendProfile: GatewayFriendProfileMessage | null;
   socialEvents: readonly GatewaySocialEventMessage[];
   socialError: GatewayErrorMessage | null;
   error: string | null;

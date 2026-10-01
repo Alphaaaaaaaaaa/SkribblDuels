@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v16 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v16 includes the privacy-filtered Friends/Social graph, a qualified Friend-response RPC boundary and directional Unblock capability.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v17 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v17 includes the privacy-filtered Friends/Social graph, a qualified Friend-response RPC boundary and directional Unblock capability.
 
 ## Local server
 
@@ -28,7 +28,7 @@ cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v16 resume
+change closes cluster sockets once and reuses the durable Contract v17 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require
@@ -84,17 +84,24 @@ idle seconds; submissions are blocked before the score can exceed Skribbl's
 kick boundary. Client message IDs make resends idempotent; only both match
 participants receive live or replayed messages.
 
-Friends and Social state are Gateway-owned under Contract v16. Durable tables
+Friends and Social state are Gateway-owned under Contract v17. Durable tables
 store privacy, profile status, requests, canonical friendships, directional
 blocks and per-owner pins. The Gateway filters status and lobby data before it
 leaves the server; manually Offline accounts never expose an active Duel or
-lobby. Quick Messages and Social notifications are live-only and are not
-written to Supabase. Friend Match invitations reuse the hash-only durable
+lobby. Quick Messages use `duel_friend_messages` for the latest 24 hours,
+including offline delivery, read markers and idempotent retries. History reads
+use indexed pages of 200 messages, while the inbox aggregates current friends'
+unread counts. Purge runs every five minutes, on connection and before writes;
+optional Supabase Cron also cleans while the Gateway is stopped. The chat RPC
+rejects new writes at 20,000 live messages or 450 MiB total database size,
+without disabling other Duels features. Social action notifications remain
+live events. Friend Match invitations reuse the hash-only durable
 invite authority rather than introducing a second Match path.
 `/readyz` additionally calls the Social contract probe and refuses readiness if
-the v0.69.1 RPC hotfix has not been applied. Unexpected Social command failures
+the v0.70.0 chat migration has not been applied. Unexpected Social command failures
 carry a short diagnostic ID shared by the client toast and structured Railway
-log entry; tokens and private profile data are never included.
+log entry; tokens and private profile data are never included. See
+`docs/social-chat-profiles-v0.70.0.md` for deployment and capacity checks.
 
 During a running match, each real participant sends contiguous normalized
 telemetry batches. The Gateway acknowledges the last accepted sequence and

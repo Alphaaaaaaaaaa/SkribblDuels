@@ -10,6 +10,7 @@ import {
   type GatewayMatchmakingJoinMessage,
   type GatewaySocialLobbyPresence,
   type GatewaySocialPreferences,
+  type GatewaySocialPinnedStat,
   type GatewayServerMessage,
   type GatewaySocketAuth,
   type GatewayTelemetryEnvelope
@@ -67,6 +68,9 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     lastSlotsSpin: null,
     social: null,
     friendSearch: null,
+    friendChatHistory: null,
+    friendInbox: null,
+    friendProfile: null,
     socialEvents: [],
     socialError: null,
     error: null
@@ -397,10 +401,31 @@ export class SocketIoGatewayClient {
     return requestId;
   }
 
-  public sendFriendMessage(accountId: string, message: string): string {
-    const clientMessageId = this.createRequestId('friend-message');
+  public sendFriendMessage(accountId: string, message: string, clientMessageId = this.createRequestId('friend-message')): string {
     this.emit({ type: 'FRIEND_MESSAGE_SEND', clientMessageId, accountId, message });
+    if (this.state.socialError?.requestId === clientMessageId) this.update({ ...this.state, socialError: null });
     return clientMessageId;
+  }
+
+  public setSocialPinnedStats(stats: readonly GatewaySocialPinnedStat[]): string {
+    const requestId = this.createRequestId('social-profile-stats');
+    this.emit({ type: 'SOCIAL_PROFILE_STATS_SET', requestId, stats });
+    return requestId;
+  }
+  public getFriendProfile(accountId: string): string {
+    const requestId = this.createRequestId('friend-profile');
+    this.emit({ type: 'FRIEND_PROFILE_GET', requestId, accountId });
+    return requestId;
+  }
+  public getFriendChatHistory(accountId: string, beforeSequence: number | null = null): string {
+    const requestId = this.createRequestId('friend-history');
+    this.emit({ type: 'FRIEND_CHAT_HISTORY_GET', requestId, accountId, beforeSequence });
+    return requestId;
+  }
+  public markFriendChatRead(accountId: string, throughSequence: number): string {
+    const requestId = this.createRequestId('friend-read');
+    this.emit({ type: 'FRIEND_CHAT_READ', requestId, accountId, throughSequence });
+    return requestId;
   }
 
   public sendFriendMatchInvite(accountId: string, format: 'casual' | 'ranked'): string {
@@ -551,6 +576,9 @@ export class SocketIoGatewayClient {
         lastSlotsSpin: this.state.lastSlotsSpin,
         social: sameAccount ? this.state.social : null,
         friendSearch: sameAccount ? this.state.friendSearch : null,
+        friendChatHistory: sameAccount ? this.state.friendChatHistory : null,
+        friendInbox: sameAccount ? this.state.friendInbox : null,
+        friendProfile: sameAccount ? this.state.friendProfile : null,
         socialEvents: sameAccount ? this.state.socialEvents : [],
         socialError: sameAccount ? this.state.socialError : null,
         error: null
@@ -653,6 +681,18 @@ export class SocketIoGatewayClient {
           : this.state.coins,
         error: null
       });
+      return;
+    }
+    if (value.type === 'FRIEND_CHAT_HISTORY') {
+      this.update({ ...this.state, friendChatHistory: structuredClone(value), socialError: null });
+      return;
+    }
+    if (value.type === 'FRIEND_CHAT_INBOX') {
+      this.update({ ...this.state, friendInbox: structuredClone(value) });
+      return;
+    }
+    if (value.type === 'FRIEND_PROFILE') {
+      this.update({ ...this.state, friendProfile: structuredClone(value), socialError: null });
       return;
     }
     if (value.type === 'SOCIAL_SNAPSHOT') {

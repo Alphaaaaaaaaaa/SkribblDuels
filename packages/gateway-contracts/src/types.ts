@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 16 as const;
+export const GATEWAY_CONTRACT_VERSION = 17 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export const GATEWAY_SLOT_ICON_IDS = [
@@ -245,7 +245,7 @@ export type GatewaySocialVisibility = 'everyone' | 'friends' | 'nobody';
 export type GatewaySocialPresenceKind = 'duel' | GatewaySocialAvailability;
 
 export interface GatewaySocialLobbyPresence {
-  lobbyId: string;
+  lobbyId: string | null;
   lobbyType: 'public' | 'private';
   languageName: string;
   playerCount: number;
@@ -271,6 +271,18 @@ export interface GatewaySocialProfileStatusSetMessage {
 export interface GatewaySocialPresenceSetMessage {
   type: 'SOCIAL_PRESENCE_SET'; requestId: string; page: 'home' | 'lobby'; lobby: GatewaySocialLobbyPresence | null;
 }
+export interface GatewaySocialPinnedStat { id: string; value: string; }
+export interface GatewaySocialProfileStatsSetMessage {
+  type: 'SOCIAL_PROFILE_STATS_SET'; requestId: string; stats: readonly GatewaySocialPinnedStat[];
+}
+export interface GatewayFriendProfileGetMessage { type: 'FRIEND_PROFILE_GET'; requestId: string; accountId: string; }
+export interface GatewayFriendChatHistoryGetMessage {
+  type: 'FRIEND_CHAT_HISTORY_GET'; requestId: string; accountId: string; beforeSequence: number | null;
+}
+export interface GatewayFriendChatReadMessage {
+  type: 'FRIEND_CHAT_READ'; requestId: string; accountId: string; throughSequence: number;
+}
+
 export interface GatewayFriendSearchMessage { type: 'FRIEND_SEARCH'; requestId: string; discordUsername: string; }
 export interface GatewayFriendRequestSendMessage { type: 'FRIEND_REQUEST_SEND'; requestId: string; accountId: string; }
 export interface GatewayFriendRequestRespondMessage {
@@ -317,6 +329,10 @@ export type GatewayClientMessage =
   | GatewaySlotsOpenMessage
   | GatewaySlotsSpinMessage
   | GatewaySocialSyncMessage
+  | GatewaySocialProfileStatsSetMessage
+  | GatewayFriendProfileGetMessage
+  | GatewayFriendChatHistoryGetMessage
+  | GatewayFriendChatReadMessage
   | GatewaySocialPreferencesSetMessage
   | GatewaySocialProfileStatusSetMessage
   | GatewaySocialPresenceSetMessage
@@ -681,6 +697,7 @@ export interface GatewaySocialProfile {
   statusChallengeId: string | null;
   statusText: string;
   presence: GatewaySocialPresenceKind;
+  activity?: 'home' | 'lobby' | null;
   lastSeenAt: number | null;
   lobby: GatewaySocialLobbyPresence | null;
   canJoinLobby: boolean;
@@ -735,6 +752,31 @@ export interface GatewaySocialEventMessage {
   inviteToken: string | null;
   format: 'casual' | 'ranked' | null;
   occurredAt: number;
+  chatMessage?: GatewayFriendChatMessage;
+}
+
+export interface GatewayFriendChatMessage {
+  messageId: string;
+  clientMessageId: string;
+  sequence: number;
+  senderId: string;
+  recipientId: string;
+  message: string;
+  occurredAt: number;
+  readAt: number | null;
+}
+export interface GatewayFriendChatHistoryMessage {
+  type: 'FRIEND_CHAT_HISTORY'; requestId: string; accountId: string;
+  messages: readonly GatewayFriendChatMessage[]; nextBeforeSequence: number | null;
+}
+export interface GatewayFriendChatInboxMessage {
+  type: 'FRIEND_CHAT_INBOX'; requestId: string | null;
+  unread: readonly { accountId: string; count: number }[];
+}
+export interface GatewayFriendProfileMessage {
+  type: 'FRIEND_PROFILE'; requestId: string; profile: GatewaySocialProfile | null;
+  relationship: GatewayFriendSearchResultMessage['relationship']; canUnblock: boolean;
+  pinnedStats: readonly GatewaySocialPinnedStat[];
 }
 
 export interface GatewayErrorMessage {
@@ -760,6 +802,9 @@ export type GatewayServerMessage =
   | GatewaySlotsStateMessage
   | GatewaySlotsSpinResultMessage
   | GatewaySocialSnapshotMessage
+  | GatewayFriendChatHistoryMessage
+  | GatewayFriendChatInboxMessage
+  | GatewayFriendProfileMessage
   | GatewayFriendSearchResultMessage
   | GatewaySocialEventMessage
   | GatewayCoinBalanceMessage

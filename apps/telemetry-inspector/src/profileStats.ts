@@ -1,52 +1,7 @@
 import type { LocalPlayerStatsSnapshot } from '@skribbl-duels/telemetry-core';
 
-export const PROFILE_STAT_IDS = [
-  'observed-play-time',
-  'unique-users-seen',
-  'distinct-lobbies',
-  'lobby-sessions',
-  'play-days',
-  'play-day-streak',
-  'longest-session',
-  'submitted-messages',
-  'average-typing-wpm',
-  'median-typing-wpm',
-  'p90-typing-wpm',
-  'best-typing-wpm',
-  'typing-trend',
-  'guess-attempts',
-  'guess-accuracy',
-  'first-guesser-rate',
-  'average-guess-wpm',
-  'median-guess-wpm',
-  'p90-guess-wpm',
-  'best-guess-wpm',
-  'average-guess-time',
-  'median-guess-time',
-  'p90-guess-time',
-  'best-guess-time',
-  'guess-wpm-trend',
-  'guess-time-trend',
-  'drawing-effectiveness',
-  'drawing-round-score',
-  'drawing-rounds',
-  'drawing-reactions',
-  'skribbl-wins',
-  'skribbl-win-rate',
-  'skribbl-win-streak',
-  'best-public-score',
-  'best-private-score',
-  'duel-matches',
-  'duel-wins',
-  'duel-win-rate',
-  'duel-win-streak',
-  'challenges-completed',
-  'social-actions',
-  'unique-words-seen',
-  'unique-words-guessed',
-  'seen-word-coverage',
-  'guessed-word-coverage'
-] as const;
+export { GATEWAY_PROFILE_STAT_IDS as PROFILE_STAT_IDS } from '@skribbl-duels/gateway-contracts';
+import { GATEWAY_PROFILE_STAT_IDS as PROFILE_STAT_IDS } from '@skribbl-duels/gateway-contracts';
 
 export type ProfileStatId = typeof PROFILE_STAT_IDS[number];
 

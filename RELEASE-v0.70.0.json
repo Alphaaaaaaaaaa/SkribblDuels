@@ -1,0 +1,34 @@
+{
+  "release": "0.70.0",
+  "gatewayVersion": "0.12.0",
+  "gatewayContract": 17,
+  "sourceCommit": "1686b52c367ba6120c355ae08f6986cb4dc9dc96",
+  "verification": {
+    "npm ci": true,
+    "npm run typecheck": true,
+    "npm test": true,
+    "npm run build": true,
+    "gatewaySyntax": true,
+    "postgresMigration": true,
+    "socialDomInteractions": true
+  },
+  "socialEmojis": 104,
+  "serverHistoryHours": 24,
+  "historyPageSize": 200,
+  "chatStorageLimits": {
+    "retainedMessages": 20000,
+    "totalDatabaseBytes": 471859200
+  },
+  "deploymentOrder": [
+    "Apply 202610010002_add_friend_chat_history.sql after the v0.69.1 migration",
+    "Deploy Gateway v0.12.0 and check /readyz",
+    "Install userscript v0.70.0"
+  ],
+  "liveDeploymentTested": false,
+  "liveDatabaseRemainingQuotaInspected": false,
+  "sha256": {
+    "Skribbl-Duels-v0.70.0.user.js": "3d27d89c2234de20768b0f57c6fdd8fff0e55b95ac9b3f8491fa344c48bf2156",
+    "202610010002_add_friend_chat_history.sql": "fedc4a27684833abceefbacde9971ee9b93dc5e19dd6b6a61fc2eca550831092",
+    "dist/gateway/index.js": "c1a516da12332ce266aac15cee0045391f1d56d94ef8fc5a514b0d2dda835bef"
+  }
+}

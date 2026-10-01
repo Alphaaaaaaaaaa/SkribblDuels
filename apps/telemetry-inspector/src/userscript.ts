@@ -87,7 +87,7 @@ import { SupabaseDiscordAuthClient } from '@skribbl-duels/auth-client';
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
 
-const BUILD_VERSION = '0.69.1';
+const BUILD_VERSION = '0.70.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -756,12 +756,15 @@ async function bootstrap(
     getSocialLobbySnapshot() {
       const lobby = lobbyStore.getSnapshot();
       const configuredMaxPlayers = lobby.settings[1];
+      const game = document.querySelector<HTMLElement>('#game');
+      const active = game ? game.getClientRects().length > 0 && getComputedStyle(game).display !== 'none' : lobby.hydrated;
+      const observedPlayers = !lobby.hydrated ? document.querySelectorAll('#game-players .player').length : lobby.userOrder.length;
       return {
-        hydrated: lobby.hydrated,
+        hydrated: lobby.hydrated, active,
         lobbyId: lobby.lobbyId,
         lobbyType: lobby.lobbyType,
         languageName: lobby.languageName,
-        playerCount: lobby.userOrder.length,
+        playerCount: observedPlayers,
         maxPlayers: typeof configuredMaxPlayers === 'number' && Number.isInteger(configuredMaxPlayers)
           ? configuredMaxPlayers
           : null

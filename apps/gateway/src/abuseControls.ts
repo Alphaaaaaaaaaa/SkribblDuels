@@ -129,6 +129,10 @@ export function policyForMessage(message: GatewayClientMessage): GatewayRateLimi
     case 'SLOTS_OPEN':
     case 'SLOTS_SPIN':
       return { scope: 'progression', limit: 60, windowMs: 60_000 };
+    case 'SOCIAL_PROFILE_STATS_SET':
+    case 'FRIEND_CHAT_HISTORY_GET':
+    case 'FRIEND_CHAT_READ':
+    case 'FRIEND_PROFILE_GET':
     case 'SOCIAL_SYNC':
     case 'SOCIAL_PRESENCE_SET':
       return { scope: 'social', limit: 60, windowMs: 60_000 };

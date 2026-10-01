@@ -352,7 +352,11 @@ export class GatewayAuthorityController {
     const matchmaker = this.matchmaker;
     if (!matchmaker) return;
     const accountId = peer.identity.accountId;
-    if (message.type === 'SOCIAL_SYNC'
+    if (message.type === 'SOCIAL_PROFILE_STATS_SET'
+        || message.type === 'FRIEND_PROFILE_GET'
+        || message.type === 'FRIEND_CHAT_HISTORY_GET'
+        || message.type === 'FRIEND_CHAT_READ'
+        || message.type === 'SOCIAL_SYNC'
         || message.type === 'SOCIAL_PREFERENCES_SET'
         || message.type === 'SOCIAL_PROFILE_STATUS_SET'
         || message.type === 'SOCIAL_PRESENCE_SET'

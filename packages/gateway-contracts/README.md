@@ -6,6 +6,15 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
+Contract v17 adds `SOCIAL_PROFILE_STATS_SET`, `FRIEND_PROFILE_GET`,
+`FRIEND_CHAT_HISTORY_GET` and `FRIEND_CHAT_READ`. New server frames expose
+privacy-filtered profile cards, paginated 24-hour friend history and unread
+inbox counts. Chat events contain stored message IDs and monotonic sequences
+for optimistic reconciliation. Lobby IDs may be null when a visible game is
+observed before metadata; joining still requires a known public ID. The Social
+readiness probe now requires v17. Pinned stat strings are display data only;
+clients cannot award ratings or Challenge results through this channel.
+
 Contract v16 repairs the row-locked Friend-response boundary, adds a
 privacy-safe `FRIEND_UNBLOCK` command and requires every search result to state
 whether its authenticated viewer owns the directional block. The Gateway's

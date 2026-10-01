@@ -360,6 +360,7 @@ export class GatewayAuthorityController {
         || message.type === 'FRIEND_REQUEST_SEND'
         || message.type === 'FRIEND_REQUEST_RESPOND'
         || message.type === 'FRIEND_REQUEST_WITHDRAW'
+        || message.type === 'FRIEND_UNBLOCK'
         || message.type === 'FRIEND_REMOVE'
         || message.type === 'FRIEND_PIN_SET'
         || message.type === 'FRIEND_MESSAGE_SEND') {

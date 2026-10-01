@@ -6,7 +6,12 @@ The Supabase access token is sent only through the Socket.IO handshake `auth` pa
 
 Matchmaking uses the same event for homepage-only queue requests, authoritative queue status, ready changes and revisioned match snapshots/events. A new matchmaking request supersedes the account's older queue or match. `DRAFT_PICK` carries the client's last observed revision; every accepted or automatic pick produces a new authoritative snapshot containing the turn, deadline, pick history, remaining compatible IDs and completed board.
 
-Contract v15 adds durable Friends requests/relationships/pins, Social privacy
+Contract v16 repairs the row-locked Friend-response boundary, adds a
+privacy-safe `FRIEND_UNBLOCK` command and requires every search result to state
+whether its authenticated viewer owns the directional block. The Gateway's
+Social readiness probe must report the same contract before serving clients.
+
+Contract v15 added durable Friends requests/relationships/pins, Social privacy
 and presence, exact Discord-username search, live-only Quick Messages and
 friend Match invitations. `SOCIAL_SNAPSHOT` contains only data already filtered
 for its authenticated viewer; clients never receive a hidden status or lobby

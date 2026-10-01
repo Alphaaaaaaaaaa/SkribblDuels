@@ -710,6 +710,7 @@ class CompletionChatAdapter {
 .scd-icon:hover, button:not(:disabled):hover .scd-icon { transform:scale(1.1); }
 .scd-icon-image { display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-icon-button { display:grid;place-items:center;border:0;background:transparent;padding:0;cursor:pointer; }
+.scd-icon-button:hover:not(:disabled),.scd-icon-button:active:not(:disabled) { background:transparent; }
 .scd-icon-fallback { display:grid;place-items:center;font-weight:900; }
 .button-skribbl-duels { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:40px;margin-top:10px;border:0;border-radius:var(--BORDER_RADIUS,7px);background:var(--SCD_ACCENT);color:white;font-size:1.2em;font-weight:700;text-shadow:2px 2px 0 #0000002b;transition:background-color 80ms;cursor:pointer; }
 .button-skribbl-duels:hover:not(:disabled) { background:var(--SCD_ACCENT_HOVER); }
@@ -878,6 +879,7 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-profile-view-header .scd-modal-close { justify-self:end; }
 .scd-profile-view-body { overflow:auto;padding:12px; }
 .scd-duel-profile-layout { display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,2fr);gap:14px;align-items:start; }
+.scd-profile-sidebar { min-width:0;display:flex;flex-direction:column;gap:12px; }
 .scd-profile-identity { position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
 .scd-profile-identity > .scd-coin-pill { position:absolute;left:8px;top:8px;z-index:1; }
 .scd-profile-avatar { position:relative;width:124px !important;height:124px !important;display:grid;place-items:center;font-size:48px;font-weight:900; }
@@ -1670,7 +1672,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.69.0',
+      version: '0.69.1',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1831,7 +1833,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.69.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.69.1') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -3473,11 +3475,13 @@ export class DuelProductFoundation {
     statusWrapper.append(statusIcon, statusText, resetStatus);
     identityColumn.append(
       statusWrapper,
-      this.socialUi.createProfileControls(),
       element('div', 'scd-muted scd-profile-private-copy', authProfile.createdAt === null
         ? 'Member since: unavailable'
         : `Member since ${formatMemberSince(authProfile.createdAt)}`)
     );
+
+    const sidebar = element('div', 'scd-profile-sidebar');
+    sidebar.append(identityColumn, this.socialUi.createProfileControls());
 
     const statsColumn = element('section', 'scd-profile-stats-column');
     const statsGrid = element('div', 'scd-profile-stats-grid');
@@ -3488,7 +3492,7 @@ export class DuelProductFoundation {
     viewAll.type = 'button';
     viewAll.addEventListener('click', () => this.openAllProfileStats());
     statsColumn.append(statsGrid, viewAll);
-    layout.append(identityColumn, statsColumn);
+    layout.append(sidebar, statsColumn);
     body.appendChild(layout);
     modal.append(header, body);
     wrapper.appendChild(modal);

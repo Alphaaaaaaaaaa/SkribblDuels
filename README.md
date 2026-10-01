@@ -1,9 +1,31 @@
-# Skribbl Duels v0.69.0
+# Skribbl Duels v0.69.1
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v15, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v16, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.69.1
+
+- Fixes Accept, Decline, Ignore and Block by replacing the Social response RPC
+  with fully qualified table references. Its former unqualified `recipient_id`
+  collided with the identically named `RETURNS TABLE` output variable at
+  execution time, while Send and Withdraw used separate paths and remained
+  functional.
+- Adds a Contract-v16 Social health probe to `/readyz`, Railway-searchable
+  diagnostic IDs and a dedicated client Social-error channel, so a Social
+  failure no longer appears as a Homepage matchmaking failure.
+- Makes account-search results repaint as soon as they arrive, adds the avatar
+  loader plus username/presence skeleton, optimistic availability and a
+  privacy-safe Unblock action with the supplied eighteenth Friend asset.
+- Moves Friends below the Profile identity card, simplifies the Friends header,
+  removes modal-row striping and icon-button hover fills, and gives selected
+  green controls their intended `#38c41c` hover state.
+
+v0.69.1 requires migration `202610010001_fix_social_friend_response.sql`,
+Gateway v0.11.1 and Contract v16. Apply the migration after the v0.69 Social
+graph migration, deploy the Gateway, then distribute the userscript. No new
+Railway variable is required. See `docs/social-hotfix-v0.69.1.md`.
 
 ## v0.69.0
 
@@ -810,8 +832,8 @@ Gateway is deployed. v0.54.0 additionally requires
 `supabase/migrations/202608210001_create_gateway_abuse_controls.sql`.
 Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
-Current v0.69.0 installations must finish the ordered chain through
-`supabase/migrations/202609300001_add_social_graph.sql`.
+Current v0.69.1 installations must finish the ordered chain through
+`supabase/migrations/202610010001_fix_social_friend_response.sql`.
 
 ## Local verification
 
@@ -826,7 +848,8 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/friends-social-v0.69.0.md`,
+See `docs/social-hotfix-v0.69.1.md`,
+`docs/friends-social-v0.69.0.md`,
 `docs/firefox-auth-terminal-slots-ui-v0.68.0.md`,
 `docs/ui-tutorial-typo-metrics-v0.63.0.md`,
 `docs/ui-polish-v0.62.0.md`,

@@ -68,6 +68,7 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     social: null,
     friendSearch: null,
     socialEvents: [],
+    socialError: null,
     error: null
   };
 }
@@ -378,6 +379,12 @@ export class SocketIoGatewayClient {
     return requestId;
   }
 
+  public unblockFriend(accountId: string): string {
+    const requestId = this.createRequestId('friend-unblock');
+    this.emit({ type: 'FRIEND_UNBLOCK', requestId, accountId });
+    return requestId;
+  }
+
   public removeFriend(accountId: string): string {
     const requestId = this.createRequestId('friend-remove');
     this.emit({ type: 'FRIEND_REMOVE', requestId, accountId });
@@ -545,6 +552,7 @@ export class SocketIoGatewayClient {
         social: sameAccount ? this.state.social : null,
         friendSearch: sameAccount ? this.state.friendSearch : null,
         socialEvents: sameAccount ? this.state.socialEvents : [],
+        socialError: sameAccount ? this.state.socialError : null,
         error: null
       });
       // A navigation (most notably /credits for Bloodline) can interrupt the
@@ -569,6 +577,17 @@ export class SocketIoGatewayClient {
           && (value.code === 'REALTIME_AUTHORITY_UNAVAILABLE' || value.code === 'GATEWAY_COMMAND_FAILED')) {
         this.requeueTelemetryInFlight();
         this.scheduleTransportRetry();
+      }
+      const socialRequest = typeof value.requestId === 'string'
+        && (value.requestId.startsWith('social-') || value.requestId.startsWith('friend-'));
+      if (socialRequest) {
+        console.error('[Skribbl Duels Social] Action failed', {
+          code: value.code,
+          message: value.message,
+          requestId: value.requestId
+        });
+        this.update({ ...this.state, socialError: structuredClone(value) });
+        return;
       }
       this.update({
         ...this.state,
@@ -637,11 +656,11 @@ export class SocketIoGatewayClient {
       return;
     }
     if (value.type === 'SOCIAL_SNAPSHOT') {
-      this.update({ ...this.state, social: structuredClone(value), error: null });
+      this.update({ ...this.state, social: structuredClone(value), socialError: null, error: null });
       return;
     }
     if (value.type === 'FRIEND_SEARCH_RESULT') {
-      this.update({ ...this.state, friendSearch: structuredClone(value), error: null });
+      this.update({ ...this.state, friendSearch: structuredClone(value), socialError: null, error: null });
       return;
     }
     if (value.type === 'SOCIAL_EVENT') {

@@ -669,6 +669,8 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
           || message.response === 'ignore' || message.response === 'block');
     case 'FRIEND_REQUEST_WITHDRAW':
       return nonEmptyString(message.requestId) && nonEmptyString(message.friendRequestId);
+    case 'FRIEND_UNBLOCK':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId);
     case 'FRIEND_REMOVE':
       return nonEmptyString(message.requestId) && nonEmptyString(message.accountId);
     case 'FRIEND_PIN_SET':
@@ -810,6 +812,7 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
     case 'FRIEND_SEARCH_RESULT':
       return nonEmptyString(message.requestId)
         && (message.profile === null || socialProfile(message.profile))
+        && typeof message.canUnblock === 'boolean'
         && (message.relationship === 'self' || message.relationship === 'friend'
           || message.relationship === 'incoming-request' || message.relationship === 'outgoing-request'
           || message.relationship === 'blocked' || message.relationship === 'none');

@@ -1,6 +1,7 @@
 import type {
   GatewayFriendRequestSummary,
   GatewaySocialEventMessage,
+  GatewaySocialAvailability,
   GatewaySocialLobbyPresence,
   GatewaySocialPreferences,
   GatewaySocialProfile
@@ -134,6 +135,7 @@ export class SocialFeatureUi {
   private searchRequestId: string | null = null;
   private searchQuery = '';
   private matchInviteAcceptancePending = false;
+  private optimisticAvailability: GatewaySocialAvailability | null = null;
 
   public constructor(private readonly options: SocialUiOptions) {}
 
@@ -166,16 +168,23 @@ export class SocialFeatureUi {
   public closeModals(): void { this.closeAll(); }
 
   public handleGatewayUpdate(previous: GatewayConnectionSnapshot, next: GatewayConnectionSnapshot): void {
-    if (previous.identity?.accountId !== next.identity?.accountId) this.loadMessages();
+    if (previous.identity?.accountId !== next.identity?.accountId) {
+      this.optimisticAvailability = null;
+      this.loadMessages();
+    }
     for (const event of next.socialEvents) {
       if (this.handledEvents.has(event.eventId)) continue;
       this.handledEvents.add(event.eventId);
       this.handleSocialEvent(event);
     }
-    if (next.error && next.error !== previous.error && this.isModalOpen()) {
-      this.options.showToast('Social action unavailable', next.error, 5_000);
+    if (next.socialError && next.socialError.requestId !== previous.socialError?.requestId) {
+      this.optimisticAvailability = null;
+      if (next.socialError.requestId === this.searchRequestId) this.searchRequestId = null;
+      this.refreshProfileControls();
+      this.options.showToast('Social action unavailable', next.socialError.message, 7_000);
+      if (this.modal?.isConnected) this.renderModal();
     }
-    if ((next.error && next.error !== previous.error)
+    if ((next.socialError && next.socialError.requestId !== previous.socialError?.requestId)
         || previous.match?.matchId !== next.match?.matchId) {
       this.matchInviteAcceptancePending = false;
     }
@@ -187,11 +196,17 @@ export class SocialFeatureUi {
     const socialChanged = JSON.stringify(previous.social) !== JSON.stringify(next.social)
       || previous.match?.matchId !== next.match?.matchId
       || previous.match?.state.phase !== next.match?.state.phase;
+    const friendSearchChanged = JSON.stringify(previous.friendSearch) !== JSON.stringify(next.friendSearch);
+    if (this.optimisticAvailability !== null
+        && next.social?.preferences.availability === this.optimisticAvailability) {
+      this.optimisticAvailability = null;
+    }
     if (socialChanged) {
       this.renderHomepageList();
       if (this.modal?.isConnected) this.renderModal();
       this.refreshProfileControls();
     }
+    if (friendSearchChanged && this.modal?.isConnected) this.renderModal();
     if (next.status === 'connected' && previous.status !== 'connected') {
       this.lastPresenceFingerprint = '';
       this.syncPresence();
@@ -202,7 +217,7 @@ export class SocialFeatureUi {
     avatar.classList.add('scd-social-profile-avatar');
     const current = this.options.getGatewayState();
     const activeDuel = Boolean(current.match && current.match.state.phase !== 'finished' && current.match.state.phase !== 'cancelled');
-    const availability = current.social?.preferences.availability ?? 'offline';
+    const availability = this.effectiveAvailability(current);
     const presence = availability === 'offline' ? 'offline' : activeDuel ? 'duel' : availability;
     const badge = element('button', 'scd-social-presence-badge') as HTMLButtonElement;
     badge.type = 'button';
@@ -232,7 +247,7 @@ export class SocialFeatureUi {
     const wrapper = element('div', 'scd-modal-wrapper');
     const modal = element('div', 'scd-modal-container scd-social-modal');
     const header = element('div', 'scd-social-header');
-    header.append(icon('friendSlimy', 'Slimy'), element('div', 'scd-social-title'), icon('friendSlimy', 'Slimy'));
+    header.appendChild(element('div', 'scd-social-title'));
     const close = element('button', 'scd-icon-button scd-modal-close', '×') as HTMLButtonElement;
     close.type = 'button';
     close.addEventListener('click', () => this.closeFriends());
@@ -308,7 +323,7 @@ export class SocialFeatureUi {
   private refreshProfileControls(): void {
     const current = this.options.getGatewayState();
     const activeDuel = Boolean(current.match && current.match.state.phase !== 'finished' && current.match.state.phase !== 'cancelled');
-    const availability = current.social?.preferences.availability ?? 'offline';
+    const availability = this.effectiveAvailability(current);
     const presence = availability === 'offline' ? 'offline' : activeDuel ? 'duel' : availability;
     document.querySelectorAll<HTMLButtonElement>('.scd-social-presence-badge').forEach(badge => {
       badge.replaceChildren(icon(presenceAsset({ presence }), presenceLabel({ presence })));
@@ -364,15 +379,19 @@ export class SocialFeatureUi {
     body.appendChild(search);
     const state = this.options.getGatewayState();
     if (this.searchRequestId && state.friendSearch?.requestId === this.searchRequestId) {
-      body.appendChild(this.createSearchResult(state.friendSearch.profile, state.friendSearch.relationship));
-    } else if (this.searchRequestId) body.appendChild(element('div', 'scd-muted scd-social-search-status', 'Searching…'));
+      body.appendChild(this.createSearchResult(
+        state.friendSearch.profile,
+        state.friendSearch.relationship,
+        state.friendSearch.canUnblock
+      ));
+    } else if (this.searchRequestId) body.appendChild(this.createSearchSkeleton());
     const list = element('div', 'scd-social-list');
     if (friends.length === 0) list.appendChild(element('div', 'scd-card scd-muted', 'No friends yet. Search by Discord username to send a request.'));
     for (const friend of friends) list.appendChild(this.createFriendRow(friend, true));
     body.appendChild(list);
   }
 
-  private createSearchResult(profile: GatewaySocialProfile | null, relationship: string): HTMLElement {
+  private createSearchResult(profile: GatewaySocialProfile | null, relationship: string, canUnblock: boolean): HTMLElement {
     const result = element('div', 'scd-social-search-result');
     if (!profile) {
       result.appendChild(element('div', 'scd-muted', 'No Skribbl Duels account matched that Discord username.'));
@@ -383,7 +402,7 @@ export class SocialFeatureUi {
       : relationship === 'incoming-request' ? 'Request received — open Pending requests'
       : relationship === 'outgoing-request' ? 'Request pending'
       : relationship === 'self' ? 'This is your account'
-      : relationship === 'blocked' ? 'Unavailable' : null;
+      : relationship === 'blocked' && !canUnblock ? 'Unavailable' : null;
     if (label) result.appendChild(element('span', 'scd-muted', label));
     if (relationship === 'none') {
       const add = element('button', 'scd-button primary', 'Send friend request') as HTMLButtonElement;
@@ -397,7 +416,24 @@ export class SocialFeatureUi {
       });
       this.options.registerTooltip(add, `Send ${profile.displayName} a friend request`, 'Y');
       result.appendChild(add);
+    } else if (relationship === 'blocked' && canUnblock) {
+      const unblock = this.iconButton('friendUnblock', `Unblock ${profile.displayName}`, () => {
+        this.searchRequestId = this.options.gateway.unblockFriend(profile.accountId);
+        this.renderModal();
+      });
+      result.appendChild(unblock);
     }
+    return result;
+  }
+
+  private createSearchSkeleton(): HTMLElement {
+    const result = element('div', 'scd-social-search-result scd-social-search-skeleton');
+    result.setAttribute('aria-busy', 'true');
+    result.setAttribute('aria-label', 'Searching for account');
+    result.appendChild(element('div', 'scd-social-search-spinner'));
+    const copy = element('div', 'scd-social-search-skeleton-copy');
+    copy.append(element('span', 'scd-social-skeleton-line username'), element('span', 'scd-social-skeleton-line presence'));
+    result.appendChild(copy);
     return result;
   }
 
@@ -478,11 +514,20 @@ export class SocialFeatureUi {
     if (!snapshot) return;
     this.openDetail('Set online status', body => {
       for (const value of ['online', 'idle', 'offline'] as const) {
-        const button = element('button', `scd-button scd-social-presence-choice${snapshot.preferences.availability === value ? ' selected' : ''}`) as HTMLButtonElement;
+        const button = element('button', `scd-button scd-social-presence-choice${this.effectiveAvailability() === value ? ' selected' : ''}`) as HTMLButtonElement;
         button.type = 'button';
         button.append(icon(presenceAsset({ presence: value }), value), element('span', '', value.slice(0, 1).toUpperCase() + value.slice(1)));
         button.addEventListener('click', () => {
-          this.options.gateway.setSocialPreferences({ ...snapshot.preferences, availability: value }); this.closeDetail();
+          this.optimisticAvailability = value;
+          this.refreshProfileControls();
+          try {
+            this.options.gateway.setSocialPreferences({ ...snapshot.preferences, availability: value });
+            this.closeDetail();
+          } catch {
+            this.optimisticAvailability = null;
+            this.refreshProfileControls();
+            this.options.showToast('Social action unavailable', 'Your visible availability could not be updated.', 5_000);
+          }
         });
         this.options.registerTooltip(button, value === 'offline' ? 'Hide your online and active-Duel presence from other players' : `Appear ${value} to other players`, 'Y');
         body.appendChild(button);
@@ -696,6 +741,9 @@ export class SocialFeatureUi {
     if (!accountId) return;
     try { localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages)); } catch {}
   }
+  private effectiveAvailability(state = this.options.getGatewayState()): GatewaySocialAvailability {
+    return this.optimisticAvailability ?? state.social?.preferences.availability ?? 'offline';
+  }
   private saveUiPreferences(): void { try { localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(this.uiPreferences)); } catch {} }
 
   private ensureStyles(): void {
@@ -703,18 +751,18 @@ export class SocialFeatureUi {
     const style = document.createElement('style'); style.id = 'skribbl-duels-social-styles';
     style.textContent = `
 #skribbl-duels-friends,#skribbl-duels-friends *,.scd-social-detail-overlay,.scd-social-detail-overlay *,.scd-home-friends,.scd-home-friends *{box-sizing:border-box}
-.scd-social-modal{width:min(800px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px))}.scd-social-header{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px 44px;align-items:center;gap:6px;padding:8px 10px}.scd-social-header>.scd-icon{width:42px;height:42px}.scd-social-header>.scd-icon:nth-child(3){transform:scaleX(-1)}
+.scd-social-modal{width:min(800px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px))}.scd-social-header{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;gap:6px;padding:8px 10px}
 .scd-social-title{display:flex;align-items:center;justify-content:center;gap:8px;font-size:1.25em}.scd-social-title .scd-icon{width:38px;height:38px}.scd-social-body{min-height:240px;overflow:auto;padding:12px}.scd-social-tabs,.scd-social-format-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.scd-social-tabs .selected{background:#53e237}
-.scd-social-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}.scd-social-search-result{display:flex;align-items:center;gap:10px;padding:9px;margin-bottom:10px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-search-result .scd-social-identity{flex:1}.scd-social-search-status{padding:8px;text-align:center}.scd-social-list{display:flex;flex-direction:column;gap:6px}
-.scd-social-row{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-row:nth-child(even){background:var(--COLOR_PANEL_LO)}.scd-social-identity{min-width:0;display:flex;align-items:center;gap:9px;text-align:left}.scd-social-avatar-wrap{position:relative;width:46px;height:46px;flex:none}.scd-social-avatar{width:46px!important;height:46px!important;font-size:18px;display:grid;place-items:center}.scd-social-avatar.scd-avatar-skribbl .scd-skribbl-avatar{width:100%;height:100%}
+.scd-social-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}.scd-social-search-result{display:flex;align-items:center;gap:10px;padding:9px;margin-bottom:10px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-search-result .scd-social-identity{flex:1}.scd-social-search-spinner{width:46px;height:46px;flex:none;background:url('/img/load.gif') center/contain no-repeat;animation:scd-queue-load-rotate .8s ease-in-out infinite}.scd-social-search-skeleton-copy{flex:1;display:flex;flex-direction:column;gap:7px}.scd-social-skeleton-line{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--COLOR_PANEL_LO),var(--COLOR_PANEL_HI),var(--COLOR_PANEL_LO));background-size:200% 100%;animation:scd-social-skeleton 1.1s ease-in-out infinite}.scd-social-skeleton-line.username{width:min(210px,65%)}.scd-social-skeleton-line.presence{width:min(125px,42%);height:9px}@keyframes scd-social-skeleton{from{background-position:200% 0}to{background-position:-200% 0}}.scd-social-list{display:flex;flex-direction:column;gap:6px}
+.scd-social-row{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-identity{min-width:0;display:flex;align-items:center;gap:9px;text-align:left}.scd-social-avatar-wrap{position:relative;width:46px;height:46px;flex:none}.scd-social-avatar{width:46px!important;height:46px!important;font-size:18px;display:grid;place-items:center}.scd-social-avatar.scd-avatar-skribbl .scd-skribbl-avatar{width:100%;height:100%}
 .scd-social-status-icon{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;z-index:2}.scd-social-status-icon[aria-label='Online']{width:26px;height:20px;animation:icon_drawing .8s ease-in-out infinite alternate}.scd-social-status-icon .scd-icon-image{object-fit:contain}.scd-social-copy{min-width:0;display:flex;flex-direction:column}.scd-social-name,.scd-social-lobby,.scd-social-status-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.scd-social-name{font-weight:900}.scd-social-lobby{font-size:10px}.scd-social-status-text{max-width:340px;font-size:11px;opacity:.85}.scd-social-visible-status{min-width:0;display:flex;align-items:center;gap:4px}.scd-social-visible-status>.scd-icon{width:20px;height:20px;flex:none}
-.scd-social-actions,.scd-home-friend-actions{display:flex;align-items:center;gap:5px}.scd-social-icon-button{position:relative;width:36px;height:36px;border-radius:6px}.scd-social-icon-button:hover{background:rgba(255,255,255,.1)}.scd-social-icon-button .scd-icon{width:31px;height:31px}.scd-social-icon-button.selected{background:#53e237}.scd-social-icon-button.danger:hover{background:var(--COLOR_CHAT_TEXT_LEAVE)}.scd-social-icon-button.unread::after{content:'';position:absolute;right:-2px;top:-3px;width:15px;height:15px;background:url('${assetUrl('friendPing') ?? ''}') center/contain no-repeat;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25))}.scd-social-request-kind{justify-self:start;font-size:10px}
+.scd-social-actions,.scd-home-friend-actions{display:flex;align-items:center;gap:5px}.scd-social-icon-button{position:relative;width:36px;height:36px;border-radius:6px}.scd-social-icon-button .scd-icon{width:31px;height:31px}.scd-social-icon-button.selected{background:#53e237}.scd-social-tabs .selected:hover:not(:disabled),.scd-social-presence-choice.selected:hover:not(:disabled),.scd-social-icon-button.selected:hover:not(:disabled){background:#38c41c}.scd-social-icon-button.unread::after{content:'';position:absolute;right:-2px;top:-3px;width:15px;height:15px;background:url('${assetUrl('friendPing') ?? ''}') center/contain no-repeat;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25))}.scd-social-request-kind{justify-self:start;font-size:10px}
 .scd-social-profile-avatar{overflow:visible!important}.scd-social-presence-badge{position:absolute;right:-7px;bottom:-4px;width:38px;height:38px;border:0;padding:0;background:transparent;z-index:4;cursor:pointer}.scd-social-presence-badge .scd-icon{width:100%;height:100%}.scd-social-profile-controls{width:100%}.scd-social-friends-button{width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800}.scd-social-friends-button .scd-icon{width:34px;height:34px}
 .scd-social-detail-overlay{z-index:2147483647}.scd-social-detail-modal{width:min(580px,calc(100vw - 24px));max-height:min(680px,calc(100vh - 24px))}.scd-social-detail-header{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;padding:8px 10px}.scd-social-detail-body{min-height:0;overflow:auto;padding:12px}.scd-social-presence-choice{width:100%;min-height:58px;display:flex;align-items:center;justify-content:flex-start;gap:10px;margin-bottom:7px}.scd-social-presence-choice.selected{background:#53e237}.scd-social-presence-choice .scd-icon{width:42px;height:42px}
 .scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message{align-self:flex-start;max-width:85%;display:flex;flex-direction:column;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
 .scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow:auto}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
 .scd-social-locked-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 22px rgba(255,255,255,.45))}@keyframes scd-social-lock-glow{0%{opacity:0;transform:scale(.75)}18%,72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
-@media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:34px minmax(0,1fr) 34px 34px}}
+@media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:minmax(0,1fr) 34px}}
 `;
     document.head.appendChild(style);
   }

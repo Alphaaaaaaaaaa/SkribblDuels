@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.69.0
+// @version      0.69.1
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -36963,7 +36963,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 15 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 16 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -36978,7 +36978,7 @@ function isGatewayServerMessage(value) {
 		case "SLOTS_STATE": return nonEmptyString(message.requestId) && slotsState(message.state);
 		case "SLOTS_SPIN_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "session-not-found" || message.reason === "insufficient-coins") && slotsState(message.state) && (message.outcome === null || slotOutcome(message.outcome)) && message.accepted === (message.outcome !== null) && nonNegativeInteger(message.coinRevision);
 		case "SOCIAL_SNAPSHOT": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.revision) && socialPreferences(message.preferences) && nullableString(message.statusChallengeId, 128) && typeof message.statusText === "string" && Array.from(message.statusText).length <= 80 && Array.isArray(message.friends) && message.friends.length <= 500 && message.friends.every(socialProfile) && Array.isArray(message.requests) && message.requests.length <= 500 && message.requests.every(friendRequestSummary);
-		case "FRIEND_SEARCH_RESULT": return nonEmptyString(message.requestId) && (message.profile === null || socialProfile(message.profile)) && (message.relationship === "self" || message.relationship === "friend" || message.relationship === "incoming-request" || message.relationship === "outgoing-request" || message.relationship === "blocked" || message.relationship === "none");
+		case "FRIEND_SEARCH_RESULT": return nonEmptyString(message.requestId) && (message.profile === null || socialProfile(message.profile)) && typeof message.canUnblock === "boolean" && (message.relationship === "self" || message.relationship === "friend" || message.relationship === "incoming-request" || message.relationship === "outgoing-request" || message.relationship === "blocked" || message.relationship === "none");
 		case "SOCIAL_EVENT": return nonEmptyString(message.eventId) && (message.kind === "friend-request-received" || message.kind === "friend-request-accepted" || message.kind === "friend-removed" || message.kind === "friend-message-received" || message.kind === "friend-message-sent" || message.kind === "match-invite-received" || message.kind === "match-invite-declined") && socialProfile(message.profile) && (message.friendRequestId === null || nonEmptyString(message.friendRequestId)) && (message.clientMessageId === null || nonEmptyString(message.clientMessageId)) && (message.message === null || nonEmptyCodePointString(message.message, 300)) && (message.inviteId === null || nonEmptyString(message.inviteId)) && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128)) && (message.format === null || message.format === "casual" || message.format === "ranked") && finiteNumber(message.occurredAt);
 		case "COIN_BALANCE": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.balance) && nonNegativeInteger(message.revision) && (message.transaction === null || coinTransaction(message.transaction));
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
@@ -37034,7 +37034,7 @@ function configuredValue(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.69.0";
+var GATEWAY_CLIENT_VERSION = "0.69.1";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -40290,6 +40290,7 @@ function initialSnapshot(endpoint) {
 		social: null,
 		friendSearch: null,
 		socialEvents: [],
+		socialError: null,
 		error: null
 	};
 }
@@ -40656,6 +40657,15 @@ var SocketIoGatewayClient = class {
 		});
 		return requestId;
 	}
+	unblockFriend(accountId) {
+		const requestId = this.createRequestId("friend-unblock");
+		this.emit({
+			type: "FRIEND_UNBLOCK",
+			requestId,
+			accountId
+		});
+		return requestId;
+	}
 	removeFriend(accountId) {
 		const requestId = this.createRequestId("friend-remove");
 		this.emit({
@@ -40757,7 +40767,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 15,
+				contractVersion: 16,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -40796,7 +40806,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v15 message.`
+				error: `Gateway sent an invalid Contract v16 message.`
 			});
 			return;
 		}
@@ -40829,6 +40839,7 @@ var SocketIoGatewayClient = class {
 				social: sameAccount ? this.state.social : null,
 				friendSearch: sameAccount ? this.state.friendSearch : null,
 				socialEvents: sameAccount ? this.state.socialEvents : [],
+				socialError: sameAccount ? this.state.socialError : null,
 				error: null
 			});
 			this.flushTelemetry();
@@ -40847,6 +40858,18 @@ var SocketIoGatewayClient = class {
 			if (value.recoverable && (value.code === "REALTIME_AUTHORITY_UNAVAILABLE" || value.code === "GATEWAY_COMMAND_FAILED")) {
 				this.requeueTelemetryInFlight();
 				this.scheduleTransportRetry();
+			}
+			if (typeof value.requestId === "string" && (value.requestId.startsWith("social-") || value.requestId.startsWith("friend-"))) {
+				console.error("[Skribbl Duels Social] Action failed", {
+					code: value.code,
+					message: value.message,
+					requestId: value.requestId
+				});
+				this.update({
+					...this.state,
+					socialError: structuredClone(value)
+				});
+				return;
 			}
 			this.update({
 				...this.state,
@@ -40928,6 +40951,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				social: structuredClone(value),
+				socialError: null,
 				error: null
 			});
 			return;
@@ -40936,6 +40960,7 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				friendSearch: structuredClone(value),
+				socialError: null,
 				error: null
 			});
 			return;
@@ -42652,6 +42677,7 @@ var EMBEDDED_PROGRESSION_ASSETS = {
 	"friendDuelsLogo": "data:image/gif;base64,R0lGODlhKAAoAKIAAIB3nZutt/uyNuh8AAAAAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAKAAoAAAD/1i63P4wykmrhSTry7XPyyd2XxCAivhdmukCaJEBrrtRXg3AREjsNdNN0nrtYjNgzUPM6HY8H5S2jDmKpulQMw0OGdjANAr+davXYvJolZnPwm3Lw/6632wbKndKMtNrPAR6PWp+dmWBWCV0f02KTn0zjYgYdHVxP1yOFpeCmZOVOFyYKm0ka5sjHIBvqqesiVCrsZakIyoVTCp1prANvr2CHgLFv4kCH7OvGcXJxz4Exr6hzc/QKRrOuCLT2NHWA1/E4isTIgPp5T13BOm5j+4e73sZ9PbrEfPrq/j86dce7PMFDt00QMXy6VuhAeCpcKISsbtDD5DCWrQKflvISQdirY8gKSQAACH5BAUUAAUALAAAAAAoACgAAAP/WLrc/jDKSRu5ON/Ki/5EV11AYJ4BNoLbQpao2Uqs6hJAHqfzk8WA3gsW61kwwGDoltMVjZ4fqinENYkno3RKXSqGuQvKFhUnw9WrkjDebGVWtLesRsI1z7jSAUa37Vl9UBlXgDw4gRh1czdggI6EXVBfipJ3cnprk5SZZoeRmIw+lWuJehodoHakHyJlcYo8mpsUqoggrhmcJJW6uTWKwTNkERgCAhqaa2uvtFHHyKwfs6jFF9DRp8DQzhkDx4TA19yiRwQD3wID4uPk5Y0Y6Ou+r9jVox/y80vx6fvvu9B5E+jmArpj/4jBU0fQ4L4o+v794zNOHgtODc8dVPiMHqGuasAOZjOXkUYNkVpw/XLIsZkrePRe1rons+aCBAA7",
 	"friendSlimy": "data:image/gif;base64,R0lGODlhHQAcAKIAAAAAAP///2q+MJnlUP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAHQAcAAADhUi63P4wykmrAzhny7TXnCYIwzAK3ySWbDl6kdbOLYpBmY2RtHtfOx2mx9o0ckLATGgDjgae2ce4CEJzUk+zA3iavDXtr9rllXbZ4BgJRg5P33XwRJouqXN6XcZ64ct6YF96VARagYgnY2QiiYGLXI2OfipsiYU4U34wFVNTHEeYoKOkEwkAIfkECRQABAAsAAAAAB0AHAAAA4dIutz+MMq5gL2WOsyxVpwgDIPYSSGpqoIHYeMqk+21WfGs1xlz5boZz4ej/YKsHqg44Mh4oxpRNHKurEoCjmpVYQFTqgkAbGJK2a2I1cqNo0q12EuurYZLsZ5nueO1cnpmgTYVMHtueoWGP4iOWQ0hjmKQkZJcHWATmZyVEZkfoaKjpKWmEAkAOw==",
 	"friendTrash": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///1FTXGlqav///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADmEi6rPCwySmhfTS3y4HW12J9WVRh5NatHsi+HMMKdF1DdExwAm7bvlsH+PgRAb9dyMhsCnnOaA4WlK4c1CxKVhQos14TFzklH829rahrMbafJ/L7SKCrzNXyT7zGd497alh+aHp2Y09uf2VxiYGFfIOOgId9k5dpLYiGlHB3mJk2XxM+eaFlmncAA6YvJVA1XzofWikUVyQJACH5BAUUAAQALAAAAAAgACAAAAOWSLpM8PC1SVu8suoF2d1aZHUgh51oha6sFwnCA8+0DGPKO9v0DvQxiQ5ILN4ADolxCRTymMskUvqE1kTUE/PkYnk/JqTvayPleMOreNwd/5pVs1RNhPTk9nE9njHRe3NqI29BhHpqU2GHf26Di4+FE3mFcIaRjkeWlIKYm4yZiWdlVZ5Zgzh3MlySZCslrVglYauytbYJADs=",
+	"friendUnblock": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///4B3nZutt////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADqki6rPAwtklJvLhWPHoXl9ZEXumBkOhAJzeggGo9wouxdqzSXTg/Od0GGBzdRDgU5aghwoYpJOATlUmpQmtzKoDdfNKvuDr51kwlMOPSLcHQ3jLt3CKZnkZ6/QJ/yNFBdm5+RoBeOCaEa1OGfICKC0Rwb4ADkCuVXpWWWZiNgomdM4aHlZejfS6DonN3N3dKeV2zXTe0s6cQt7u8tblsvbtqkWPFp0bGwwQJACH5BAkUAAQALAAAAAAgACAAAAOnSLrc/vCBSWu8pGqLnR4gKHCdUoXoME6lSQnwp1Ltu24i3U3CTL+q1W4C0rkAMRaG6AM0Ns4lIBdlbEpMoccoDSpbEV4SfOFBz7WzmvTU9FKoG9dqC93gzSr9bZelbhJTfzh4X3RwckxwhguKfX4pjC54cnhFeo2CiI6LmJObFJZabXyPnCKjezBviXGrc0err26yY4E2tbmznpm4uruSbWtoQ8MaDwkAOw==",
 	"friendWithdraw": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACqISPqcvtD6OctNqLs968exOEwVeJIymZJ/qoK8u4L5zIIa2ogmCbpL7j9W4dYHA3nF2Mx2ZQpWE6p0KiRUqd+q6mrLdqpWC/TxFmTK5mpL3mdtlFDt1hrkg+xytLXTMiDrZhs3CnxyFDGFJWdwaVo7jo4fgHGSnpRxlw9IYDGIgDYMT5I7OJWdRmygiXpHq65uI1Khjr+oqadIuSBNrr+wscLDxMXGxRAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACroSPqcvtD6OctNqLs948hd9dHxhSI1lGJ5o6K9suLxwjqzDXxy3g85ji9X6rzqmHTCJ/m6PymXxlnNCqr2gZWbdXYJbKfWIrwrDyhCkvX2LvF9yFo6fa9e/sfn/sOznNdJRnACaoN+exx9ckpVC3ZnSIGIAXEmmTOPQnUghAqLkZ0OiYGaozONqlwxbFyTHDamlIZBcrK0RUCRfXqkHEaOpbajpMXGx8jJysvJxSAAA7"
 };
 var PRESETS = {
@@ -45202,6 +45228,7 @@ var SocialFeatureUi = class {
 	searchRequestId = null;
 	searchQuery = "";
 	matchInviteAcceptancePending = false;
+	optimisticAvailability = null;
 	constructor(options) {
 		this.options = options;
 	}
@@ -45231,24 +45258,37 @@ var SocialFeatureUi = class {
 		this.closeAll();
 	}
 	handleGatewayUpdate(previous, next) {
-		if (previous.identity?.accountId !== next.identity?.accountId) this.loadMessages();
+		if (previous.identity?.accountId !== next.identity?.accountId) {
+			this.optimisticAvailability = null;
+			this.loadMessages();
+		}
 		for (const event of next.socialEvents) {
 			if (this.handledEvents.has(event.eventId)) continue;
 			this.handledEvents.add(event.eventId);
 			this.handleSocialEvent(event);
 		}
-		if (next.error && next.error !== previous.error && this.isModalOpen()) this.options.showToast("Social action unavailable", next.error, 5e3);
-		if (next.error && next.error !== previous.error || previous.match?.matchId !== next.match?.matchId) this.matchInviteAcceptancePending = false;
+		if (next.socialError && next.socialError.requestId !== previous.socialError?.requestId) {
+			this.optimisticAvailability = null;
+			if (next.socialError.requestId === this.searchRequestId) this.searchRequestId = null;
+			this.refreshProfileControls();
+			this.options.showToast("Social action unavailable", next.socialError.message, 7e3);
+			if (this.modal?.isConnected) this.renderModal();
+		}
+		if (next.socialError && next.socialError.requestId !== previous.socialError?.requestId || previous.match?.matchId !== next.match?.matchId) this.matchInviteAcceptancePending = false;
 		while (this.handledEvents.size > EVENT_LIMIT * 2) {
 			const oldest = this.handledEvents.values().next().value;
 			if (!oldest) break;
 			this.handledEvents.delete(oldest);
 		}
-		if (JSON.stringify(previous.social) !== JSON.stringify(next.social) || previous.match?.matchId !== next.match?.matchId || previous.match?.state.phase !== next.match?.state.phase) {
+		const socialChanged = JSON.stringify(previous.social) !== JSON.stringify(next.social) || previous.match?.matchId !== next.match?.matchId || previous.match?.state.phase !== next.match?.state.phase;
+		const friendSearchChanged = JSON.stringify(previous.friendSearch) !== JSON.stringify(next.friendSearch);
+		if (this.optimisticAvailability !== null && next.social?.preferences.availability === this.optimisticAvailability) this.optimisticAvailability = null;
+		if (socialChanged) {
 			this.renderHomepageList();
 			if (this.modal?.isConnected) this.renderModal();
 			this.refreshProfileControls();
 		}
+		if (friendSearchChanged && this.modal?.isConnected) this.renderModal();
 		if (next.status === "connected" && previous.status !== "connected") {
 			this.lastPresenceFingerprint = "";
 			this.syncPresence();
@@ -45258,7 +45298,7 @@ var SocialFeatureUi = class {
 		avatar.classList.add("scd-social-profile-avatar");
 		const current = this.options.getGatewayState();
 		const activeDuel = Boolean(current.match && current.match.state.phase !== "finished" && current.match.state.phase !== "cancelled");
-		const availability = current.social?.preferences.availability ?? "offline";
+		const availability = this.effectiveAvailability(current);
 		const presence = availability === "offline" ? "offline" : activeDuel ? "duel" : availability;
 		const badge = element$1("button", "scd-social-presence-badge");
 		badge.type = "button";
@@ -45286,7 +45326,7 @@ var SocialFeatureUi = class {
 		const wrapper = element$1("div", "scd-modal-wrapper");
 		const modal = element$1("div", "scd-modal-container scd-social-modal");
 		const header = element$1("div", "scd-social-header");
-		header.append(icon("friendSlimy", "Slimy"), element$1("div", "scd-social-title"), icon("friendSlimy", "Slimy"));
+		header.appendChild(element$1("div", "scd-social-title"));
 		const close = element$1("button", "scd-icon-button scd-modal-close", "\u00D7");
 		close.type = "button";
 		close.addEventListener("click", () => this.closeFriends());
@@ -45387,7 +45427,7 @@ var SocialFeatureUi = class {
 	refreshProfileControls() {
 		const current = this.options.getGatewayState();
 		const activeDuel = Boolean(current.match && current.match.state.phase !== "finished" && current.match.state.phase !== "cancelled");
-		const availability = current.social?.preferences.availability ?? "offline";
+		const availability = this.effectiveAvailability(current);
 		const presence = availability === "offline" ? "offline" : activeDuel ? "duel" : availability;
 		document.querySelectorAll(".scd-social-presence-badge").forEach((badge) => {
 			badge.replaceChildren(icon(presenceAsset({ presence }), presenceLabel({ presence })));
@@ -45450,21 +45490,21 @@ var SocialFeatureUi = class {
 		search.append(input, submit);
 		body.appendChild(search);
 		const state = this.options.getGatewayState();
-		if (this.searchRequestId && state.friendSearch?.requestId === this.searchRequestId) body.appendChild(this.createSearchResult(state.friendSearch.profile, state.friendSearch.relationship));
-		else if (this.searchRequestId) body.appendChild(element$1("div", "scd-muted scd-social-search-status", "Searching\u2026"));
+		if (this.searchRequestId && state.friendSearch?.requestId === this.searchRequestId) body.appendChild(this.createSearchResult(state.friendSearch.profile, state.friendSearch.relationship, state.friendSearch.canUnblock));
+		else if (this.searchRequestId) body.appendChild(this.createSearchSkeleton());
 		const list = element$1("div", "scd-social-list");
 		if (friends.length === 0) list.appendChild(element$1("div", "scd-card scd-muted", "No friends yet. Search by Discord username to send a request."));
 		for (const friend of friends) list.appendChild(this.createFriendRow(friend, true));
 		body.appendChild(list);
 	}
-	createSearchResult(profile, relationship) {
+	createSearchResult(profile, relationship, canUnblock) {
 		const result = element$1("div", "scd-social-search-result");
 		if (!profile) {
 			result.appendChild(element$1("div", "scd-muted", "No Skribbl Duels account matched that Discord username."));
 			return result;
 		}
 		result.appendChild(this.createIdentity(profile));
-		const label = relationship === "friend" ? "Already friends" : relationship === "incoming-request" ? "Request received \u2014 open Pending requests" : relationship === "outgoing-request" ? "Request pending" : relationship === "self" ? "This is your account" : relationship === "blocked" ? "Unavailable" : null;
+		const label = relationship === "friend" ? "Already friends" : relationship === "incoming-request" ? "Request received \u2014 open Pending requests" : relationship === "outgoing-request" ? "Request pending" : relationship === "self" ? "This is your account" : relationship === "blocked" && !canUnblock ? "Unavailable" : null;
 		if (label) result.appendChild(element$1("span", "scd-muted", label));
 		if (relationship === "none") {
 			const add = element$1("button", "scd-button primary", "Send friend request");
@@ -45478,7 +45518,23 @@ var SocialFeatureUi = class {
 			});
 			this.options.registerTooltip(add, `Send ${profile.displayName} a friend request`, "Y");
 			result.appendChild(add);
+		} else if (relationship === "blocked" && canUnblock) {
+			const unblock = this.iconButton("friendUnblock", `Unblock ${profile.displayName}`, () => {
+				this.searchRequestId = this.options.gateway.unblockFriend(profile.accountId);
+				this.renderModal();
+			});
+			result.appendChild(unblock);
 		}
+		return result;
+	}
+	createSearchSkeleton() {
+		const result = element$1("div", "scd-social-search-result scd-social-search-skeleton");
+		result.setAttribute("aria-busy", "true");
+		result.setAttribute("aria-label", "Searching for account");
+		result.appendChild(element$1("div", "scd-social-search-spinner"));
+		const copy = element$1("div", "scd-social-search-skeleton-copy");
+		copy.append(element$1("span", "scd-social-skeleton-line username"), element$1("span", "scd-social-skeleton-line presence"));
+		result.appendChild(copy);
 		return result;
 	}
 	renderRequestsView(body, requests) {
@@ -45547,15 +45603,23 @@ var SocialFeatureUi = class {
 				"idle",
 				"offline"
 			]) {
-				const button = element$1("button", `scd-button scd-social-presence-choice${snapshot.preferences.availability === value ? " selected" : ""}`);
+				const button = element$1("button", `scd-button scd-social-presence-choice${this.effectiveAvailability() === value ? " selected" : ""}`);
 				button.type = "button";
 				button.append(icon(presenceAsset({ presence: value }), value), element$1("span", "", value.slice(0, 1).toUpperCase() + value.slice(1)));
 				button.addEventListener("click", () => {
-					this.options.gateway.setSocialPreferences({
-						...snapshot.preferences,
-						availability: value
-					});
-					this.closeDetail();
+					this.optimisticAvailability = value;
+					this.refreshProfileControls();
+					try {
+						this.options.gateway.setSocialPreferences({
+							...snapshot.preferences,
+							availability: value
+						});
+						this.closeDetail();
+					} catch {
+						this.optimisticAvailability = null;
+						this.refreshProfileControls();
+						this.options.showToast("Social action unavailable", "Your visible availability could not be updated.", 5e3);
+					}
 				});
 				this.options.registerTooltip(button, value === "offline" ? "Hide your online and active-Duel presence from other players" : `Appear ${value} to other players`, "Y");
 				body.appendChild(button);
@@ -45857,6 +45921,9 @@ var SocialFeatureUi = class {
 			localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages));
 		} catch {}
 	}
+	effectiveAvailability(state = this.options.getGatewayState()) {
+		return this.optimisticAvailability ?? state.social?.preferences.availability ?? "offline";
+	}
 	saveUiPreferences() {
 		try {
 			localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(this.uiPreferences));
@@ -45868,18 +45935,18 @@ var SocialFeatureUi = class {
 		style.id = "skribbl-duels-social-styles";
 		style.textContent = `
 #skribbl-duels-friends,#skribbl-duels-friends *,.scd-social-detail-overlay,.scd-social-detail-overlay *,.scd-home-friends,.scd-home-friends *{box-sizing:border-box}
-.scd-social-modal{width:min(800px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px))}.scd-social-header{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px 44px;align-items:center;gap:6px;padding:8px 10px}.scd-social-header>.scd-icon{width:42px;height:42px}.scd-social-header>.scd-icon:nth-child(3){transform:scaleX(-1)}
+.scd-social-modal{width:min(800px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px))}.scd-social-header{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;gap:6px;padding:8px 10px}
 .scd-social-title{display:flex;align-items:center;justify-content:center;gap:8px;font-size:1.25em}.scd-social-title .scd-icon{width:38px;height:38px}.scd-social-body{min-height:240px;overflow:auto;padding:12px}.scd-social-tabs,.scd-social-format-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.scd-social-tabs .selected{background:#53e237}
-.scd-social-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}.scd-social-search-result{display:flex;align-items:center;gap:10px;padding:9px;margin-bottom:10px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-search-result .scd-social-identity{flex:1}.scd-social-search-status{padding:8px;text-align:center}.scd-social-list{display:flex;flex-direction:column;gap:6px}
-.scd-social-row{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-row:nth-child(even){background:var(--COLOR_PANEL_LO)}.scd-social-identity{min-width:0;display:flex;align-items:center;gap:9px;text-align:left}.scd-social-avatar-wrap{position:relative;width:46px;height:46px;flex:none}.scd-social-avatar{width:46px!important;height:46px!important;font-size:18px;display:grid;place-items:center}.scd-social-avatar.scd-avatar-skribbl .scd-skribbl-avatar{width:100%;height:100%}
+.scd-social-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}.scd-social-search-result{display:flex;align-items:center;gap:10px;padding:9px;margin-bottom:10px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-search-result .scd-social-identity{flex:1}.scd-social-search-spinner{width:46px;height:46px;flex:none;background:url('/img/load.gif') center/contain no-repeat;animation:scd-queue-load-rotate .8s ease-in-out infinite}.scd-social-search-skeleton-copy{flex:1;display:flex;flex-direction:column;gap:7px}.scd-social-skeleton-line{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--COLOR_PANEL_LO),var(--COLOR_PANEL_HI),var(--COLOR_PANEL_LO));background-size:200% 100%;animation:scd-social-skeleton 1.1s ease-in-out infinite}.scd-social-skeleton-line.username{width:min(210px,65%)}.scd-social-skeleton-line.presence{width:min(125px,42%);height:9px}@keyframes scd-social-skeleton{from{background-position:200% 0}to{background-position:-200% 0}}.scd-social-list{display:flex;flex-direction:column;gap:6px}
+.scd-social-row{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-identity{min-width:0;display:flex;align-items:center;gap:9px;text-align:left}.scd-social-avatar-wrap{position:relative;width:46px;height:46px;flex:none}.scd-social-avatar{width:46px!important;height:46px!important;font-size:18px;display:grid;place-items:center}.scd-social-avatar.scd-avatar-skribbl .scd-skribbl-avatar{width:100%;height:100%}
 .scd-social-status-icon{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;z-index:2}.scd-social-status-icon[aria-label='Online']{width:26px;height:20px;animation:icon_drawing .8s ease-in-out infinite alternate}.scd-social-status-icon .scd-icon-image{object-fit:contain}.scd-social-copy{min-width:0;display:flex;flex-direction:column}.scd-social-name,.scd-social-lobby,.scd-social-status-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.scd-social-name{font-weight:900}.scd-social-lobby{font-size:10px}.scd-social-status-text{max-width:340px;font-size:11px;opacity:.85}.scd-social-visible-status{min-width:0;display:flex;align-items:center;gap:4px}.scd-social-visible-status>.scd-icon{width:20px;height:20px;flex:none}
-.scd-social-actions,.scd-home-friend-actions{display:flex;align-items:center;gap:5px}.scd-social-icon-button{position:relative;width:36px;height:36px;border-radius:6px}.scd-social-icon-button:hover{background:rgba(255,255,255,.1)}.scd-social-icon-button .scd-icon{width:31px;height:31px}.scd-social-icon-button.selected{background:#53e237}.scd-social-icon-button.danger:hover{background:var(--COLOR_CHAT_TEXT_LEAVE)}.scd-social-icon-button.unread::after{content:'';position:absolute;right:-2px;top:-3px;width:15px;height:15px;background:url('${assetUrl("friendPing") ?? ""}') center/contain no-repeat;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25))}.scd-social-request-kind{justify-self:start;font-size:10px}
+.scd-social-actions,.scd-home-friend-actions{display:flex;align-items:center;gap:5px}.scd-social-icon-button{position:relative;width:36px;height:36px;border-radius:6px}.scd-social-icon-button .scd-icon{width:31px;height:31px}.scd-social-icon-button.selected{background:#53e237}.scd-social-tabs .selected:hover:not(:disabled),.scd-social-presence-choice.selected:hover:not(:disabled),.scd-social-icon-button.selected:hover:not(:disabled){background:#38c41c}.scd-social-icon-button.unread::after{content:'';position:absolute;right:-2px;top:-3px;width:15px;height:15px;background:url('${assetUrl("friendPing") ?? ""}') center/contain no-repeat;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25))}.scd-social-request-kind{justify-self:start;font-size:10px}
 .scd-social-profile-avatar{overflow:visible!important}.scd-social-presence-badge{position:absolute;right:-7px;bottom:-4px;width:38px;height:38px;border:0;padding:0;background:transparent;z-index:4;cursor:pointer}.scd-social-presence-badge .scd-icon{width:100%;height:100%}.scd-social-profile-controls{width:100%}.scd-social-friends-button{width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800}.scd-social-friends-button .scd-icon{width:34px;height:34px}
 .scd-social-detail-overlay{z-index:2147483647}.scd-social-detail-modal{width:min(580px,calc(100vw - 24px));max-height:min(680px,calc(100vh - 24px))}.scd-social-detail-header{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;padding:8px 10px}.scd-social-detail-body{min-height:0;overflow:auto;padding:12px}.scd-social-presence-choice{width:100%;min-height:58px;display:flex;align-items:center;justify-content:flex-start;gap:10px;margin-bottom:7px}.scd-social-presence-choice.selected{background:#53e237}.scd-social-presence-choice .scd-icon{width:42px;height:42px}
 .scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message{align-self:flex-start;max-width:85%;display:flex;flex-direction:column;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
 .scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow:auto}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
 .scd-social-locked-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 22px rgba(255,255,255,.45))}@keyframes scd-social-lock-glow{0%{opacity:0;transform:scale(.75)}18%,72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
-@media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:34px minmax(0,1fr) 34px 34px}}
+@media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:minmax(0,1fr) 34px}}
 `;
 		document.head.appendChild(style);
 	}
@@ -46257,6 +46324,7 @@ var CompletionChatAdapter = class {
 .scd-icon:hover, button:not(:disabled):hover .scd-icon { transform:scale(1.1); }
 .scd-icon-image { display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(3px 3px 0 rgba(0,0,0,.25)); }
 .scd-icon-button { display:grid;place-items:center;border:0;background:transparent;padding:0;cursor:pointer; }
+.scd-icon-button:hover:not(:disabled),.scd-icon-button:active:not(:disabled) { background:transparent; }
 .scd-icon-fallback { display:grid;place-items:center;font-weight:900; }
 .button-skribbl-duels { display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:40px;margin-top:10px;border:0;border-radius:var(--BORDER_RADIUS,7px);background:var(--SCD_ACCENT);color:white;font-size:1.2em;font-weight:700;text-shadow:2px 2px 0 #0000002b;transition:background-color 80ms;cursor:pointer; }
 .button-skribbl-duels:hover:not(:disabled) { background:var(--SCD_ACCENT_HOVER); }
@@ -46425,6 +46493,7 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-profile-view-header .scd-modal-close { justify-self:end; }
 .scd-profile-view-body { overflow:auto;padding:12px; }
 .scd-duel-profile-layout { display:grid;grid-template-columns:minmax(190px,1fr) minmax(0,2fr);gap:14px;align-items:start; }
+.scd-profile-sidebar { min-width:0;display:flex;flex-direction:column;gap:12px; }
 .scd-profile-identity { position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;min-width:0;padding:14px;border-radius:9px;background:var(--COLOR_PANEL_BG);text-align:center; }
 .scd-profile-identity > .scd-coin-pill { position:absolute;left:8px;top:8px;z-index:1; }
 .scd-profile-avatar { position:relative;width:124px !important;height:124px !important;display:grid;place-items:center;font-size:48px;font-weight:900; }
@@ -47147,9 +47216,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.69.0",
+			version: "0.69.1",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 15,
+			gatewayContractVersion: 16,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -47298,7 +47367,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.69.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.69.1") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -48611,7 +48680,9 @@ var DuelProductFoundation = class {
 		});
 		this.tooltips.register(resetStatus, "Clear status icon and text");
 		statusWrapper.append(statusIcon, statusText, resetStatus);
-		identityColumn.append(statusWrapper, this.socialUi.createProfileControls(), element("div", "scd-muted scd-profile-private-copy", authProfile.createdAt === null ? "Member since: unavailable" : `Member since ${formatMemberSince(authProfile.createdAt)}`));
+		identityColumn.append(statusWrapper, element("div", "scd-muted scd-profile-private-copy", authProfile.createdAt === null ? "Member since: unavailable" : `Member since ${formatMemberSince(authProfile.createdAt)}`));
+		const sidebar = element("div", "scd-profile-sidebar");
+		sidebar.append(identityColumn, this.socialUi.createProfileControls());
 		const statsColumn = element("section", "scd-profile-stats-column");
 		const statsGrid = element("div", "scd-profile-stats-grid");
 		this.profileUiPreferences.mainStatIds.forEach((id, slot) => {
@@ -48621,7 +48692,7 @@ var DuelProductFoundation = class {
 		viewAll.type = "button";
 		viewAll.addEventListener("click", () => this.openAllProfileStats());
 		statsColumn.append(statsGrid, viewAll);
-		layout.append(identityColumn, statsColumn);
+		layout.append(sidebar, statsColumn);
 		body.appendChild(layout);
 		modal.append(header, body);
 		wrapper.appendChild(modal);
@@ -49754,7 +49825,7 @@ var DuelProductFoundation = class {
 		const layout = element("div", "scd-about-layout");
 		const copy = element("div", "scd-about-copy");
 		const connection = element("div", "scd-card");
-		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v15`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
+		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v16`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		copy.append(connection, freeze);
@@ -51135,7 +51206,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.69.0";
+var BUILD_VERSION = "0.69.1";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");

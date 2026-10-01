@@ -1,15 +1,18 @@
-name: Verify and package v0.69.0
+name: Verify and package v0.69.1
 
 on:
   push:
     branches:
-      - codex/v0.69.0-friends
+      - codex/v0.69.1-social-hotfix
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: v0690-${{ github.workflow }}-${{ github.ref }}
+  group: v0691-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,21 +48,23 @@ jobs:
         shell: bash
         run: |
           mkdir -p deliverables
-          git archive --format=zip --output=deliverables/Skribbl-Duels-v0.69.0-source.zip HEAD
-          zip -ur deliverables/Skribbl-Duels-v0.69.0-source.zip dist/gateway dist/telemetry-inspector
-          zip -ur deliverables/Skribbl-Duels-v0.69.0-source.zip userscript/skribbl-duels-telemetry-inspector.user.js
-          cp userscript/skribbl-duels-telemetry-inspector.user.js deliverables/Skribbl-Duels-v0.69.0.user.js
+          git archive --format=zip --output=deliverables/Skribbl-Duels-v0.69.1-source.zip HEAD
+          zip -ur deliverables/Skribbl-Duels-v0.69.1-source.zip dist/gateway dist/telemetry-inspector
+          zip -ur deliverables/Skribbl-Duels-v0.69.1-source.zip userscript/skribbl-duels-telemetry-inspector.user.js
+          cp userscript/skribbl-duels-telemetry-inspector.user.js deliverables/Skribbl-Duels-v0.69.1.user.js
           cp supabase/migrations/202609300001_add_social_graph.sql deliverables/
+          cp supabase/migrations/202610010001_fix_social_friend_response.sql deliverables/
           (
             cd deliverables
-            sha256sum Skribbl-Duels-v0.69.0-source.zip Skribbl-Duels-v0.69.0.user.js 202609300001_add_social_graph.sql > SHA256SUMS.txt
-            unzip -t Skribbl-Duels-v0.69.0-source.zip
+            sha256sum Skribbl-Duels-v0.69.1-source.zip Skribbl-Duels-v0.69.1.user.js \
+              202609300001_add_social_graph.sql 202610010001_fix_social_friend_response.sql > SHA256SUMS.txt
+            unzip -t Skribbl-Duels-v0.69.1-source.zip
           )
 
       - name: Upload tested release files
         uses: actions/upload-artifact@v4
         with:
-          name: Skribbl-Duels-v0.69.0
+          name: Skribbl-Duels-v0.69.1
           path: deliverables/
           if-no-files-found: error
           retention-days: 30
@@ -76,7 +81,7 @@ jobs:
       - name: Check out source branch
         uses: actions/checkout@v4
         with:
-          ref: codex/v0.69.0-friends
+          ref: codex/v0.69.1-social-hotfix
           fetch-depth: 0
 
       - name: Use Node.js 24
@@ -99,5 +104,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -u
-          git commit -m "Build v0.69.0 generated assets and userscript"
-          git push origin HEAD:codex/v0.69.0-friends
+          git commit -m "Build v0.69.1 generated assets and userscript"
+          git push origin HEAD:codex/v0.69.1-social-hotfix

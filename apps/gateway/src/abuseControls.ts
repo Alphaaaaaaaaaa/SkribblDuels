@@ -140,6 +140,7 @@ export function policyForMessage(message: GatewayClientMessage): GatewayRateLimi
     case 'FRIEND_REQUEST_SEND':
     case 'FRIEND_REQUEST_RESPOND':
     case 'FRIEND_REQUEST_WITHDRAW':
+    case 'FRIEND_UNBLOCK':
     case 'FRIEND_REMOVE':
     case 'FRIEND_PIN_SET':
     case 'FRIEND_MATCH_INVITE_SEND':

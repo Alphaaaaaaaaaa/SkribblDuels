@@ -58,6 +58,8 @@ export interface GatewaySocialPersistence {
   sendFriendRequest(senderId: string, recipientId: string): Promise<GatewaySocialStoredRequest>;
   respondToFriendRequest(accountId: string, friendRequestId: string, response: 'accept' | 'decline' | 'ignore' | 'block'): Promise<{ request: GatewaySocialStoredRequest; otherAccountId: string }>;
   withdrawFriendRequest(accountId: string, friendRequestId: string): Promise<string>;
+  canUnblock(accountId: string, blockedId: string): Promise<boolean>;
+  unblockAccount(accountId: string, blockedId: string): Promise<void>;
   removeFriend(accountId: string, friendId: string): Promise<void>;
   setFriendPin(accountId: string, friendId: string, pinned: boolean): Promise<void>;
 }
@@ -126,9 +128,15 @@ export class SupabaseGatewaySocialPersistence implements GatewaySocialPersistenc
   }
 
   public async checkHealth(): Promise<void> {
-    const { error } = await this.client.from('duel_social_preferences')
-      .select('profile_id', { head: true, count: 'exact' }).limit(1);
+    const [{ error }, contract] = await Promise.all([
+      this.client.from('duel_social_preferences').select('profile_id', { head: true, count: 'exact' }).limit(1),
+      this.client.rpc('gateway_social_contract_version')
+    ]);
     if (error) throw new Error(`Social persistence health check failed: ${error.message}`);
+    if (contract.error) throw new Error(`Social Contract v16 health check failed: ${contract.error.message}`);
+    if (Number(contract.data) !== 16) {
+      throw new Error(`Social Contract v16 is required; database reported v${String(contract.data)}.`);
+    }
   }
 
   public async getProfiles(accountIds: readonly string[]): Promise<Map<string, GatewaySocialStoredProfile>> {
@@ -316,6 +324,20 @@ export class SupabaseGatewaySocialPersistence implements GatewaySocialPersistenc
     if (error) throw new Error(`Unable to withdraw friend request: ${error.message}`);
     if (!data) throw new SocialPersistenceError('FRIEND_REQUEST_NOT_FOUND', 'This friend request is no longer available.');
     return String(data.recipient_id);
+  }
+
+  public async canUnblock(accountId: string, blockedId: string): Promise<boolean> {
+    const { data, error } = await this.client.from('duel_social_blocks').select('blocker_id')
+      .match({ blocker_id: accountId, blocked_id: blockedId }).maybeSingle();
+    if (error) throw new Error(`Unable to resolve the unblock action: ${error.message}`);
+    return Boolean(data);
+  }
+
+  public async unblockAccount(accountId: string, blockedId: string): Promise<void> {
+    const { data, error } = await this.client.from('duel_social_blocks').delete()
+      .match({ blocker_id: accountId, blocked_id: blockedId }).select('blocked_id').maybeSingle();
+    if (error) throw new Error(`Unable to unblock this account: ${error.message}`);
+    if (!data) throw new SocialPersistenceError('SOCIAL_BLOCK_NOT_FOUND', 'This account is no longer blocked by you.');
   }
 
   public async removeFriend(accountId: string, friendId: string): Promise<void> {

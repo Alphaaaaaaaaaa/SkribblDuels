@@ -149,6 +149,15 @@ class FakeSocialPersistence implements GatewaySocialPersistence {
     return request.recipientId;
   }
 
+  public async canUnblock(accountId: string, blockedId: string): Promise<boolean> {
+    return this.blocks.has(`${accountId}:${blockedId}`);
+  }
+
+  public async unblockAccount(accountId: string, blockedId: string): Promise<void> {
+    const key = `${accountId}:${blockedId}`;
+    if (!this.blocks.delete(key)) throw new SocialPersistenceError('SOCIAL_BLOCK_NOT_FOUND', 'Block not found.');
+  }
+
   public async removeFriend(accountId: string, friendId: string): Promise<void> {
     this.friendships.delete(pairKey(accountId, friendId));
     this.pins.delete(`${accountId}:${friendId}`);
@@ -225,6 +234,16 @@ assert.equal(latest('alpha', 'ERROR').code, 'INVALID_STATUS_ICON');
 await service.handle('alpha', { type: 'FRIEND_SEARCH', requestId: 'search-1', discordUsername: 'bravo_tester#0' });
 assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').profile?.accountId, 'bravo');
 assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').relationship, 'none');
+assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').canUnblock, false);
+
+persistence.blocks.add('alpha:bravo');
+await service.handle('alpha', { type: 'FRIEND_SEARCH', requestId: 'search-blocked', discordUsername: 'bravo_tester' });
+assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').relationship, 'blocked');
+assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').canUnblock, true);
+await service.handle('alpha', { type: 'FRIEND_UNBLOCK', requestId: 'unblock-1', accountId: 'bravo' });
+assert.equal(await persistence.relationship('alpha', 'bravo'), 'none');
+assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').requestId, 'unblock-1');
+assert.equal(latest('alpha', 'FRIEND_SEARCH_RESULT').canUnblock, false);
 
 await service.handle('alpha', { type: 'FRIEND_REQUEST_SEND', requestId: 'send-1', accountId: 'bravo' });
 const requestEvent = latest('bravo', 'SOCIAL_EVENT');
@@ -288,4 +307,4 @@ await service.handle('alpha', {
 const offlineError = latest('alpha', 'ERROR');
 assert.equal(offlineError.code, 'FRIEND_OFFLINE');
 
-console.log('v0.69.0 Social service friendship, privacy, presence, Quick Message and invite flow passed.');
+console.log('v0.69.1 Social service friendship, unblock, privacy, presence, Quick Message and invite flow passed.');

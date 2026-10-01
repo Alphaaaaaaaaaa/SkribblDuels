@@ -6,7 +6,7 @@ import {
   type GatewaySocialProfile
 } from '@skribbl-duels/gateway-contracts';
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 15);
+assert.equal(GATEWAY_CONTRACT_VERSION, 16);
 
 const preferences = {
   availability: 'online',
@@ -51,13 +51,14 @@ for (const message of [
   { type: 'FRIEND_REQUEST_SEND', requestId: 'request-1', accountId: profile.accountId },
   { type: 'FRIEND_REQUEST_RESPOND', requestId: 'respond-1', friendRequestId: 'friend-request-1', response: 'ignore' },
   { type: 'FRIEND_REQUEST_WITHDRAW', requestId: 'withdraw-1', friendRequestId: 'friend-request-1' },
+  { type: 'FRIEND_UNBLOCK', requestId: 'unblock-1', accountId: profile.accountId },
   { type: 'FRIEND_REMOVE', requestId: 'remove-1', accountId: profile.accountId },
   { type: 'FRIEND_PIN_SET', requestId: 'pin-1', accountId: profile.accountId, pinned: true },
   { type: 'FRIEND_MESSAGE_SEND', clientMessageId: 'message-1', accountId: profile.accountId, message: 'Hello!' },
   { type: 'FRIEND_MATCH_INVITE_SEND', requestId: 'match-invite-1', accountId: profile.accountId, format: 'ranked' },
   { type: 'FRIEND_MATCH_INVITE_RESPOND', requestId: 'match-response-1', inviteId: 'invite-1', accept: true }
 ] as const) {
-  assert.equal(isGatewayClientMessage(message), true, `${message.type} should satisfy Contract v15.`);
+  assert.equal(isGatewayClientMessage(message), true, `${message.type} should satisfy Contract v16.`);
 }
 
 assert.equal(isGatewayClientMessage({
@@ -85,7 +86,7 @@ assert.equal(isGatewayServerMessage({
   }]
 }), true);
 assert.equal(isGatewayServerMessage({
-  type: 'FRIEND_SEARCH_RESULT', requestId: 'search-1', profile, relationship: 'friend'
+  type: 'FRIEND_SEARCH_RESULT', requestId: 'search-1', profile, relationship: 'friend', canUnblock: false
 }), true);
 assert.equal(isGatewayServerMessage({
   type: 'SOCIAL_EVENT', eventId: 'social-event-1', kind: 'friend-message-received', profile,
@@ -95,7 +96,11 @@ assert.equal(isGatewayServerMessage({
 
 const invalidProfile = { ...profile, lobby: { ...profile.lobby!, playerCount: 9, maxPlayers: 8 } };
 assert.equal(isGatewayServerMessage({
-  type: 'FRIEND_SEARCH_RESULT', requestId: 'search-invalid', profile: invalidProfile, relationship: 'none'
+  type: 'FRIEND_SEARCH_RESULT', requestId: 'search-invalid', profile: invalidProfile, relationship: 'none', canUnblock: false
 }), false);
 
-console.log('Gateway Contract v15 Social message guards passed.');
+assert.equal(isGatewayServerMessage({
+  type: 'FRIEND_SEARCH_RESULT', requestId: 'search-missing-unblock', profile, relationship: 'blocked'
+}), false, 'Contract v16 requires an explicit privacy-safe unblock capability flag.');
+
+console.log('Gateway Contract v16 Social message guards passed.');

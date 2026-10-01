@@ -46,7 +46,7 @@ interface GatewaySocialServiceOptions {
 type SocialCommand = Extract<GatewayClientMessage, { type:
   | 'SOCIAL_SYNC' | 'SOCIAL_PREFERENCES_SET' | 'SOCIAL_PROFILE_STATUS_SET' | 'SOCIAL_PRESENCE_SET'
   | 'FRIEND_SEARCH' | 'FRIEND_REQUEST_SEND' | 'FRIEND_REQUEST_RESPOND' | 'FRIEND_REQUEST_WITHDRAW'
-  | 'FRIEND_REMOVE' | 'FRIEND_PIN_SET' | 'FRIEND_MESSAGE_SEND'
+  | 'FRIEND_UNBLOCK' | 'FRIEND_REMOVE' | 'FRIEND_PIN_SET' | 'FRIEND_MESSAGE_SEND'
 }>;
 
 const SOCIAL_STATUS_CHALLENGE_IDS = new Set<string>(STARTER_CHALLENGE_IDS);
@@ -132,6 +132,11 @@ export class GatewaySocialService {
         const other = await this.options.persistence.withdrawFriendRequest(accountId, message.friendRequestId);
         await this.publishSnapshot(accountId, message.requestId);
         await this.publishSnapshot(other, null);
+      } else if (message.type === 'FRIEND_UNBLOCK') {
+        await this.options.persistence.unblockAccount(accountId, message.accountId);
+        const found = (await this.options.persistence.getProfiles([message.accountId])).get(message.accountId) ?? null;
+        await this.sendSearchResult(accountId, message.requestId, found);
+        await this.publishSnapshot(accountId, null);
       } else if (message.type === 'FRIEND_REMOVE') {
         await this.options.persistence.removeFriend(accountId, message.accountId);
         await this.publishSnapshot(accountId, message.requestId);
@@ -156,8 +161,20 @@ export class GatewaySocialService {
       }
     } catch (error) {
       const code = error instanceof SocialPersistenceError ? error.code : 'SOCIAL_ACTION_FAILED';
-      const detail = error instanceof SocialPersistenceError ? error.message : 'The social action could not be completed. Please try again.';
-      this.options.log('social-command-error', { accountId, commandType: message.type, error: error instanceof Error ? error.message : String(error) });
+      const diagnosticId = error instanceof SocialPersistenceError ? null : randomUUID().slice(0, 8);
+      const detail = error instanceof SocialPersistenceError
+        ? error.message
+        : `The social action could not be completed. Diagnostic ID: ${diagnosticId}.`;
+      this.options.log('social-command-error', {
+        diagnosticId,
+        accountId,
+        requestId: commandRequestId(message),
+        commandType: message.type,
+        errorName: error instanceof Error ? error.name : typeof error,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack ?? null : null,
+        cause: error instanceof Error && 'cause' in error ? String(error.cause ?? '') : null
+      });
       this.options.send(accountId, gatewayError(code, detail, commandRequestId(message)));
     }
   }
@@ -200,11 +217,29 @@ export class GatewaySocialService {
 
   private async search(accountId: string, requestId: string, username: string): Promise<void> {
     const found = await this.options.persistence.findProfileByDiscordUsername(username);
+    await this.sendSearchResult(accountId, requestId, found);
+  }
+
+  private async sendSearchResult(
+    accountId: string,
+    requestId: string,
+    found: GatewaySocialStoredProfile | null
+  ): Promise<void> {
     let relationship: GatewayFriendSearchResultMessage['relationship'] = 'none';
     let profile: GatewaySocialProfile | null = null;
+    let canUnblock = false;
     if (found) {
-      relationship = found.accountId === accountId ? 'self' : await this.options.persistence.relationship(accountId, found.accountId);
-      profile = await this.profileFor(found, accountId, relationship === 'friend', false);
+      const ownProfile = found.accountId === accountId;
+      const [resolvedRelationship, preferences, viewerCanUnblock] = await Promise.all([
+        ownProfile
+          ? Promise.resolve('self' as const)
+          : this.options.persistence.relationship(accountId, found.accountId),
+        this.options.persistence.getPreferences(found.accountId),
+        ownProfile ? Promise.resolve(false) : this.options.persistence.canUnblock(accountId, found.accountId)
+      ]);
+      relationship = resolvedRelationship;
+      canUnblock = relationship === 'blocked' && viewerCanUnblock;
+      profile = await this.profileFor(found, accountId, relationship === 'friend', false, preferences);
       if (relationship === 'blocked') {
         profile = {
           ...profile,
@@ -217,7 +252,7 @@ export class GatewaySocialService {
         };
       }
     }
-    this.options.send(accountId, { type: 'FRIEND_SEARCH_RESULT', requestId, profile, relationship });
+    this.options.send(accountId, { type: 'FRIEND_SEARCH_RESULT', requestId, profile, relationship, canUnblock });
   }
 
   private async publishSnapshot(accountId: string, requestId: string | null): Promise<void> {

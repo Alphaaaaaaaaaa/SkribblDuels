@@ -81,6 +81,13 @@ row-locked response RPC makes acceptance/blocking atomic and executable only by
 `service_role`; all Social tables have RLS enabled with browser roles revoked.
 `/readyz` reports Social persistence unhealthy while the migration is missing.
 
+For v0.69.1, apply `202610010001_fix_social_friend_response.sql` after the
+Social-graph migration and before deploying Contract v16. It replaces the
+friend-response RPC with alias-qualified request columns, eliminating the
+PL/pgSQL ambiguity between the `recipient_id` output variable and table column.
+It also adds the service-role-only `gateway_social_contract_version()` probe;
+Gateway v0.11.1 reports `/readyz` unhealthy until that probe returns `16`.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

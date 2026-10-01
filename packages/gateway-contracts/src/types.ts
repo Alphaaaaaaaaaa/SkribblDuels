@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 15 as const;
+export const GATEWAY_CONTRACT_VERSION = 16 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export const GATEWAY_SLOT_ICON_IDS = [
@@ -280,6 +280,7 @@ export interface GatewayFriendRequestRespondMessage {
 export interface GatewayFriendRequestWithdrawMessage {
   type: 'FRIEND_REQUEST_WITHDRAW'; requestId: string; friendRequestId: string;
 }
+export interface GatewayFriendUnblockMessage { type: 'FRIEND_UNBLOCK'; requestId: string; accountId: string; }
 export interface GatewayFriendRemoveMessage { type: 'FRIEND_REMOVE'; requestId: string; accountId: string; }
 export interface GatewayFriendPinSetMessage {
   type: 'FRIEND_PIN_SET'; requestId: string; accountId: string; pinned: boolean;
@@ -323,6 +324,7 @@ export type GatewayClientMessage =
   | GatewayFriendRequestSendMessage
   | GatewayFriendRequestRespondMessage
   | GatewayFriendRequestWithdrawMessage
+  | GatewayFriendUnblockMessage
   | GatewayFriendRemoveMessage
   | GatewayFriendPinSetMessage
   | GatewayFriendMessageSendMessage
@@ -709,6 +711,7 @@ export interface GatewayFriendSearchResultMessage {
   requestId: string;
   profile: GatewaySocialProfile | null;
   relationship: 'self' | 'friend' | 'incoming-request' | 'outgoing-request' | 'blocked' | 'none';
+  canUnblock: boolean;
 }
 
 export type GatewaySocialEventKind =

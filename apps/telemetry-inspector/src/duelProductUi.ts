@@ -38,7 +38,8 @@ import {
   type GatewayClaimResolutionMessage,
   type GatewayDraftState,
   type GatewayInviteStatusMessage,
-  type GatewayMatchmakingParticipant
+  type GatewayMatchmakingParticipant,
+  type GatewaySocialProfile
 } from '@skribbl-duels/gateway-contracts';
 import {
   GATEWAY_CLIENT_VERSION,
@@ -96,6 +97,7 @@ import { SkribblChatStatDisplay } from './chatStatDisplay';
 import { isTypoRuntimeDetected } from './typoRuntimeDetection';
 import { SkribbleFeatureUi } from './skribbleUi';
 import { SkribblSlotsFeatureUi } from './slotsUi';
+import { SocialFeatureUi } from './socialUi';
 
 interface ProductFoundationOptions {
   runtimeId: string;
@@ -106,6 +108,14 @@ interface ProductFoundationOptions {
   subscribeTelemetry(listener: (event: TelemetryEvent) => void): () => void;
   getLastTelemetryEvent(): TelemetryEvent | null;
   getLobbyAuthoritySnapshot(): HomepageAuthorityLobbySnapshot;
+  getSocialLobbySnapshot(): {
+    hydrated: boolean;
+    lobbyId: string | null;
+    lobbyType: number | null;
+    languageName: string | null;
+    playerCount: number;
+    maxPlayers: number | null;
+  };
   getSelfName(): string;
   getLocalStatsSnapshot(): LocalPlayerStatsSnapshot;
   getLocalWordStats(query?: LocalWordStatsQuery): LocalWordStatsSnapshot[];
@@ -165,10 +175,10 @@ interface PersistedProductMatch {
 }
 
 interface DuelProfileUiPreferences {
-  version: 1;
+  version: 2;
   statusChallengeId: string | null;
   statusText: string;
-  pinnedStatIds: [ProfileStatId, ProfileStatId];
+  mainStatIds: ProfileStatId[];
 }
 
 const DUEL_PROFILE_UI_STORAGE_KEY = 'skribblDuelsProfileUiV1';
@@ -209,11 +219,15 @@ function normalizeDuelProfileStatusText(value: unknown): string {
 }
 
 function loadDuelProfileUiPreferences(): DuelProfileUiPreferences {
+  const defaultMainStatIds = [
+    ...DEFAULT_PINNED_PROFILE_STAT_IDS,
+    ...DEFAULT_MAIN_PROFILE_STAT_IDS.filter(id => !DEFAULT_PINNED_PROFILE_STAT_IDS.includes(id))
+  ].slice(0, 12);
   const fallback: DuelProfileUiPreferences = {
-    version: 1,
+    version: 2,
     statusChallengeId: null,
     statusText: '',
-    pinnedStatIds: [...DEFAULT_PINNED_PROFILE_STAT_IDS]
+    mainStatIds: defaultMainStatIds
   };
   try {
     const parsed = JSON.parse(localStorage.getItem(DUEL_PROFILE_UI_STORAGE_KEY) ?? 'null') as {
@@ -221,17 +235,31 @@ function loadDuelProfileUiPreferences(): DuelProfileUiPreferences {
       statusChallengeId?: unknown;
       statusText?: unknown;
       pinnedStatIds?: unknown;
+      mainStatIds?: unknown;
     } | null;
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.pinnedStatIds)) return fallback;
-    const pins = parsed.pinnedStatIds.filter(isProfileStatId);
-    if (pins.length !== 2) return fallback;
+    if (!parsed) return fallback;
+    const rawIds = parsed.version === 2 && Array.isArray(parsed.mainStatIds)
+      ? parsed.mainStatIds
+      : parsed.version === 1 && Array.isArray(parsed.pinnedStatIds)
+        ? [...parsed.pinnedStatIds, ...DEFAULT_MAIN_PROFILE_STAT_IDS]
+        : [];
+    const ids = rawIds.filter(isProfileStatId).filter((id, index, all) => all.indexOf(id) === index);
+    for (const id of defaultMainStatIds) {
+      if (ids.length >= 12) break;
+      if (!ids.includes(id)) ids.push(id);
+    }
+    for (const definition of PROFILE_STAT_DEFINITIONS) {
+      if (ids.length >= 12) break;
+      if (!ids.includes(definition.id)) ids.push(definition.id);
+    }
+    if (ids.length !== 12) return fallback;
     return {
-      version: 1,
+      version: 2,
       statusChallengeId: typeof parsed.statusChallengeId === 'string'
         ? parsed.statusChallengeId
         : null,
       statusText: normalizeDuelProfileStatusText(parsed.statusText),
-      pinnedStatIds: [pins[0]!, pins[1]!]
+      mainStatIds: ids.slice(0, 12)
     };
   } catch {
     return fallback;
@@ -715,6 +743,8 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-modal-close:hover { color:white; }
 .scd-main-tabs { display:flex;justify-content:center;padding:4px 10px 8px; }
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
+.scd-settings-tabs { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px; }
+.scd-settings-tabs .scd-tab { font-weight:800; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
 .scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
@@ -946,8 +976,8 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-skribbl-avatar .eyes { background-image:url('https://skribbl.io/img/avatar/eyes_atlas.gif'); }
 .scd-skribbl-avatar .mouth { background-image:url('https://skribbl.io/img/avatar/mouth_atlas.gif'); }
 .scd-skribbl-avatar .special { position:absolute;left:-33%;top:-33%;width:166%;height:166%;background-image:url('https://skribbl.io/img/avatar/special_atlas.gif');background-size:1000% 1000%; }
-.scd-avatar-fallback,.scd-avatar-discord { background:rgba(255,255,255,.1); }
-.scd-avatar-discord { overflow:hidden; }
+.scd-avatar-fallback { background:rgba(255,255,255,.1); }
+.scd-avatar-discord { background:transparent;overflow:hidden; }
 .scd-avatar-skribbl { overflow:visible !important;border-radius:0; }
 .scd-versus-avatar.scd-avatar-skribbl { box-shadow:none; }
 .scd-versus-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:72%;height:72%; }
@@ -1165,16 +1195,15 @@ class ProductTooltipManager {
 
   private handlePointerOver(event: PointerEvent): void {
     const raw = event.target;
-    const target = raw instanceof Element
+    let target = raw instanceof Element
       ? raw.closest<HTMLElement>('[data-scd-tooltip]')
       : null;
+    while (target?.dataset.scdTooltipOverflowOnly === 'true'
+        && target.scrollWidth <= target.clientWidth + 1) {
+      target = target.parentElement?.closest<HTMLElement>('[data-scd-tooltip]') ?? null;
+    }
     if (target === this.currentTarget) return;
     if (!target) {
-      this.hide();
-      return;
-    }
-    if (target.dataset.scdTooltipOverflowOnly === 'true'
-        && target.scrollWidth <= target.clientWidth + 1) {
       this.hide();
       return;
     }
@@ -1301,12 +1330,14 @@ export class DuelProductFoundation {
   private readonly chatStatDisplay: SkribblChatStatDisplay;
   private duelChatMessages: DuelChatMessage[] = [];
   private activeTab: ProductUiSettings['panelTab'];
+  private settingsSection: 'general' | 'social' = 'general';
   private readonly tooltips: ProductTooltipManager;
   private readonly soundEffects: SoundEffectPlayer;
   private readonly authClient: SupabaseDiscordAuthClient;
   private readonly gatewayClient: SocketIoGatewayClient;
   private readonly skribbleUi: SkribbleFeatureUi;
   private readonly slotsUi: SkribblSlotsFeatureUi;
+  private readonly socialUi: SocialFeatureUi;
   private authState: AuthSnapshot;
   private gatewayState: GatewayConnectionSnapshot;
   private readonly unsubscribers: Array<() => void> = [];
@@ -1453,6 +1484,25 @@ export class DuelProductFoundation {
       aboutIconUrl: EMBEDDED_ICON_ASSETS['res/challenge-icons/about.gif'] ?? null,
       registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
     });
+    this.socialUi = new SocialFeatureUi({
+      runtimeId: options.runtimeId,
+      gateway: this.gatewayClient,
+      getGatewayState: () => this.gatewayState,
+      getLobbySnapshot: () => options.getSocialLobbySnapshot(),
+      isHomepageVisible: () => this.isHomepageDomVisible(),
+      createAvatar: (profile: GatewaySocialProfile, className: string) =>
+        this.createParticipantAvatar(profile.displayName, {
+          avatarSource: profile.avatarSource,
+          avatarUrl: profile.avatarUrl,
+          skribblAvatar: profile.skribblAvatar
+        }, className),
+      createStatusIcon: challengeId => this.createChallengeIcon(challengeId, 'scd-icon'),
+      registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock),
+      registerOverflowTooltip: (target, title, lock) =>
+        this.tooltips.registerOverflowOnly(target, title, lock),
+      showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
+      onModalVisibilityChanged: () => this.syncPageScrollLock()
+    });
   }
 
   public start(): ProductPublicApi {
@@ -1464,6 +1514,7 @@ export class DuelProductFoundation {
     this.soundEffects.initialize();
     this.skribbleUi.start();
     this.slotsUi.start();
+    this.socialUi.start();
     document.addEventListener('keydown', this.draftKeydown, true);
     document.addEventListener('visibilitychange', this.visibilityRecovery, true);
     document.addEventListener('skribblInitialized', this.typoInitialized, true);
@@ -1498,8 +1549,28 @@ export class DuelProductFoundation {
         && (previous.queue !== null
           || previous.invite?.status === 'waiting'
           || this.pendingInviteToken !== null
-          || this.inviteAcceptanceSubmitted);
+          || this.inviteAcceptanceSubmitted
+          || this.socialUi.isMatchInviteAcceptancePending());
       this.gatewayState = state;
+      if (state.social) {
+        const migrateLocalStatus = previous.social === null
+          && state.social.revision === 0
+          && state.social.statusChallengeId === null
+          && state.social.statusText.length === 0
+          && (this.profileUiPreferences.statusChallengeId !== null
+            || this.profileUiPreferences.statusText.length > 0);
+        if (migrateLocalStatus && state.status === 'connected') {
+          this.gatewayClient.setSocialProfileStatus(
+            this.profileUiPreferences.statusChallengeId,
+            this.profileUiPreferences.statusText
+          );
+        } else {
+          this.profileUiPreferences.statusChallengeId = state.social.statusChallengeId;
+          this.profileUiPreferences.statusText = state.social.statusText;
+          this.saveProfileUiPreferences();
+        }
+      }
+      this.socialUi.handleGatewayUpdate(previous, state);
       this.slotsUi.update(state);
       this.skribbleUi.update(state);
       if (playerFound) {
@@ -1599,7 +1670,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.68.0',
+      version: '0.69.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1716,6 +1787,7 @@ export class DuelProductFoundation {
     this.gatewayClient.stop();
     this.skribbleUi.stop();
     this.slotsUi.stop();
+    this.socialUi.stop();
     this.authClient.stop();
     this.launcher?.remove();
     this.panel?.remove();
@@ -1759,7 +1831,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.68.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.69.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -2231,7 +2303,8 @@ export class DuelProductFoundation {
       || isVisible(this.duelProfileModal)
       || isVisible(this.profileDetailModal)
       || this.skribbleUi.isModalOpen()
-      || this.slotsUi.isModalOpen();
+      || this.slotsUi.isModalOpen()
+      || this.socialUi.isModalOpen();
     for (const node of [document.documentElement, document.body]) {
       if (!node) continue;
       if (locked) {
@@ -2890,28 +2963,33 @@ export class DuelProductFoundation {
 
   private createProfileStatCard(
     definition: ProfileStatDefinition,
-    pinnedSlot: 0 | 1 | null = null
+    overviewSlot: number | null = null
   ): HTMLElement {
     const card = element(
-      pinnedSlot === null ? 'div' : 'button',
+      overviewSlot === null ? 'div' : 'button',
       'scd-profile-stat'
     );
-    if (card instanceof HTMLButtonElement) {
+    if (overviewSlot !== null && card instanceof HTMLButtonElement) {
       card.type = 'button';
-      card.addEventListener('click', () => this.openProfileStatPicker(pinnedSlot!));
-      const pinPath = STAT_UTILITY_ICON_ASSET_PATHS.pin;
-      const pin = EMBEDDED_STAT_ICON_ASSETS[pinPath]
-        ? this.createIconAsset(pinPath, '📌', 'Pinned statistic')
-        : element('span', 'scd-icon scd-icon-fallback', '📌');
-      pin.classList.add('scd-profile-pin-icon');
-      card.appendChild(pin);
+      card.addEventListener('click', () => this.openProfileStatPicker(overviewSlot));
+      if (overviewSlot < 2) {
+        const pinPath = STAT_UTILITY_ICON_ASSET_PATHS.pin;
+        const pin = EMBEDDED_STAT_ICON_ASSETS[pinPath]
+          ? this.createIconAsset(pinPath, '📌', 'Pinned statistic')
+          : element('span', 'scd-icon scd-icon-fallback', '📌');
+        pin.classList.add('scd-profile-pin-icon');
+        card.appendChild(pin);
+      }
     }
     card.dataset.scdProfileStatId = definition.id;
+    const label = element('span', 'scd-profile-stat-label', definition.label);
     const value = element('span', 'scd-profile-stat-value', definition.value(this.localStatsSnapshot));
     value.dataset.role = 'value';
+    this.tooltips.registerOverflowOnly(label, definition.label);
+    this.tooltips.registerOverflowOnly(value, value.textContent ?? '');
     card.append(
       this.createProfileStatIcon(definition),
-      element('span', 'scd-profile-stat-label', definition.label),
+      label,
       value
     );
     this.tooltips.register(card, definition.description);
@@ -2924,7 +3002,10 @@ export class DuelProductFoundation {
         const id = card.dataset.scdProfileStatId;
         if (!isProfileStatId(id)) return;
         const value = card.querySelector<HTMLElement>('[data-role="value"]');
-        if (value) value.textContent = PROFILE_STAT_DEFINITION_BY_ID[id].value(this.localStatsSnapshot);
+        if (value) {
+          value.textContent = PROFILE_STAT_DEFINITION_BY_ID[id].value(this.localStatsSnapshot);
+          this.tooltips.registerOverflowOnly(value, value.textContent);
+        }
       });
     }
   }
@@ -3001,6 +3082,9 @@ export class DuelProductFoundation {
       none.addEventListener('click', () => {
         this.profileUiPreferences.statusChallengeId = null;
         this.saveProfileUiPreferences();
+        if (this.gatewayState.status === 'connected') {
+          this.gatewayClient.setSocialProfileStatus(null, this.profileUiPreferences.statusText);
+        }
         this.closeProfileDetail();
         this.openDuelProfile();
       });
@@ -3013,6 +3097,9 @@ export class DuelProductFoundation {
         choice.addEventListener('click', () => {
           this.profileUiPreferences.statusChallengeId = entry.id;
           this.saveProfileUiPreferences();
+          if (this.gatewayState.status === 'connected') {
+            this.gatewayClient.setSocialProfileStatus(entry.id, this.profileUiPreferences.statusText);
+          }
           this.closeProfileDetail();
           this.openDuelProfile();
         });
@@ -3064,6 +3151,12 @@ export class DuelProductFoundation {
       const applyStatus = (): void => {
         this.profileUiPreferences.statusText = normalizeDuelProfileStatusText(input.value);
         this.saveProfileUiPreferences();
+        if (this.gatewayState.status === 'connected') {
+          this.gatewayClient.setSocialProfileStatus(
+            this.profileUiPreferences.statusChallengeId,
+            this.profileUiPreferences.statusText
+          );
+        }
         this.closeProfileDetail();
         this.openDuelProfile();
       };
@@ -3080,23 +3173,27 @@ export class DuelProductFoundation {
     });
   }
 
-  private openProfileStatPicker(slot: 0 | 1): void {
-    this.createProfileDetail(`Choose ${pinnedStatisticOrdinal(slot)} pinned statistic`, body => {
+  private openProfileStatPicker(slot: number): void {
+    const title = slot < 2
+      ? `Choose ${pinnedStatisticOrdinal(slot as 0 | 1)} pinned statistic`
+      : `Choose overview statistic ${slot + 1}`;
+    this.createProfileDetail(title, body => {
       const grid = element('div', 'scd-profile-choice-grid');
       for (const definition of PROFILE_STAT_DEFINITIONS) {
         const choice = element('button', 'scd-button scd-profile-choice') as HTMLButtonElement;
         choice.type = 'button';
-        choice.classList.toggle('selected', this.profileUiPreferences.pinnedStatIds[slot] === definition.id);
+        choice.classList.toggle('selected', this.profileUiPreferences.mainStatIds[slot] === definition.id);
         choice.append(
           this.createProfileStatIcon(definition),
           element('span', '', definition.label)
         );
         choice.addEventListener('click', () => {
-          const otherSlot = slot === 0 ? 1 : 0;
-          if (this.profileUiPreferences.pinnedStatIds[otherSlot] === definition.id) {
-            this.profileUiPreferences.pinnedStatIds[otherSlot] = this.profileUiPreferences.pinnedStatIds[slot];
+          const current = this.profileUiPreferences.mainStatIds[slot];
+          const existingSlot = this.profileUiPreferences.mainStatIds.indexOf(definition.id);
+          if (current && existingSlot >= 0 && existingSlot !== slot) {
+            this.profileUiPreferences.mainStatIds[existingSlot] = current;
           }
-          this.profileUiPreferences.pinnedStatIds[slot] = definition.id;
+          this.profileUiPreferences.mainStatIds[slot] = definition.id;
           this.saveProfileUiPreferences();
           this.closeProfileDetail();
           this.openDuelProfile();
@@ -3289,6 +3386,9 @@ export class DuelProductFoundation {
         && !this.manifest.entries.some(entry => entry.id === this.profileUiPreferences.statusChallengeId)) {
       this.profileUiPreferences.statusChallengeId = null;
       this.saveProfileUiPreferences();
+      if (this.gatewayState.status === 'connected') {
+        this.gatewayClient.setSocialProfileStatus(null, this.profileUiPreferences.statusText);
+      }
     }
     const overlay = element('div', 'scd-modal-overlay');
     overlay.id = 'skribbl-duels-profile';
@@ -3310,11 +3410,13 @@ export class DuelProductFoundation {
     const identityColumn = element('section', 'scd-profile-identity');
     identityColumn.appendChild(this.skribbleUi.createCoinPill(true));
     const effectiveDisplayName = this.savedSelfDisplayName ?? identity.displayName;
-    identityColumn.appendChild(this.createParticipantAvatar(effectiveDisplayName, {
+    const profileAvatar = this.createParticipantAvatar(effectiveDisplayName, {
       avatarSource: identity.avatarSource ?? 'discord',
       avatarUrl: identity.avatarSource === 'skribbl' ? null : (identity.avatarUrl ?? authProfile.avatarUrl),
       skribblAvatar: identity.skribblAvatar ?? null
-    }, 'scd-profile-avatar'));
+    }, 'scd-profile-avatar');
+    this.socialUi.decorateProfileAvatar(profileAvatar);
+    identityColumn.appendChild(profileAvatar);
     const displayName = element('div', 'scd-profile-display-name');
     appendColoredDuelName(displayName, effectiveDisplayName, this.duelNameColorIndex('self'));
     identityColumn.append(
@@ -3361,6 +3463,9 @@ export class DuelProductFoundation {
       this.profileUiPreferences.statusChallengeId = null;
       this.profileUiPreferences.statusText = '';
       this.saveProfileUiPreferences();
+      if (this.gatewayState.status === 'connected') {
+        this.gatewayClient.setSocialProfileStatus(null, '');
+      }
       this.openDuelProfile();
     });
     this.tooltips.register(resetStatus, 'Clear status icon and text');
@@ -3368,6 +3473,7 @@ export class DuelProductFoundation {
     statusWrapper.append(statusIcon, statusText, resetStatus);
     identityColumn.append(
       statusWrapper,
+      this.socialUi.createProfileControls(),
       element('div', 'scd-muted scd-profile-private-copy', authProfile.createdAt === null
         ? 'Member since: unavailable'
         : `Member since ${formatMemberSince(authProfile.createdAt)}`)
@@ -3375,21 +3481,9 @@ export class DuelProductFoundation {
 
     const statsColumn = element('section', 'scd-profile-stats-column');
     const statsGrid = element('div', 'scd-profile-stats-grid');
-    const pinnedIds = this.profileUiPreferences.pinnedStatIds;
-    statsGrid.append(
-      this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[pinnedIds[0]], 0),
-      this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[pinnedIds[1]], 1)
-    );
-    const remainingIds = DEFAULT_MAIN_PROFILE_STAT_IDS.filter(id => !pinnedIds.includes(id));
-    for (const id of remainingIds.slice(0, 10)) {
-      statsGrid.appendChild(this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[id]));
-    }
-    // Always keep a twelve-card overview, even when a pinned stat overlaps a default.
-    for (const definition of PROFILE_STAT_DEFINITIONS) {
-      if (statsGrid.children.length >= 12) break;
-      if (statsGrid.querySelector(`[data-scd-profile-stat-id="${CSS.escape(definition.id)}"]`)) continue;
-      statsGrid.appendChild(this.createProfileStatCard(definition));
-    }
+    this.profileUiPreferences.mainStatIds.forEach((id, slot) => {
+      statsGrid.appendChild(this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[id], slot));
+    });
     const viewAll = element('button', 'scd-button scd-profile-view-all', 'View all Stats') as HTMLButtonElement;
     viewAll.type = 'button';
     viewAll.addEventListener('click', () => this.openAllProfileStats());
@@ -4441,6 +4535,24 @@ export class DuelProductFoundation {
   private renderSettingsTab(): void {
     if (!this.panelBody) return;
     const stack = element('div', 'scd-stack');
+    const tabs = element('div', 'scd-settings-tabs');
+    for (const [section, label] of [['general', 'General'], ['social', 'Social']] as const) {
+      const tab = element('button', 'scd-button scd-tab', label) as HTMLButtonElement;
+      tab.type = 'button';
+      tab.classList.toggle('active', this.settingsSection === section);
+      tab.addEventListener('click', () => {
+        if (this.settingsSection === section) return;
+        this.settingsSection = section;
+        this.renderPanel();
+      });
+      tabs.appendChild(tab);
+    }
+    stack.appendChild(tabs);
+    if (this.settingsSection === 'social') {
+      this.socialUi.renderSettings(stack);
+      this.panelBody.appendChild(stack);
+      return;
+    }
     const identity = this.gatewayState.identity;
     if (this.authState.status === 'signed-in' && identity) {
       if (this.profileColorDraftIndex === null) {
@@ -6365,6 +6477,7 @@ export class DuelProductFoundation {
   private closeProductModalsForMatchFound(): void {
     this.skribbleUi.closeForMatchFound();
     this.slotsUi.closeForMatchFound();
+    this.socialUi.closeModals();
     this.stopAboutTutorial();
     if (this.introTimer !== null) window.clearTimeout(this.introTimer);
     this.introTimer = null;

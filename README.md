@@ -1,9 +1,32 @@
-# Skribbl Duels v0.68.0
+# Skribbl Duels v0.69.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v14, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v15, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.69.0
+
+- Adds a durable Friends graph with exact Discord-username lookup, incoming,
+  ignored and outgoing requests, accept/decline/ignore/block/withdraw actions,
+  per-account pins and two-sided removal.
+- Adds privacy-filtered Online/Idle/Offline and Active Duel presence, visible
+  Profile status, public-lobby joining through Typo, an optional corner-anchored
+  homepage friend list and actionable Social toasts.
+- Adds live-only Quick Messages with browser-local history and unread pings.
+  Message bodies are never stored by the Gateway, and offline delivery fails
+  explicitly. Friend Match invitations reuse the existing single-use durable
+  invite and normal Ready/Draft/Countdown flow.
+- Moves Profile status to the Gateway without losing a revision-zero local
+  status, makes all twelve overview statistic cards configurable and preserves
+  the first two pinned positions.
+- Embeds all 17 supplied `res/friend-system` GIF assets. Discord avatars keep a
+  transparent base and the non-square Online animation retains its aspect.
+
+v0.69.0 requires Gateway Contract v15 and migration
+`202609300001_add_social_graph.sql`. Apply it after the v0.68 profile-sync
+migration, deploy Gateway v0.11.0, then distribute the userscript. No new
+Railway variable is required. See `docs/friends-social-v0.69.0.md`.
 
 ## v0.68.0
 
@@ -787,8 +810,8 @@ Gateway is deployed. v0.54.0 additionally requires
 `supabase/migrations/202608210001_create_gateway_abuse_controls.sql`.
 Installations upgrading from before v0.48.0 must also
 apply `supabase/migrations/202608110001_add_invisible_avatar_entitlements.sql`.
-Current v0.68.0 installations must finish the ordered chain through
-`supabase/migrations/202609220001_harden_discord_profile_sync.sql`.
+Current v0.69.0 installations must finish the ordered chain through
+`supabase/migrations/202609300001_add_social_graph.sql`.
 
 ## Local verification
 
@@ -803,7 +826,9 @@ Node 24 is the documented development runtime. Never include Discord secrets,
 Supabase database/service-role credentials, access tokens or refresh tokens in
 the userscript or repository.
 
-See `docs/ui-tutorial-typo-metrics-v0.63.0.md`,
+See `docs/friends-social-v0.69.0.md`,
+`docs/firefox-auth-terminal-slots-ui-v0.68.0.md`,
+`docs/ui-tutorial-typo-metrics-v0.63.0.md`,
 `docs/ui-polish-v0.62.0.md`,
 `docs/post-v0.62.0-roadmap.md`,
 `docs/chat-stat-display-v0.61.0.md`,

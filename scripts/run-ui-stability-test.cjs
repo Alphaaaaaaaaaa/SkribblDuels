@@ -121,7 +121,8 @@ assert(source.includes('this.showWinAnimation('), 'Win animation renderer is mis
 assert(source.includes('@keyframes player_winner'), 'winner avatar animation is missing');
 assert(source.includes("background-image:url('/img/trophy.gif')"), 'winner trophy asset is missing');
 assert(source.includes('.avatar .owner') && source.includes("background-image:url('/img/crown.gif')"), 'winner crown asset is missing');
-assert(source.includes('.scd-avatar-fallback,.scd-avatar-discord { background:rgba(255,255,255,.1); }'), 'avatar fallback/Discord background rule is missing');
+assert(source.includes('.scd-avatar-fallback { background:rgba(255,255,255,.1); }'), 'avatar fallback background rule is missing');
+assert(source.includes('.scd-avatar-discord { background:transparent;overflow:hidden; }'), 'Discord avatars must keep a transparent background');
 assert(source.includes("avatar.classList.add('scd-avatar-skribbl')"), 'Skribbl avatars are not separated from fallback backgrounds');
 assert(source.includes('.scd-field-icon { display:grid;place-items:center;width:56%;aspect-ratio:1/1'), 'Challenge icon sizing was not restored');
 assert(source.includes('.scd-versus-avatar { width:min(88px,15vw)'), 'Versus avatars were not reduced to the requested compact size');

@@ -8,6 +8,8 @@ import {
   type GatewayClaimCandidateMessage,
   type GatewayInviteCreateMessage,
   type GatewayMatchmakingJoinMessage,
+  type GatewaySocialLobbyPresence,
+  type GatewaySocialPreferences,
   type GatewayServerMessage,
   type GatewaySocketAuth,
   type GatewayTelemetryEnvelope
@@ -63,6 +65,9 @@ function initialSnapshot(endpoint: string | null): GatewayConnectionSnapshot {
     lastSkribbleGuess: null,
     slots: null,
     lastSlotsSpin: null,
+    social: null,
+    friendSearch: null,
+    socialEvents: [],
     error: null
   };
 }
@@ -325,6 +330,84 @@ export class SocketIoGatewayClient {
     return requestId;
   }
 
+  public syncSocial(): string {
+    const requestId = this.createRequestId('social-sync');
+    this.emit({ type: 'SOCIAL_SYNC', requestId });
+    return requestId;
+  }
+
+  public setSocialPreferences(preferences: GatewaySocialPreferences): string {
+    const requestId = this.createRequestId('social-preferences');
+    this.emit({ type: 'SOCIAL_PREFERENCES_SET', requestId, preferences });
+    return requestId;
+  }
+
+  public setSocialProfileStatus(challengeId: string | null, text: string): string {
+    const requestId = this.createRequestId('social-status');
+    this.emit({ type: 'SOCIAL_PROFILE_STATUS_SET', requestId, challengeId, text });
+    return requestId;
+  }
+
+  public setSocialPresence(page: 'home' | 'lobby', lobby: GatewaySocialLobbyPresence | null): string {
+    const requestId = this.createRequestId('social-presence');
+    this.emit({ type: 'SOCIAL_PRESENCE_SET', requestId, page, lobby });
+    return requestId;
+  }
+
+  public searchFriend(discordUsername: string): string {
+    const requestId = this.createRequestId('friend-search');
+    this.emit({ type: 'FRIEND_SEARCH', requestId, discordUsername });
+    return requestId;
+  }
+
+  public sendFriendRequest(accountId: string): string {
+    const requestId = this.createRequestId('friend-request');
+    this.emit({ type: 'FRIEND_REQUEST_SEND', requestId, accountId });
+    return requestId;
+  }
+
+  public respondToFriendRequest(friendRequestId: string, response: 'accept' | 'decline' | 'ignore' | 'block'): string {
+    const requestId = this.createRequestId('friend-response');
+    this.emit({ type: 'FRIEND_REQUEST_RESPOND', requestId, friendRequestId, response });
+    return requestId;
+  }
+
+  public withdrawFriendRequest(friendRequestId: string): string {
+    const requestId = this.createRequestId('friend-withdraw');
+    this.emit({ type: 'FRIEND_REQUEST_WITHDRAW', requestId, friendRequestId });
+    return requestId;
+  }
+
+  public removeFriend(accountId: string): string {
+    const requestId = this.createRequestId('friend-remove');
+    this.emit({ type: 'FRIEND_REMOVE', requestId, accountId });
+    return requestId;
+  }
+
+  public setFriendPinned(accountId: string, pinned: boolean): string {
+    const requestId = this.createRequestId('friend-pin');
+    this.emit({ type: 'FRIEND_PIN_SET', requestId, accountId, pinned });
+    return requestId;
+  }
+
+  public sendFriendMessage(accountId: string, message: string): string {
+    const clientMessageId = this.createRequestId('friend-message');
+    this.emit({ type: 'FRIEND_MESSAGE_SEND', clientMessageId, accountId, message });
+    return clientMessageId;
+  }
+
+  public sendFriendMatchInvite(accountId: string, format: 'casual' | 'ranked'): string {
+    const requestId = this.createRequestId('friend-match-invite');
+    this.emit({ type: 'FRIEND_MATCH_INVITE_SEND', requestId, accountId, format });
+    return requestId;
+  }
+
+  public respondToFriendMatchInvite(inviteId: string, accept: boolean): string {
+    const requestId = this.createRequestId('friend-match-response');
+    this.emit({ type: 'FRIEND_MATCH_INVITE_RESPOND', requestId, inviteId, accept });
+    return requestId;
+  }
+
   public queueTelemetryEnvelope(envelope: GatewayTelemetryEnvelope): void {
     if (this.state.match?.matchId !== envelope.matchId) return;
     if (this.telemetryQueue.some(item => item.sequence === envelope.sequence)) return;
@@ -433,6 +516,7 @@ export class SocketIoGatewayClient {
       return;
     }
     if (value.type === 'WELCOME') {
+      const sameAccount = this.state.identity?.accountId === value.identity.accountId;
       const resumed = value.resumedMatchId !== null
         && (this.state.match === null || this.state.match.matchId === value.resumedMatchId);
       if (!resumed) {
@@ -458,6 +542,9 @@ export class SocketIoGatewayClient {
         lastSkribbleGuess: this.state.lastSkribbleGuess,
         slots: this.state.slots,
         lastSlotsSpin: this.state.lastSlotsSpin,
+        social: sameAccount ? this.state.social : null,
+        friendSearch: sameAccount ? this.state.friendSearch : null,
+        socialEvents: sameAccount ? this.state.socialEvents : [],
         error: null
       });
       // A navigation (most notably /credits for Bloodline) can interrupt the
@@ -545,6 +632,23 @@ export class SocketIoGatewayClient {
               transaction: null
             }
           : this.state.coins,
+        error: null
+      });
+      return;
+    }
+    if (value.type === 'SOCIAL_SNAPSHOT') {
+      this.update({ ...this.state, social: structuredClone(value), error: null });
+      return;
+    }
+    if (value.type === 'FRIEND_SEARCH_RESULT') {
+      this.update({ ...this.state, friendSearch: structuredClone(value), error: null });
+      return;
+    }
+    if (value.type === 'SOCIAL_EVENT') {
+      const duplicate = this.state.socialEvents.some(event => event.eventId === value.eventId);
+      this.update({
+        ...this.state,
+        socialEvents: duplicate ? this.state.socialEvents : [...this.state.socialEvents, structuredClone(value)].slice(-100),
         error: null
       });
       return;

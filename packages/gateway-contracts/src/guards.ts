@@ -62,6 +62,72 @@ function skribblAvatar(value: unknown): boolean {
     && value.every(item => Number.isInteger(item) && Number(item) >= -255 && Number(item) <= 255));
 }
 
+function socialAvailability(value: unknown): boolean {
+  return value === 'online' || value === 'idle' || value === 'offline';
+}
+
+function socialVisibility(value: unknown): boolean {
+  return value === 'everyone' || value === 'friends' || value === 'nobody';
+}
+
+function socialLobby(value: unknown): boolean {
+  if (value === null) return true;
+  const lobby = record(value);
+  return Boolean(lobby
+    && nonEmptyString(lobby.lobbyId, 256)
+    && (lobby.lobbyType === 'public' || lobby.lobbyType === 'private')
+    && nonEmptyString(lobby.languageName, 64)
+    && nonNegativeInteger(lobby.playerCount)
+    && nonNegativeInteger(lobby.maxPlayers)
+    && Number(lobby.maxPlayers) >= 1
+    && Number(lobby.maxPlayers) <= 32
+    && Number(lobby.playerCount) <= Number(lobby.maxPlayers));
+}
+
+function socialPreferences(value: unknown): boolean {
+  const preferences = record(value);
+  return Boolean(preferences
+    && socialAvailability(preferences.availability)
+    && socialVisibility(preferences.profileStatusVisibility)
+    && socialVisibility(preferences.lobbyStatusVisibility)
+    && typeof preferences.allowLobbyJoin === 'boolean'
+    && typeof preferences.receiveFriendRequests === 'boolean'
+    && typeof preferences.receiveMatchInvites === 'boolean');
+}
+
+function socialProfile(value: unknown): boolean {
+  const profile = record(value);
+  return Boolean(profile
+    && nonEmptyString(profile.accountId)
+    && nonEmptyString(profile.displayName, 128)
+    && nonEmptyString(profile.discordUsername, 128)
+    && (profile.avatarSource === 'discord' || profile.avatarSource === 'skribbl')
+    && nullableString(profile.avatarUrl)
+    && skribblAvatar(profile.skribblAvatar)
+    && nullableString(profile.specialAvatarId, 64)
+    && typeof profile.invisibleAvatarEntitled === 'boolean'
+    && nonNegativeInteger(profile.nameColorIndex)
+    && Number(profile.nameColorIndex) <= 27
+    && nullableString(profile.statusChallengeId, 128)
+    && typeof profile.statusText === 'string'
+    && Array.from(profile.statusText).length <= 80
+    && (socialAvailability(profile.presence) || profile.presence === 'duel')
+    && (profile.lastSeenAt === null || finiteNumber(profile.lastSeenAt))
+    && socialLobby(profile.lobby)
+    && typeof profile.canJoinLobby === 'boolean'
+    && typeof profile.pinned === 'boolean');
+}
+
+function friendRequestSummary(value: unknown): boolean {
+  const request = record(value);
+  return Boolean(request
+    && nonEmptyString(request.friendRequestId)
+    && (request.direction === 'incoming' || request.direction === 'outgoing')
+    && (request.status === 'pending' || request.status === 'ignored')
+    && socialProfile(request.profile)
+    && finiteNumber(request.createdAt));
+}
+
 function matchmakingParticipant(value: unknown): boolean {
   const participant = record(value);
   return Boolean(participant
@@ -577,6 +643,50 @@ export function isGatewayClientMessage(value: unknown): value is GatewayClientMe
       return nonEmptyString(message.requestId);
     case 'SLOTS_SPIN':
       return nonEmptyString(message.requestId) && nonEmptyString(message.sessionId);
+    case 'SOCIAL_SYNC':
+      return nonEmptyString(message.requestId);
+    case 'SOCIAL_PREFERENCES_SET':
+      return nonEmptyString(message.requestId) && socialPreferences(message.preferences);
+    case 'SOCIAL_PROFILE_STATUS_SET':
+      return nonEmptyString(message.requestId)
+        && nullableString(message.challengeId, 128)
+        && typeof message.text === 'string'
+        && Array.from(message.text).length <= 80;
+    case 'SOCIAL_PRESENCE_SET':
+      return nonEmptyString(message.requestId)
+        && (message.page === 'home' || message.page === 'lobby')
+        && socialLobby(message.lobby)
+        && (message.page === 'lobby') === (message.lobby !== null);
+    case 'FRIEND_SEARCH':
+      return nonEmptyString(message.requestId)
+        && nonEmptyCodePointString(message.discordUsername, 66);
+    case 'FRIEND_REQUEST_SEND':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId);
+    case 'FRIEND_REQUEST_RESPOND':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.friendRequestId)
+        && (message.response === 'accept' || message.response === 'decline'
+          || message.response === 'ignore' || message.response === 'block');
+    case 'FRIEND_REQUEST_WITHDRAW':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.friendRequestId);
+    case 'FRIEND_REMOVE':
+      return nonEmptyString(message.requestId) && nonEmptyString(message.accountId);
+    case 'FRIEND_PIN_SET':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.accountId)
+        && typeof message.pinned === 'boolean';
+    case 'FRIEND_MESSAGE_SEND':
+      return nonEmptyString(message.clientMessageId)
+        && nonEmptyString(message.accountId)
+        && nonEmptyCodePointString(message.message, 300);
+    case 'FRIEND_MATCH_INVITE_SEND':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.accountId)
+        && (message.format === 'casual' || message.format === 'ranked');
+    case 'FRIEND_MATCH_INVITE_RESPOND':
+      return nonEmptyString(message.requestId)
+        && nonEmptyString(message.inviteId)
+        && typeof message.accept === 'boolean';
     case 'PING':
       return finiteNumber(message.sentAt);
     default:
@@ -684,6 +794,39 @@ export function isGatewayServerMessage(value: unknown): value is GatewayServerMe
         && (message.outcome === null || slotOutcome(message.outcome))
         && message.accepted === (message.outcome !== null)
         && nonNegativeInteger(message.coinRevision);
+    case 'SOCIAL_SNAPSHOT':
+      return (message.requestId === null || nonEmptyString(message.requestId))
+        && nonNegativeInteger(message.revision)
+        && socialPreferences(message.preferences)
+        && nullableString(message.statusChallengeId, 128)
+        && typeof message.statusText === 'string'
+        && Array.from(message.statusText).length <= 80
+        && Array.isArray(message.friends)
+        && message.friends.length <= 500
+        && message.friends.every(socialProfile)
+        && Array.isArray(message.requests)
+        && message.requests.length <= 500
+        && message.requests.every(friendRequestSummary);
+    case 'FRIEND_SEARCH_RESULT':
+      return nonEmptyString(message.requestId)
+        && (message.profile === null || socialProfile(message.profile))
+        && (message.relationship === 'self' || message.relationship === 'friend'
+          || message.relationship === 'incoming-request' || message.relationship === 'outgoing-request'
+          || message.relationship === 'blocked' || message.relationship === 'none');
+    case 'SOCIAL_EVENT':
+      return nonEmptyString(message.eventId)
+        && (message.kind === 'friend-request-received' || message.kind === 'friend-request-accepted'
+          || message.kind === 'friend-removed' || message.kind === 'friend-message-received'
+          || message.kind === 'friend-message-sent' || message.kind === 'match-invite-received'
+          || message.kind === 'match-invite-declined')
+        && socialProfile(message.profile)
+        && (message.friendRequestId === null || nonEmptyString(message.friendRequestId))
+        && (message.clientMessageId === null || nonEmptyString(message.clientMessageId))
+        && (message.message === null || nonEmptyCodePointString(message.message, 300))
+        && (message.inviteId === null || nonEmptyString(message.inviteId))
+        && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128))
+        && (message.format === null || message.format === 'casual' || message.format === 'ranked')
+        && finiteNumber(message.occurredAt);
     case 'COIN_BALANCE':
       return (message.requestId === null || nonEmptyString(message.requestId))
         && nonNegativeInteger(message.balance)

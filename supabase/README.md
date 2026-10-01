@@ -74,6 +74,13 @@ ASCII-safe Duel display name, prevents stale provider/profile collisions from
 aborting OAuth and repairs historical Auth users without a profile row. It does
 not copy Discord email data into `public.profiles`.
 
+For v0.69.0, apply `202609300001_add_social_graph.sql` after the profile-sync
+migration and before deploying Contract v15. It adds service-role-only Social
+preferences, requests, canonical friendships, pins and directional blocks. The
+row-locked response RPC makes acceptance/blocking atomic and executable only by
+`service_role`; all Social tables have RLS enabled with browser roles revoked.
+`/readyz` reports Social persistence unhealthy while the migration is missing.
+
 After applying a migration, run the matching verification script before changing the userscript or starting the Gateway.
 
 The `public.profiles` table deliberately contains no email address, access token, refresh token, rating, match result, or moderation state. Browser clients can read profiles after authentication but cannot write profile identity fields.

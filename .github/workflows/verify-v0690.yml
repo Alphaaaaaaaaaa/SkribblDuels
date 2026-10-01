@@ -50,6 +50,7 @@ jobs:
           mkdir -p deliverables
           git archive --format=zip --output=deliverables/Skribbl-Duels-v0.69.0-source.zip HEAD
           zip -ur deliverables/Skribbl-Duels-v0.69.0-source.zip dist/gateway dist/telemetry-inspector
+          zip -ur deliverables/Skribbl-Duels-v0.69.0-source.zip userscript/skribbl-duels-telemetry-inspector.user.js
           cp userscript/skribbl-duels-telemetry-inspector.user.js deliverables/Skribbl-Duels-v0.69.0.user.js
           cp supabase/migrations/202609300001_add_social_graph.sql deliverables/
           (

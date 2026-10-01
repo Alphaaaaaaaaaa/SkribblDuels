@@ -35,6 +35,7 @@ import type {
 import { GatewayMetrics } from './metrics';
 import type { GatewayRealtimeInfrastructure } from './realtimeInfrastructure';
 import type { GatewayProgressionPersistence } from './progressionPersistence';
+import type { GatewaySocialPersistence } from './socialPersistence';
 
 interface ClientToServerEvents {
   'gateway:message': (message: unknown) => void;
@@ -58,6 +59,7 @@ export interface CreateGatewayServerOptions {
   authenticate: GatewayAccessAuthenticator;
   persistence?: GatewayMatchAuthorityPersistence;
   progression?: GatewayProgressionPersistence;
+  social?: GatewaySocialPersistence;
   realtime?: GatewayRealtimeInfrastructure;
   rateLimiter?: GatewayRateLimiter;
 }
@@ -127,7 +129,8 @@ function sanctionForMessage(
       && (sanctions.matchmakingBanUntil ?? 0) > now) {
     return { code: 'MATCHMAKING_RESTRICTED', message: 'Matchmaking is temporarily restricted for this account.' };
   }
-  if (type === 'DUEL_CHAT_SEND' && (sanctions.chatMuteUntil ?? 0) > now) {
+  if ((type === 'DUEL_CHAT_SEND' || type === 'FRIEND_MESSAGE_SEND')
+      && (sanctions.chatMuteUntil ?? 0) > now) {
     return { code: 'DUEL_CHAT_MUTED', message: 'Duel Chat is temporarily muted for this account.' };
   }
   if ((type === 'TELEMETRY_BATCH' || type === 'CLAIM_CANDIDATE')
@@ -165,6 +168,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
     config,
     ...(options.persistence ? { persistence: options.persistence } : {}),
     ...(options.progression ? { progression: options.progression } : {}),
+    ...(options.social ? { social: options.social } : {}),
     metrics,
     sendToAccount(accountId, message) {
       io.to(accountRoom(accountId)).emit(GATEWAY_SOCKET_EVENT, message);
@@ -207,12 +211,23 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         progressionError = error instanceof Error ? error.message : String(error);
       }
     }
+    let socialHealthy = true;
+    let socialError: string | null = null;
+    if (options.social?.checkHealth) {
+      try {
+        await options.social.checkHealth();
+      } catch (error) {
+        socialHealthy = false;
+        socialError = error instanceof Error ? error.message : String(error);
+      }
+    }
     const adapterHealthy = realtime ? await realtime.ping() : true;
     const realtimeState = realtimeStatus();
     const authorityState = authority.status();
     const ready = !shuttingDown
       && supabaseHealthy
       && progressionHealthy
+      && socialHealthy
       && adapterHealthy
       && realtimeState.healthy
       && authorityState.healthy;
@@ -230,6 +245,11 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         enabled: Boolean(options.progression),
         healthy: progressionHealthy,
         error: progressionError
+      },
+      social: {
+        enabled: Boolean(options.social),
+        healthy: socialHealthy,
+        error: socialError
       },
       realtime: realtimeState,
       matchAuthority: authorityState
@@ -254,6 +274,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
         const status = await readiness();
         const supabase = status.supabase as { enabled: boolean; healthy: boolean };
         const progression = status.progression as { enabled: boolean; healthy: boolean };
+        const social = status.social as { enabled: boolean; healthy: boolean };
         const realtimeState = status.realtime as ReturnType<typeof realtimeStatus>;
         const matchAuthority = status.matchAuthority as ReturnType<typeof authority.status>;
         response.writeHead(status.ready ? 200 : 503, { 'content-type': 'application/json; charset=utf-8' });
@@ -264,6 +285,7 @@ export function createGatewayServer(options: CreateGatewayServerOptions): Gatewa
           ready: status.ready,
           supabase: { enabled: supabase.enabled, healthy: supabase.healthy },
           progression: { enabled: progression.enabled, healthy: progression.healthy },
+          social: { enabled: social.enabled, healthy: social.healthy },
           realtime: {
             enabled: realtimeState.enabled,
             healthy: realtimeState.healthy,

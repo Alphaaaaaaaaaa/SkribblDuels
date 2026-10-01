@@ -11,7 +11,8 @@ export type GatewayAbuseScope =
   | 'match-action'
   | 'telemetry'
   | 'claim'
-  | 'progression';
+  | 'progression'
+  | 'social';
 
 export interface GatewayRateLimitPolicy {
   scope: GatewayAbuseScope;
@@ -128,6 +129,22 @@ export function policyForMessage(message: GatewayClientMessage): GatewayRateLimi
     case 'SLOTS_OPEN':
     case 'SLOTS_SPIN':
       return { scope: 'progression', limit: 60, windowMs: 60_000 };
+    case 'SOCIAL_SYNC':
+    case 'SOCIAL_PRESENCE_SET':
+      return { scope: 'social', limit: 60, windowMs: 60_000 };
+    case 'FRIEND_MESSAGE_SEND':
+      return { scope: 'social', limit: 60, windowMs: 60_000 };
+    case 'SOCIAL_PREFERENCES_SET':
+    case 'SOCIAL_PROFILE_STATUS_SET':
+    case 'FRIEND_SEARCH':
+    case 'FRIEND_REQUEST_SEND':
+    case 'FRIEND_REQUEST_RESPOND':
+    case 'FRIEND_REQUEST_WITHDRAW':
+    case 'FRIEND_REMOVE':
+    case 'FRIEND_PIN_SET':
+    case 'FRIEND_MATCH_INVITE_SEND':
+    case 'FRIEND_MATCH_INVITE_RESPOND':
+      return { scope: 'social', limit: 30, windowMs: 60_000 };
     default:
       return { scope: 'match-action', limit: 60, windowMs: 10_000 };
   }

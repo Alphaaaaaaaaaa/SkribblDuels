@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Skribbl Duels
 // @namespace    https://github.com/skribbl-duels
-// @version      0.68.0
+// @version      0.69.0
 // @author       Alpha
 // @description  Gateway-backed Skribbl Duels with durable Challenges, authoritative matches and invite links.
 // @icon         https://raw.githubusercontent.com/Alphaaaaaaaaaa/SkribblDuels/main/res/challenge-icons/skribbl-duels-logo.gif
@@ -36840,6 +36840,29 @@ function nullableString(value, maxLength = 2048) {
 function skribblAvatar(value) {
 	return value === null || Array.isArray(value) && value.length === 4 && value.every((item) => Number.isInteger(item) && Number(item) >= -255 && Number(item) <= 255);
 }
+function socialAvailability(value) {
+	return value === "online" || value === "idle" || value === "offline";
+}
+function socialVisibility(value) {
+	return value === "everyone" || value === "friends" || value === "nobody";
+}
+function socialLobby(value) {
+	if (value === null) return true;
+	const lobby = record(value);
+	return Boolean(lobby && nonEmptyString(lobby.lobbyId, 256) && (lobby.lobbyType === "public" || lobby.lobbyType === "private") && nonEmptyString(lobby.languageName, 64) && nonNegativeInteger(lobby.playerCount) && nonNegativeInteger(lobby.maxPlayers) && Number(lobby.maxPlayers) >= 1 && Number(lobby.maxPlayers) <= 32 && Number(lobby.playerCount) <= Number(lobby.maxPlayers));
+}
+function socialPreferences(value) {
+	const preferences = record(value);
+	return Boolean(preferences && socialAvailability(preferences.availability) && socialVisibility(preferences.profileStatusVisibility) && socialVisibility(preferences.lobbyStatusVisibility) && typeof preferences.allowLobbyJoin === "boolean" && typeof preferences.receiveFriendRequests === "boolean" && typeof preferences.receiveMatchInvites === "boolean");
+}
+function socialProfile(value) {
+	const profile = record(value);
+	return Boolean(profile && nonEmptyString(profile.accountId) && nonEmptyString(profile.displayName, 128) && nonEmptyString(profile.discordUsername, 128) && (profile.avatarSource === "discord" || profile.avatarSource === "skribbl") && nullableString(profile.avatarUrl) && skribblAvatar(profile.skribblAvatar) && nullableString(profile.specialAvatarId, 64) && typeof profile.invisibleAvatarEntitled === "boolean" && nonNegativeInteger(profile.nameColorIndex) && Number(profile.nameColorIndex) <= 27 && nullableString(profile.statusChallengeId, 128) && typeof profile.statusText === "string" && Array.from(profile.statusText).length <= 80 && (socialAvailability(profile.presence) || profile.presence === "duel") && (profile.lastSeenAt === null || finiteNumber(profile.lastSeenAt)) && socialLobby(profile.lobby) && typeof profile.canJoinLobby === "boolean" && typeof profile.pinned === "boolean");
+}
+function friendRequestSummary(value) {
+	const request = record(value);
+	return Boolean(request && nonEmptyString(request.friendRequestId) && (request.direction === "incoming" || request.direction === "outgoing") && (request.status === "pending" || request.status === "ignored") && socialProfile(request.profile) && finiteNumber(request.createdAt));
+}
 function matchmakingParticipant(value) {
 	const participant = record(value);
 	return Boolean(participant && nonEmptyString(participant.accountId) && nonEmptyString(participant.displayName, 128) && typeof participant.ready === "boolean" && typeof participant.simulated === "boolean" && (participant.avatarSource === "discord" || participant.avatarSource === "skribbl") && nullableString(participant.avatarUrl) && skribblAvatar(participant.skribblAvatar) && nullableString(participant.specialAvatarId, 64) && typeof participant.invisibleAvatarEntitled === "boolean" && nonNegativeInteger(participant.nameColorIndex) && Number(participant.nameColorIndex) <= 27);
@@ -36940,7 +36963,7 @@ function isGatewayServerMessage(value) {
 	switch (message.type) {
 		case "WELCOME": {
 			const identity = record(message.identity);
-			return message.contractVersion === 14 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
+			return message.contractVersion === 15 && nonEmptyString(message.connectionId) && Boolean(identity && nonEmptyString(identity.accountId) && nonEmptyString(identity.displayName, 128) && (identity.discordUserId === null || nonEmptyString(identity.discordUserId)) && (identity.invisibleAvatarEntitled === void 0 || typeof identity.invisibleAvatarEntitled === "boolean") && (identity.nameColorIndex === void 0 || nonNegativeInteger(identity.nameColorIndex) && Number(identity.nameColorIndex) <= 27)) && finiteNumber(message.serverTime) && nonNegativeInteger(message.heartbeatIntervalMs) && (message.resumeStatus === "not-requested" || message.resumeStatus === "resumed" || message.resumeStatus === "not-found" || message.resumeStatus === "mismatch") && (message.resumedMatchId === null || nonEmptyString(message.resumedMatchId)) && message.resumeStatus === "resumed" === (message.resumedMatchId !== null);
 		}
 		case "AUTH_REQUIRED": return message.reason === "missing-token" || message.reason === "invalid-token" || message.reason === "expired-token";
 		case "QUEUE_STATUS": return nonEmptyString(message.requestId) && (message.format === "casual" || message.format === "ranked") && typeof message.queued === "boolean" && (message.position === null || nonNegativeInteger(message.position)) && (message.joinedAt === null || finiteNumber(message.joinedAt));
@@ -36954,6 +36977,9 @@ function isGatewayServerMessage(value) {
 		case "SKRIBBLE_GUESS_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "word-not-found" || message.reason === "invalid-length" || message.reason === "session-ended" || message.reason === "session-not-found") && skribbleState(message.state);
 		case "SLOTS_STATE": return nonEmptyString(message.requestId) && slotsState(message.state);
 		case "SLOTS_SPIN_RESULT": return nonEmptyString(message.requestId) && typeof message.accepted === "boolean" && (message.reason === "accepted" || message.reason === "session-not-found" || message.reason === "insufficient-coins") && slotsState(message.state) && (message.outcome === null || slotOutcome(message.outcome)) && message.accepted === (message.outcome !== null) && nonNegativeInteger(message.coinRevision);
+		case "SOCIAL_SNAPSHOT": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.revision) && socialPreferences(message.preferences) && nullableString(message.statusChallengeId, 128) && typeof message.statusText === "string" && Array.from(message.statusText).length <= 80 && Array.isArray(message.friends) && message.friends.length <= 500 && message.friends.every(socialProfile) && Array.isArray(message.requests) && message.requests.length <= 500 && message.requests.every(friendRequestSummary);
+		case "FRIEND_SEARCH_RESULT": return nonEmptyString(message.requestId) && (message.profile === null || socialProfile(message.profile)) && (message.relationship === "self" || message.relationship === "friend" || message.relationship === "incoming-request" || message.relationship === "outgoing-request" || message.relationship === "blocked" || message.relationship === "none");
+		case "SOCIAL_EVENT": return nonEmptyString(message.eventId) && (message.kind === "friend-request-received" || message.kind === "friend-request-accepted" || message.kind === "friend-removed" || message.kind === "friend-message-received" || message.kind === "friend-message-sent" || message.kind === "match-invite-received" || message.kind === "match-invite-declined") && socialProfile(message.profile) && (message.friendRequestId === null || nonEmptyString(message.friendRequestId)) && (message.clientMessageId === null || nonEmptyString(message.clientMessageId)) && (message.message === null || nonEmptyCodePointString(message.message, 300)) && (message.inviteId === null || nonEmptyString(message.inviteId)) && (message.inviteToken === null || nonEmptyString(message.inviteToken, 128)) && (message.format === null || message.format === "casual" || message.format === "ranked") && finiteNumber(message.occurredAt);
 		case "COIN_BALANCE": return (message.requestId === null || nonEmptyString(message.requestId)) && nonNegativeInteger(message.balance) && nonNegativeInteger(message.revision) && (message.transaction === null || coinTransaction(message.transaction));
 		case "PONG": return finiteNumber(message.clientSentAt) && finiteNumber(message.serverTime);
 		case "ERROR": return nonEmptyString(message.code, 64) && nonEmptyString(message.message, 512) && typeof message.recoverable === "boolean" && optionalString(message.requestId);
@@ -37008,7 +37034,7 @@ function configuredValue(value) {
 	return value.trim().replace(/\/+$/, "");
 }
 var GATEWAY_URL = configuredValue("https://skribblduels-production.up.railway.app");
-var GATEWAY_CLIENT_VERSION = "0.68.0";
+var GATEWAY_CLIENT_VERSION = "0.69.0";
 var PACKET_TYPES = Object.create(null);
 PACKET_TYPES["open"] = "0";
 PACKET_TYPES["close"] = "1";
@@ -40261,6 +40287,9 @@ function initialSnapshot(endpoint) {
 		lastSkribbleGuess: null,
 		slots: null,
 		lastSlotsSpin: null,
+		social: null,
+		friendSearch: null,
+		socialEvents: [],
 		error: null
 	};
 }
@@ -40553,6 +40582,129 @@ var SocketIoGatewayClient = class {
 		});
 		return requestId;
 	}
+	syncSocial() {
+		const requestId = this.createRequestId("social-sync");
+		this.emit({
+			type: "SOCIAL_SYNC",
+			requestId
+		});
+		return requestId;
+	}
+	setSocialPreferences(preferences) {
+		const requestId = this.createRequestId("social-preferences");
+		this.emit({
+			type: "SOCIAL_PREFERENCES_SET",
+			requestId,
+			preferences
+		});
+		return requestId;
+	}
+	setSocialProfileStatus(challengeId, text) {
+		const requestId = this.createRequestId("social-status");
+		this.emit({
+			type: "SOCIAL_PROFILE_STATUS_SET",
+			requestId,
+			challengeId,
+			text
+		});
+		return requestId;
+	}
+	setSocialPresence(page, lobby) {
+		const requestId = this.createRequestId("social-presence");
+		this.emit({
+			type: "SOCIAL_PRESENCE_SET",
+			requestId,
+			page,
+			lobby
+		});
+		return requestId;
+	}
+	searchFriend(discordUsername) {
+		const requestId = this.createRequestId("friend-search");
+		this.emit({
+			type: "FRIEND_SEARCH",
+			requestId,
+			discordUsername
+		});
+		return requestId;
+	}
+	sendFriendRequest(accountId) {
+		const requestId = this.createRequestId("friend-request");
+		this.emit({
+			type: "FRIEND_REQUEST_SEND",
+			requestId,
+			accountId
+		});
+		return requestId;
+	}
+	respondToFriendRequest(friendRequestId, response) {
+		const requestId = this.createRequestId("friend-response");
+		this.emit({
+			type: "FRIEND_REQUEST_RESPOND",
+			requestId,
+			friendRequestId,
+			response
+		});
+		return requestId;
+	}
+	withdrawFriendRequest(friendRequestId) {
+		const requestId = this.createRequestId("friend-withdraw");
+		this.emit({
+			type: "FRIEND_REQUEST_WITHDRAW",
+			requestId,
+			friendRequestId
+		});
+		return requestId;
+	}
+	removeFriend(accountId) {
+		const requestId = this.createRequestId("friend-remove");
+		this.emit({
+			type: "FRIEND_REMOVE",
+			requestId,
+			accountId
+		});
+		return requestId;
+	}
+	setFriendPinned(accountId, pinned) {
+		const requestId = this.createRequestId("friend-pin");
+		this.emit({
+			type: "FRIEND_PIN_SET",
+			requestId,
+			accountId,
+			pinned
+		});
+		return requestId;
+	}
+	sendFriendMessage(accountId, message) {
+		const clientMessageId = this.createRequestId("friend-message");
+		this.emit({
+			type: "FRIEND_MESSAGE_SEND",
+			clientMessageId,
+			accountId,
+			message
+		});
+		return clientMessageId;
+	}
+	sendFriendMatchInvite(accountId, format) {
+		const requestId = this.createRequestId("friend-match-invite");
+		this.emit({
+			type: "FRIEND_MATCH_INVITE_SEND",
+			requestId,
+			accountId,
+			format
+		});
+		return requestId;
+	}
+	respondToFriendMatchInvite(inviteId, accept) {
+		const requestId = this.createRequestId("friend-match-response");
+		this.emit({
+			type: "FRIEND_MATCH_INVITE_RESPOND",
+			requestId,
+			inviteId,
+			accept
+		});
+		return requestId;
+	}
 	queueTelemetryEnvelope(envelope) {
 		if (this.state.match?.matchId !== envelope.matchId) return;
 		if (this.telemetryQueue.some((item) => item.sequence === envelope.sequence)) return;
@@ -40605,7 +40757,7 @@ var SocketIoGatewayClient = class {
 		socket.on("connect", () => {
 			const hello = {
 				type: "HELLO",
-				contractVersion: 14,
+				contractVersion: 15,
 				clientVersion: this.options.clientVersion,
 				capabilities: this.options.capabilities,
 				...this.resumeCursor ? {
@@ -40644,11 +40796,12 @@ var SocketIoGatewayClient = class {
 			this.update({
 				...this.state,
 				status: "error",
-				error: `Gateway sent an invalid Contract v14 message.`
+				error: `Gateway sent an invalid Contract v15 message.`
 			});
 			return;
 		}
 		if (value.type === "WELCOME") {
+			const sameAccount = this.state.identity?.accountId === value.identity.accountId;
 			const resumed = value.resumedMatchId !== null && (this.state.match === null || this.state.match.matchId === value.resumedMatchId);
 			if (!resumed) {
 				this.clearResumeCursor();
@@ -40673,6 +40826,9 @@ var SocketIoGatewayClient = class {
 				lastSkribbleGuess: this.state.lastSkribbleGuess,
 				slots: this.state.slots,
 				lastSlotsSpin: this.state.lastSlotsSpin,
+				social: sameAccount ? this.state.social : null,
+				friendSearch: sameAccount ? this.state.friendSearch : null,
+				socialEvents: sameAccount ? this.state.socialEvents : [],
 				error: null
 			});
 			this.flushTelemetry();
@@ -40764,6 +40920,31 @@ var SocketIoGatewayClient = class {
 					revision: value.coinRevision,
 					transaction: null
 				} : this.state.coins,
+				error: null
+			});
+			return;
+		}
+		if (value.type === "SOCIAL_SNAPSHOT") {
+			this.update({
+				...this.state,
+				social: structuredClone(value),
+				error: null
+			});
+			return;
+		}
+		if (value.type === "FRIEND_SEARCH_RESULT") {
+			this.update({
+				...this.state,
+				friendSearch: structuredClone(value),
+				error: null
+			});
+			return;
+		}
+		if (value.type === "SOCIAL_EVENT") {
+			const duplicate = this.state.socialEvents.some((event) => event.eventId === value.eventId);
+			this.update({
+				...this.state,
+				socialEvents: duplicate ? this.state.socialEvents : [...this.state.socialEvents, structuredClone(value)].slice(-100),
 				error: null
 			});
 			return;
@@ -42454,7 +42635,24 @@ var EMBEDDED_PROGRESSION_ASSETS = {
 	"slotPeach": "data:image/gif;base64,R0lGODlhIAAgALMAAAAAAP///2q+MJnlUP+NKYthQcFQALWTe////wAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAIACwAAAAAIAAgAAAEuRDJSau9+ILNQf5Wx4GktB1HsSGiWJpA2s4eRrdDngtdeHeCYFDHW1FEBILB8AMIg0bYJkldMpvQKIdavW6TrWLty112uNyZFK08s6kt2Nv7Rq/uU7QZULfX1npkfQRRLAAGbHSDYH+GiGx5i4SNG4+SdSMTlZaXZZlSnJ1KVxUcS6JJe40wp6JWn5qHrYtWXhqboXq1PbeyVmW1qqtHuMHGLh8dxsHIycrLzSUiu9EvTcMvUtXZ3CARACH5BAUUAAgALAAAAAAgACAAAAS7EMlJKbig6s0Rxl24XcdRXGLqkSaqhlj7vdL3maftdnrv7xUbgWD4AQQCXRAzHBqKl6YNObNEm8QPdjoYgGrX5pOJHX4E3h1ZvC4TMOg0GOCG0t3SY9fVJkLxWxdofHdYdoB5NmB1fXhKK4yFiG8ZX2FskohAi26XgFAaFwaTk6BLo6SfmysAqKmGplatr7Cxsq6pT3Yjok+kunYZvK26ZcC6VcPEx8zBIh/NwIopNsc+NEbTNHOP294qEQA7",
 	"slotRibbon": "data:image/gif;base64,R0lGODlhHgAeAKIAAAAAAP///9c6TNd0kv///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAHgAeAAADX0i63P4wykmrvTjrzTf4YKeAJMCRQ0p6X+oOH/u6sVTG7Qyb0H3rux7o5ZvVHDnjj8ZDAnS+p+rYSDIBguwwJJQys2BBKVKaYsNiLjn6Casp0fQ74xONVva8fs/v+x8JACH5BAkUAAQALAAAAAAeAB4AAANeSLrc/jDKSau9OOvNu1dAKALeaJJbOKzrmAJsHGpizIpZbbfzpe+D3uRkkqEixCQPOeKJBAKd0PELhqDYE6TqxEJNW9hulMUxxTZT9ChR3ZLTMxFkrmg/+Lx+z68kAAA7",
 	"slotSkull": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///66wy+Pj4////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADr0i6DP4QsElVvLhSPLofl7ZAX+kJkfiY7AlVaysPqLM5p6AL5c53NUkD8As6dEAIMjgk0jCA54VXa1KhIMxVaCFuL9mp1CoFQ7dkI+mssw13WLWXmRYbl/TR4zv3FfNNTn4kQHBuN0cfRoVthzBHSElRNIZcKpBFmI2OGkp+gw8iE3ufPqGio5qglqhdkF6wnK0EUCGzgbWss5iwhrdvpY2/epM9p8O5L8OutcvOFQkAIfkEBRQABAAsAAAAACAAIAAAA7FIuqzwELZJSbz41ZbB+F+2ORFomgJWlWcLptHEurQAA/JD76/GeS+bDSUU9Hwk4OD2MC4vzhuj+WFCjJko0gLQZgbZ6pb6/IZt467YjDFKF9f1rI1Oq+VK0FW4JQ2rQkuBg29TTX9HOkGFhl2IZYqCjD+ORXWLk42WfJWcOCN7m5sxI1ydohelSZWsdZ+qqx0SsI2yfbCHaHwwtIainL1wkSizwaYnTMbCssqUqc3QCwkAOw==",
-	"slotPoop": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///49WO2Y5Mf///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADhki63P4wykkjAPTWpWffYAh91WVaWGmupEiYQ7y6zBXfQ1unDuvrHF7w9wOxYoLkjRVEAZDJaFTGAypsN6mUuoHhvkvrEBsmCne+nLmIXnuRauYVG11p78nZi4zv3+N7YFBKgllKR4WJiYhlbis4j42OP3E2Pl1FbCJMcjRzGCeeoqOkpRUJACH5BAUUAAQALAAAAAAgACAAAAOBSLrc/jDKSau9OFcAHP9cFjJgqZHfoIKnwqmqMHzLaKXw2rk7Vf60C3BoQ3lKuuGxgYwJntBZUALK5aCyYJFHBFhho2J3LH2AsFhp9+gdoN9RNav2csLvgh8B97XjoT99gld3VTldfW+GY4GCY2ZAVkQbjHtTN0otbD2anZ6foBQJADs="
+	"slotPoop": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///49WO2Y5Mf///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADhki63P4wykkjAPTWpWffYAh91WVaWGmupEiYQ7y6zBXfQ1unDuvrHF7w9wOxYoLkjRVEAZDJaFTGAypsN6mUuoHhvkvrEBsmCne+nLmIXnuRauYVG11p78nZi4zv3+N7YFBKgllKR4WJiYhlbis4j42OP3E2Pl1FbCJMcjRzGCeeoqOkpRUJACH5BAUUAAQALAAAAAAgACAAAAOBSLrc/jDKSau9OFcAHP9cFjJgqZHfoIKnwqmqMHzLaKXw2rk7Vf60C3BoQ3lKuuGxgYwJntBZUALK5aCyYJFHBFhho2J3LH2AsFhp9+gdoN9RNav2csLvgh8B97XjoT99gld3VTldfW+GY4GCY2ZAVkQbjHtTN0otbD2anZ6foBQJADs=",
+	"friendBlock": "data:image/gif;base64,R0lGODlhIQAhAKIAAAAAAP///9lXY8UnP////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIQAhAAADxEi63P4wyhmBvfhSl3vfSiaMJPlNWDkOLDlkUrqyr9UKLFZZrmf3Gg5v5buUahYhgBhcGGfIxhMJkA5xtKhzqN0uobQm4VqzfrGXcDXEFT/R6dx63E6yz7iOfAtkXPNJcXZ0THNvXTxlbIV3QHOEioSAjTODdEuRdTJwZpNsA4CHXZecn4Uuo6SIAKCAR2Kqq6wqjF6JkZc3jn4pama6o5tyj5esWUVnw8TFxspvcJa8cVm0atFK01nW1w/IRSC2yODjEwkAIfkECRQABAAsAAAAACEAIQAAA8RIutz+MBJAK5XY6o3bpkIofN0mDmgaapIWptsgWlF1fpUsDLRjv5zJD9VjDIuLIfFiBO2QSVBqCWgCgEyPc8rLCrFV37YLYx69CqWFmt6ihdddN7dsg7VxNt2cr1hfc21XXXZPYYKAflGGhYFwgIRNjF+GVUqRkpFnl4qZfH2cbzaYTit5bHiDWTkikJ1/dYI6rm+PlVY6ZYdRo46CAFwscJtiFFM4P3KvvMDBLnKoDxpcs9DCNdPUVMvYyEEdVt7g4+QJADs=",
+	"friendCheckmark": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///zihFZnlUP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADg0i63P4wykmrvRiDnef+HfSNYTMOYEmMwOCmHevO8HXOOKd9eF+vOhOvNxMIgsCajOgywnipG9N4jG5oS+aASkr6hlpnF5xrhcXIjVF7riKBVHYP/U7G5Vt3XfG5T+keamtEXD8iggJzgBZ9g1R6GY2PbiWSkCqNXSpJmpucng57oCoJACH5BAUUAAQALAAAAAAgACAAAAOJSLrc/jDKSScANat7NeWdF3EDJz7kUIbndqmq2RIpvGJnba8o2+g72QKEYwB3vCGxSHshbQIWKBY6QgVR3BS2fMKwIBcAufWCZdaVd4DNFjmC9frsg8flOzqzecHiVW1CP3Z4ehIgfmZuFYhPhhmEV2EekWxue5B9gYI5mpMzYp+goaM9paeoFAkAOw==",
+	"friendCrossmark": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///+k2R50ATP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADp0i63E4AvAklrdHeHCnP26cxmWCCDmcK6FKubPvBMRnRwsBhAB5bL9pA1wniRL6h7Ob79XDKju3pYwqJI5exuYpmp4ABt4u9KDJDrtesDYuTLTbmDd3J52q7ecvVP/hjflNNaU2CgDlDdEdLVFcRhXVSiF5ui4mTkElYaJFrc5efnWKfZ5B0pTyKcaZuiUQpnVKxlmV/Hx6nrA2CtLuxcr13ucPFxg4JACH5BAUUAAQALAAAAAAgACAAAAOvSLoKwBC6GJ2lzE6sNSbdlmlCeVVOKZwgqZrPmL6i9dK1fbP6vYa+0oAHCMJ6t8EwVzTOgkpW42mELmMSalUYFaEAgy3X82kpt11s2XK2SsstsDENl4Xn13pcLHx/+ThqWU0+bT5+U3iGO4JThC9diypvSCppYHeMWJVjHZICeWxuMaJJV2yZnZsOqUqhrJl0I22uRJigeYOup7qyX5cUqF5fiAshcGRrxVl6Lc0fCQA7",
+	"friendList": "data:image/gif;base64,R0lGODlhIAAgAJEAAD8l10BY9gAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAIAAgAAACkZyPqcvtD6MUtMpWs75I+8x9QfBd2oiiG3Sm7upk7kyWi0ynn9VV+byj9Cg/IAUAgPmKryMSZFgyVc4kFDetCZBPHpaZ4VqFUelPIx6XW8Zw2hIkjj7prmBQscfzb/hWvOemd1c1eOJWwjcmcBa3JpITlLBT5HgA2VjFs5ZF9Wd3KdepqLYwWrhp+rOGxOGqUAAAIfkECRQAAwAsAAAAACAAIAAAApGcj6nL7Q+jnFPYe2nCHOvRhZkUBqZIYua6dhDHxieqqLIsCrV137mOuPRwFwBnwxuyMADj6CBUtopNDzQpDVCrT1BUyWxygQbYkCMek0uxTlpd/one8LDzR79bvIK3vC/mwueHNfMXV2TTJhck4jPXxVdIZEFIhphlF3ipeLa12SiQZQgIeiU6ajdxE/rhilAAADs=",
+	"friendIdle": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///1hY8GOb/////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADjki6rPAwStiqm3jaBof/oCcI1LY8Y6qOIAmYZxYJYgkT8vO5771JtYfvFwn2hpyO8YjEKZfNmK5liz5FvEhztspWYbLuV3YJj4RSMiN3vJ61Fk0shIVvAasWzzphDd5MQxl/WVFrRYCGZUqJfE+AgT5FdXZ3ADsSihc7e5qblHJ3XV5oSFyjX5JsqapsUQkAIfkEBRQABAAsAAAAACAAIAAAA4pIukzwMErYqpoY2waH/58gitG2PGMqgB75mFcWtUIJO/IzuO9dSS2J7zfj9Yanzk6ITCprtiauA6VInbTMFZXKNSOqbvSWCVcB39zI6pxwckc4m6GN6UCaNICVnfsgYSFQWxghfkOFRldYS2NSSo1HhHdVi219ko+URo5kgCpuep+gmYhyaJZwTQkAOw==",
+	"friendIgnore": "data:image/gif;base64,R0lGODlhIAAgAJEAAAAAAP///4R+h////yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAIAAgAAACppwNecurPZKUjp5p0RRT94h1m0BSoSKR3Kmq6AkC7ZrOGcjUrk4DV+iR7RLDkxFTqh2Xx9gxAI3CME4nIIrNiiwvifaaDWwb3nAiDL3lzmZw+7F2f9FpeEWOZYvlag19v6cXCCH4hZFn9/N3aEiIh1hY50P2+NdIaWnZF5OJ9hFXubgZFPo26TjR+QlhlSpJxUrKBMT6MQtL2Uf7c3oX+7s5+quxUAAAIfkEBRQAAwAsAAAAACAAIAAAAqGcj6kD3Wucg0dOZS/TWe8mCFMHfKEVOeFZkuZ6qfBTlTWwslIufdmrk4lIRNDMOCwWjyBi4AmFZoKkaKBhvbqqVmzWdQNktWNtD+Eoe7+elFj9fq7bnzLZHD+77fh01OMHF/hHs2c32FVYx8fYhsiYaHMDKSjpFkcpRWeRqWmJJtGph5HRSAda5DmacKaEQrHp+hlG8YE6a1sLcXqqmztQAAA7",
+	"friendJoin": "data:image/gif;base64,R0lGODlhIAAgAJEAAGq+MAAAAP///wAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAACACwAAAAAIAAgAAACf5SPqcvtGcKbKFo6rcZMRwBEXOUFIChypXmeKea18ktp8iyNgnW7+Wjr0VQf4U9xQRZvQ1LywDN2StDlMnQkoS5RbLRpsMZ8qylOLKEqWeTWy7O49rwQsNyYbXTvz0yxu5Xn8DfW52eysgEEF6a4aLgDNuioEydZWYWpucnpUAAAIfkECRQAAgAsAAAAACAAIAAAAniUj6nL7Q9jmBHOS+vCPGjTXcAIZFY4kaT5cOo7sg4Gw/Is1vGNpzrfytk8jYuCNixiEsgXUBACCZ3ETWDnWuWePmwXVWV2sVoUY1xbSoFo6tO6G4Yl12bpba2DP9K7J8rHgWDEByU4OFdxWHikxtiIFxgp+VjJWAAAOw==",
+	"friendLocked": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///4B3nZutt////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADqki63P4QgklrvDXr6/T4n5BxSwWeQipSpBlqKstRwrBqwAu0QD2MBNMNM9HtGJSPTFK0TR7NFREk7RSrTBBu+4xwv0sr7ET+WcSTFCpJvh2RaR81Ux420nVc/l3K7eltXXBlTh5lgn2EhWyHfApNdTeKZlaKbpOIj35/kGSZQZsobqEnn51zhmuOoGqqgFRYfSqzo3G0pra0urphmhW7wEB3YMQzxBskySQJACH5BAkUAAQALAAAAAAgACAAAAOfSLrc/jDKGYG9mELMs2bcIIqC92EjKazmhK0lyl7aNXckTVnCEFsElA/osoh0ChlyA8gRF5fhk+l8GKXFjtY2tW6/LRCnlyr/lmIeWdosswHetTPq/nnrOPegm2ynzldufEF+I4CFKYOBf0J6ioiGi4JwDpJzkFWVAHKXejNxMJeFMHaam6SHqJ9eNqquNxUvr6QcWWBaNbcdH7y9vhEJADs=",
+	"friendMessage": "data:image/gif;base64,R0lGODlhIAAgAJEAAAAAAP///7Ozs////yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAIAAgAAACnJyPqcvtD6OcVIKLb828rw5ywZgZYTimKmeK6gunl6ANWYy/GA20WJ7b8XqzG3A1Eyg1l8CweRQqeTbAaPkLJpVOpjWFheq2gqsX9oRJwWd0mpQps4nieWioolZfw/A229Wzh/Q1tQVXWFMHeDU1ZjU0GMB4NJnURllpCUDVlKm56fUJNlVaWiJlenriwerKWvVaU0Fba3uLmztQAAAh+QQFFAADACwAAAAAIAAgAAACl5yPqcvtD6OctDKAs968A+OFojZowYmm6nqSGwuvWwkIWRxr9ocFe49L6Xa00w8QDAwFRKDvmMswp5hiCqpaTptIFbYl3T6rTuMojGKSu2kpR127ZqxmzNbOVJZ/dD37mYdyUwfCNpg0SGR1mKRHWMTYeKP40phlV0UTaemXqbU1hXN0cIYHejdXWLo6sfphARsrO0vLUAAAOw==",
+	"friendOffline": "data:image/gif;base64,R0lGODdhIAAgAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAIAAgAIEAAAAAAABpamoAAAACfISPqcvt34KcE0aKqUW5V4sJoiCJ3ROOqoo50wqrwLe88T3TiX3fOlfq+X4GnhBGzAWOw0AtyFwlKchlL6kESEtQE5a6NZIkLnHK60SZuxqIZgRVpkG8YGtTtHGxbg8Zr+AH+HQyCATFR+dheFjIKGeV2Lf4mJdRGfgHUQAAIfkECRQAAAAsBAAAABgAIACBAAAAAAAAaWpqAAAAAnSEb6G76MhifEfa5qbYAvBZNdxIChgglirGqC6DKu4szXRkv3he1jzp+30UsYBwGCgCjSbZqLHoIFtPonLqnCaiU1IRkt1wxacQk1y1ZsZOEAVHdFOKl+QcfLmvLfp9E9a3dfYXKMhXWGcXyFamV1doJodQAAA7",
+	"friendOnline": "data:image/gif;base64,R0lGODlhGgAqAPcAAAAAACIgNEUoPGY5MY9WO99xJtmgZu7DmvvyNpnlUGq+MDeUbktpL1JLJDI8OT8/dDBggltu4WOb/1/N5Mvb/P///5utt4R+h2lqallWUnZCiqwyMtlXY9d7uo+XSopvMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh/wtBU0VQUklURTEuMAAh+QQJFAAAACwAAAAAGgAqAAAIzwABCBxIsKDBgwgHggCRsCHBhRAdNoRIUaJBihgZWhQYsUNGjQ4pdhjpEWNIkSRHmkz4MWXJhSw/LhwJIGJMEAUKyLR5kGJOnTInQvwZsaJQmEBx1uTZc2hOp0ybLnwKFeZRolOTnsxqNOrFrEmpgryJFafWo2arjkXoNOzStVLLJoVbsO3QtxIjhi2AFy1GsXQf7jx7c6fXrwwNKP6Yd6Hix28D13X82EBkixArGzDamPLmw2wpfra6cedGhYxPc8yoGjXn1itbu5ZNu/bpgAAh+QQJFAAAACwAAAAAGgAqAAAI1wABCBxIsKDBgwgJggCRsKHChQwdNoQIUeJBihgtDqQoMKPGih1CepQIMaTJDhwdYgRxEmXFhBUxmgTw8iLEAgVkulwIcyFOnCtrGqT4MyjPngyBxkxp06dSEDhpHkV48ylUqVOHVs3pFOtEp1yhRhVacGvYomQfJg0rNuzXtlvTqgWAFm5WrW3Pen0rtupeqkb7yu0YeOzdsks5MgXM0IABoyQhOn68MvLCyQawRlQpefJfzpcnD24KQvRovJcXW4SscWPQ1q5Hwq4MO/bh1qprS9XNO2FAADs=",
+	"friendPin": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///1lWUicnJ////wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADa0i63P4wykkfuDWTy4GWnCBwn9WJA1YuHTekXtZ2cCvPl/DONyD+vx3pBizqhreXEaXSuJbHmPPyGhhhK5o1iM26qtXmZwbujnFUZI+EK/FYnbN6xbDRHfZ7fa7f8PVxfXtSgnCFh4iJiogJACH5BAUUAAQALAAAAAAgACAAAAN4SLrc/jBCQKV1NOd7teeRJowbiGnDQFbm4lHp2r4DmrLWSwm33nmjUar2+gGCSF4Pl4MlhURmExBLLluETDXYw2ZhKmTXq92OyWDVUGqyDYner+fNNurOoI9cn9c0in0lcX9+g4SChgqFiS6IjHKPDI6PdZGWlw8JADs=",
+	"friendPing": "data:image/gif;base64,R0lGODlhIAAgAJEAANlXY8UnPwAAAP///yH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAADACwAAAAAIAAgAAACmZyPqcvtD6McotqLL8y8OzwA4kiOFsOVqlktV2CpldwmLzyTcXnaVQDMsYRDxQ+I011oAqMAmWQBiKIe4hgUrKjT2vWJ5Ha3TR9UjC5/z1oa2ckmv83hNs+uhNflNB84q4Rx51eHl5K3Vriy2EUHwjhCYWXw02HJ8XWpCXKQAfUJ+ukliRVqyvY1cLqKM7n56gqrOUFba2tQAAAh+QQJFAADACwAAAAAIAAgAAACo5yPqcvtD6M0otqL7cu8OzwA4kiKg7Zk5UqeQmoFFUsDlXIFssDO652I6XwkS+8VfOl2pcsRJ1jueCLMMyllVnnEIhJRyXa314NwObZRm19KVLwepdVY+C8ub7sGUte97Ma35McG6JKlteXkVSfVpcII9oY2RwNkNjlUyXbpktkBeiH5FgqqOYqBqAqHera62pn6OrszSovo0VoaCrXLOwGsUAAAOw==",
+	"friendDuelsLogo": "data:image/gif;base64,R0lGODlhKAAoAKIAAIB3nZutt/uyNuh8AAAAAP///wAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAFACwAAAAAKAAoAAAD/1i63P4wykmrhSTry7XPyyd2XxCAivhdmukCaJEBrrtRXg3AREjsNdNN0nrtYjNgzUPM6HY8H5S2jDmKpulQMw0OGdjANAr+davXYvJolZnPwm3Lw/6632wbKndKMtNrPAR6PWp+dmWBWCV0f02KTn0zjYgYdHVxP1yOFpeCmZOVOFyYKm0ka5sjHIBvqqesiVCrsZakIyoVTCp1prANvr2CHgLFv4kCH7OvGcXJxz4Exr6hzc/QKRrOuCLT2NHWA1/E4isTIgPp5T13BOm5j+4e73sZ9PbrEfPrq/j86dce7PMFDt00QMXy6VuhAeCpcKISsbtDD5DCWrQKflvISQdirY8gKSQAACH5BAUUAAUALAAAAAAoACgAAAP/WLrc/jDKSRu5ON/Ki/5EV11AYJ4BNoLbQpao2Uqs6hJAHqfzk8WA3gsW61kwwGDoltMVjZ4fqinENYkno3RKXSqGuQvKFhUnw9WrkjDebGVWtLesRsI1z7jSAUa37Vl9UBlXgDw4gRh1czdggI6EXVBfipJ3cnprk5SZZoeRmIw+lWuJehodoHakHyJlcYo8mpsUqoggrhmcJJW6uTWKwTNkERgCAhqaa2uvtFHHyKwfs6jFF9DRp8DQzhkDx4TA19yiRwQD3wID4uPk5Y0Y6Ou+r9jVox/y80vx6fvvu9B5E+jmArpj/4jBU0fQ4L4o+v794zNOHgtODc8dVPiMHqGuasAOZjOXkUYNkVpw/XLIsZkrePRe1rons+aCBAA7",
+	"friendSlimy": "data:image/gif;base64,R0lGODlhHQAcAKIAAAAAAP///2q+MJnlUP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAHQAcAAADhUi63P4wykmrAzhny7TXnCYIwzAK3ySWbDl6kdbOLYpBmY2RtHtfOx2mx9o0ckLATGgDjgae2ce4CEJzUk+zA3iavDXtr9rllXbZ4BgJRg5P33XwRJouqXN6XcZ64ct6YF96VARagYgnY2QiiYGLXI2OfipsiYU4U34wFVNTHEeYoKOkEwkAIfkECRQABAAsAAAAAB0AHAAAA4dIutz+MMq5gL2WOsyxVpwgDIPYSSGpqoIHYeMqk+21WfGs1xlz5boZz4ej/YKsHqg44Mh4oxpRNHKurEoCjmpVYQFTqgkAbGJK2a2I1cqNo0q12EuurYZLsZ5nueO1cnpmgTYVMHtueoWGP4iOWQ0hjmKQkZJcHWATmZyVEZkfoaKjpKWmEAkAOw==",
+	"friendTrash": "data:image/gif;base64,R0lGODlhIAAgAKIAAAAAAP///1FTXGlqav///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAEACwAAAAAIAAgAAADmEi6rPCwySmhfTS3y4HW12J9WVRh5NatHsi+HMMKdF1DdExwAm7bvlsH+PgRAb9dyMhsCnnOaA4WlK4c1CxKVhQos14TFzklH829rahrMbafJ/L7SKCrzNXyT7zGd497alh+aHp2Y09uf2VxiYGFfIOOgId9k5dpLYiGlHB3mJk2XxM+eaFlmncAA6YvJVA1XzofWikUVyQJACH5BAUUAAQALAAAAAAgACAAAAOWSLpM8PC1SVu8suoF2d1aZHUgh51oha6sFwnCA8+0DGPKO9v0DvQxiQ5ILN4ADolxCRTymMskUvqE1kTUE/PkYnk/JqTvayPleMOreNwd/5pVs1RNhPTk9nE9njHRe3NqI29BhHpqU2GHf26Di4+FE3mFcIaRjkeWlIKYm4yZiWdlVZ5Zgzh3MlySZCslrVglYauytbYJADs=",
+	"friendWithdraw": "data:image/gif;base64,R0lGODlhMAAwAHcAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACqISPqcvtD6OctNqLs968exOEwVeJIymZJ/qoK8u4L5zIIa2ogmCbpL7j9W4dYHA3nF2Mx2ZQpWE6p0KiRUqd+q6mrLdqpWC/TxFmTK5mpL3mdtlFDt1hrkg+xytLXTMiDrZhs3CnxyFDGFJWdwaVo7jo4fgHGSnpRxlw9IYDGIgDYMT5I7OJWdRmygiXpHq65uI1Khjr+oqadIuSBNrr+wscLDxMXGxRAAAh+QQJFAAAACwAAAAAMAAwAIEAAAAAAABYWPAAAAACroSPqcvtD6OctNqLs948hd9dHxhSI1lGJ5o6K9suLxwjqzDXxy3g85ji9X6rzqmHTCJ/m6PymXxlnNCqr2gZWbdXYJbKfWIrwrDyhCkvX2LvF9yFo6fa9e/sfn/sOznNdJRnACaoN+exx9ckpVC3ZnSIGIAXEmmTOPQnUghAqLkZ0OiYGaozONqlwxbFyTHDamlIZBcrK0RUCRfXqkHEaOpbajpMXGx8jJysvJxSAAA7"
 };
 var PRESETS = {
 	0: {
@@ -43187,7 +43385,7 @@ function appendSkribbleKeyboardValue(current, value, languageId, maximumLength) 
 function removeLastSkribbleCharacter(value) {
 	return Array.from(value).slice(0, -1).join("");
 }
-function element$2(tag, className = "", text = "") {
+function element$3(tag, className = "", text = "") {
 	const node = document.createElement(tag);
 	node.className = className;
 	if (text) node.textContent = text;
@@ -43348,14 +43546,14 @@ var SkribbleFeatureUi = class {
 		else this.syncLoadingOverlay();
 	}
 	createCoinPill(compact = true) {
-		const pill = element$2("div", `scd-coin-pill${compact ? " compact" : ""}`);
+		const pill = element$3("div", `scd-coin-pill${compact ? " compact" : ""}`);
 		pill.setAttribute("role", "status");
 		pill.setAttribute("aria-label", `Skribbl Coin balance: ${this.visualCoinBalance}`);
-		const image = element$2("img");
+		const image = element$3("img");
 		image.alt = "";
 		image.src = progressionAsset("coin") ?? "";
 		if (!image.src) image.style.display = "none";
-		pill.append(image, element$2("span", "scd-coin-balance", String(this.visualCoinBalance)));
+		pill.append(image, element$3("span", "scd-coin-balance", String(this.visualCoinBalance)));
 		this.options.registerTooltip(pill, "Skribbl Coin is the currency of Skribbl Duels", "Y");
 		this.coinNodes.add(pill);
 		return pill;
@@ -43388,18 +43586,18 @@ var SkribbleFeatureUi = class {
 	}
 	ensureMounted() {
 		if (!this.launcher) {
-			const launcher = element$2("button", "scd-skribble-launcher");
+			const launcher = element$3("button", "scd-skribble-launcher");
 			launcher.id = "skribbl-duels-skribble-launcher";
 			launcher.type = "button";
 			launcher.dataset.scdRuntimeId = this.options.runtimeId;
 			launcher.setAttribute("aria-label", "Open Skribble");
 			const logo = progressionAsset("skribbleLogo");
 			if (logo) {
-				const image = element$2("img");
+				const image = element$3("img");
 				image.src = logo;
 				image.alt = "Skribble";
 				launcher.appendChild(image);
-			} else launcher.appendChild(element$2("span", "scd-skribble-logo-fallback", "SKRIBBLE"));
+			} else launcher.appendChild(element$3("span", "scd-skribble-logo-fallback", "SKRIBBLE"));
 			launcher.addEventListener("click", () => this.open());
 			this.options.registerTooltip(launcher, "Open Skribble", "X");
 			this.launcher = launcher;
@@ -43412,7 +43610,7 @@ var SkribbleFeatureUi = class {
 	}
 	open() {
 		if (this.modal || !this.accountConnected()) return;
-		const overlay = element$2("div", "scd-skribble-overlay");
+		const overlay = element$3("div", "scd-skribble-overlay");
 		overlay.id = "skribbl-duels-skribble";
 		overlay.dataset.scdRuntimeId = this.options.runtimeId;
 		overlay.addEventListener("click", (event) => {
@@ -43502,18 +43700,18 @@ var SkribbleFeatureUi = class {
 		if (!overlay) return;
 		const previousInputFocused = this.inputFocused;
 		overlay.replaceChildren();
-		const shell = element$2("div", "scd-skribble-modal");
-		const header = element$2("div", "scd-skribble-header");
+		const shell = element$3("div", "scd-skribble-modal");
+		const header = element$3("div", "scd-skribble-header");
 		header.appendChild(this.createCoinPill(false));
-		const title = element$2("div", "scd-skribble-title");
+		const title = element$3("div", "scd-skribble-title");
 		const logo = progressionAsset("skribbleLogo");
 		if (logo) {
-			const image = element$2("img");
+			const image = element$3("img");
 			image.src = logo;
 			image.alt = "Skribble";
 			title.appendChild(image);
 		} else title.textContent = "SKRIBBLE";
-		const actions = element$2("div", "scd-skribble-actions");
+		const actions = element$3("div", "scd-skribble-actions");
 		const help = this.headerIconButton("About and help", false);
 		help.addEventListener("click", () => {
 			this.helpOpen = !this.helpOpen;
@@ -43523,24 +43721,24 @@ var SkribbleFeatureUi = class {
 		close.addEventListener("click", () => this.close());
 		actions.append(help, close);
 		header.append(title, actions);
-		const content = element$2("div", "scd-skribble-content");
+		const content = element$3("div", "scd-skribble-content");
 		const state = this.visibleState;
 		if (this.helpOpen) content.appendChild(this.helpCard());
-		if (!state) content.appendChild(element$2("div", "scd-skribble-muted", "Preparing your Daily Skribble\u2026"));
-		else if (state.availability === "unsupported") content.append(element$2("strong", "", `${state.languageName} is not available`), element$2("p", "scd-skribble-warning", state.unavailableReason ?? "This official word list could not be fetched."));
+		if (!state) content.appendChild(element$3("div", "scd-skribble-muted", "Preparing your Daily Skribble\u2026"));
+		else if (state.availability === "unsupported") content.append(element$3("strong", "", `${state.languageName} is not available`), element$3("p", "scd-skribble-warning", state.unavailableReason ?? "This official word list could not be fetched."));
 		else {
-			const modeBar = element$2("div", "scd-skribble-mode-bar");
+			const modeBar = element$3("div", "scd-skribble-mode-bar");
 			if (state.mode === "practice") modeBar.appendChild(this.returnToDailyButton());
-			modeBar.appendChild(element$2("div", "scd-skribble-mode", `${state.mode === "daily" ? "Daily Word" : "Practice"} \u00B7 ${state.languageName} \u00B7 ${state.attempts.length}/${state.maxAttempts}`));
+			modeBar.appendChild(element$3("div", "scd-skribble-mode", `${state.mode === "daily" ? "Daily Word" : "Practice"} \u00B7 ${state.languageName} \u00B7 ${state.attempts.length}/${state.maxAttempts}`));
 			content.appendChild(modeBar);
-			const board = element$2("div", "scd-skribble-board");
+			const board = element$3("div", "scd-skribble-board");
 			const lossCollapsed = state.status === "lost" && this.collapsedLossSessions.has(state.sessionId);
 			if (lossCollapsed) board.classList.add("collapsed-loss");
 			if (!lossCollapsed) state.attempts.forEach((attempt, index) => board.appendChild(this.attemptRow(state, attempt, index, state.status === "solved" && index === state.attempts.length - 1)));
 			if (state.status === "playing") board.appendChild(this.inputRow(state));
 			if (state.status === "lost") board.appendChild(this.lossMessageRow(lossCollapsed));
 			content.appendChild(board);
-			if (this.invalidMessage) content.appendChild(element$2("div", "scd-skribble-warning", this.invalidMessage));
+			if (this.invalidMessage) content.appendChild(element$3("div", "scd-skribble-warning", this.invalidMessage));
 			if (state.status !== "playing") content.appendChild(this.ending(state));
 			if (state.status === "playing") content.appendChild(this.keyboard(state));
 			if (state.status === "solved" || lossCollapsed) {
@@ -43561,15 +43759,15 @@ var SkribbleFeatureUi = class {
 		if (state?.status === "lost") this.scheduleLossAnimation(state.sessionId);
 	}
 	headerIconButton(tooltip, close) {
-		const button = element$2("button", `scd-icon-button${close ? " scd-modal-close" : ""}`);
+		const button = element$3("button", `scd-icon-button${close ? " scd-modal-close" : ""}`);
 		button.type = "button";
 		if (close) button.textContent = "\u00D7";
 		else {
-			const icon = element$2("span", "scd-icon");
+			const icon = element$3("span", "scd-icon");
 			icon.setAttribute("role", "img");
 			icon.setAttribute("aria-label", "About");
 			if (this.options.aboutIconUrl) {
-				const image = element$2("img", "scd-icon-image");
+				const image = element$3("img", "scd-icon-image");
 				image.alt = "";
 				image.src = this.options.aboutIconUrl;
 				icon.appendChild(image);
@@ -43580,24 +43778,24 @@ var SkribbleFeatureUi = class {
 		return button;
 	}
 	helpCard() {
-		const card = element$2("section", "scd-skribble-help");
-		card.append(element$2("strong", "", "How Skribble works"), element$2("p", "", "Guess a word from the official word list for your selected Skribbl language. Words may contain spaces, hyphens and every Unicode character used by that language."), element$2("p", "", "Green means correct letter and position. Yellow means the character exists elsewhere. Gray means it is not available in the remaining answer."), element$2("p", "", "You have ten attempts and no clues."), element$2("p", "", "Only the first Daily solve on an account awards Skribbl Coins. Practice is always unrewarded."));
+		const card = element$3("section", "scd-skribble-help");
+		card.append(element$3("strong", "", "How Skribble works"), element$3("p", "", "Guess a word from the official word list for your selected Skribbl language. Words may contain spaces, hyphens and every Unicode character used by that language."), element$3("p", "", "Green means correct letter and position. Yellow means the character exists elsewhere. Gray means it is not available in the remaining answer."), element$3("p", "", "You have ten attempts and no clues."), element$3("p", "", "Only the first Daily solve on an account awards Skribbl Coins. Practice is always unrewarded."));
 		return card;
 	}
 	keyboard(state) {
-		const keyboard = element$2("div", "scd-skribble-keyboard");
+		const keyboard = element$3("div", "scd-skribble-keyboard");
 		keyboard.setAttribute("role", "group");
 		keyboard.setAttribute("aria-label", `${state.languageName} Skribble keyboard`);
 		const rows = createSkribbleKeyboardRows(state.languageId, getOfficialWords(state.languageId));
 		for (const characters of rows) {
 			if (characters.length === 0) continue;
-			const row = element$2("div", "scd-skribble-keyboard-row");
+			const row = element$3("div", "scd-skribble-keyboard-row");
 			row.style.setProperty("--scd-key-count", String(characters.length));
 			row.style.setProperty("--scd-key-max-width", `${characters.length * 42}px`);
 			for (const character of characters) row.appendChild(this.keyboardButton(character, character, getSkribbleKeyboardMark(state.attempts, character, state.languageId), state));
 			keyboard.appendChild(row);
 		}
-		const controls = element$2("div", "scd-skribble-keyboard-controls");
+		const controls = element$3("div", "scd-skribble-keyboard-controls");
 		const spaceMark = getSkribbleKeyboardMark(state.attempts, " ", state.languageId);
 		controls.append(this.keyboardButton("", "backspace", "empty", state, "wide", "Backspace", "skribbleBackspace"), this.keyboardButton("", "space", spaceMark, state, "extra-wide", "Space", {
 			empty: "skribbleSpacebar",
@@ -43609,7 +43807,7 @@ var SkribbleFeatureUi = class {
 		return keyboard;
 	}
 	keyboardButton(label, value, mark, state, widthClass = "", ariaLabel = label, assetOverride = null) {
-		const button = element$2("button", `scd-skribble-key${widthClass ? ` ${widthClass}` : ""}`);
+		const button = element$3("button", `scd-skribble-key${widthClass ? ` ${widthClass}` : ""}`);
 		button.type = "button";
 		button.disabled = state.status !== "playing" || Boolean(this.pendingAction);
 		button.dataset.value = value;
@@ -43617,7 +43815,7 @@ var SkribbleFeatureUi = class {
 		button.setAttribute("aria-label", ariaLabel);
 		const source = progressionAsset(assetOverride ?? (mark === "empty" ? "emptyTile" : mark === "semicorrect" ? "semicorrectTile" : `${mark}Tile`));
 		if (source) button.style.backgroundImage = `url(${JSON.stringify(source)})`;
-		if (label) button.appendChild(element$2("span", "scd-skribble-key-label", label));
+		if (label) button.appendChild(element$3("span", "scd-skribble-key-label", label));
 		button.addEventListener("pointerdown", (event) => event.preventDefault());
 		button.addEventListener("click", () => this.useKeyboardValue(value, state));
 		return button;
@@ -43645,7 +43843,7 @@ var SkribbleFeatureUi = class {
 		this.beginRequest("guess", () => this.options.gateway.submitSkribbleGuess(state.sessionId, guess));
 	}
 	attemptRow(state, attempt, index, won) {
-		const row = element$2("div", `scd-skribble-row${won ? " won" : ""}`);
+		const row = element$3("div", `scd-skribble-row${won ? " won" : ""}`);
 		const characters = codePoints(attempt.guess);
 		const revealKey = `${state.sessionId}:${index}`;
 		const reveal = this.pendingRevealKey === revealKey;
@@ -43663,7 +43861,7 @@ var SkribbleFeatureUi = class {
 		return row;
 	}
 	inputRow(state) {
-		const row = element$2("div", `scd-skribble-row scd-skribble-input-row${this.invalidMessage ? " invalid" : ""}`);
+		const row = element$3("div", `scd-skribble-row scd-skribble-input-row${this.invalidMessage ? " invalid" : ""}`);
 		const characters = codePoints(this.draft).slice(0, state.maximumLength);
 		const slots = Math.min(state.maximumLength, Math.max(2, characters.length + 1));
 		row.style.setProperty("--scd-row-tile-count", String(slots));
@@ -43682,7 +43880,7 @@ var SkribbleFeatureUi = class {
 			indicator.classList.add("indicator");
 			row.appendChild(indicator);
 		}
-		const input = element$2("input", "scd-skribble-native-input");
+		const input = element$3("input", "scd-skribble-native-input");
 		input.type = "text";
 		input.value = this.draft;
 		input.autocomplete = "off";
@@ -43719,25 +43917,25 @@ var SkribbleFeatureUi = class {
 		return row;
 	}
 	tile(character, assetId) {
-		const tile = element$2("span", `scd-skribble-tile ${assetId}`);
+		const tile = element$3("span", `scd-skribble-tile ${assetId}`);
 		const source = progressionAsset(assetId);
 		if (source) tile.style.backgroundImage = `url(${JSON.stringify(source)})`;
-		tile.appendChild(element$2("span", "scd-skribble-character", character));
+		tile.appendChild(element$3("span", "scd-skribble-character", character));
 		return tile;
 	}
 	ending(state) {
-		const end = element$2("div", "scd-skribble-ending");
-		end.appendChild(element$2("strong", state.status === "solved" ? "scd-skribble-success" : "scd-skribble-warning", state.status === "solved" ? state.rewarded ? `Solved! +${state.rewardAmount} Skribbl Coins` : "Solved! Today\u2019s account reward was already claimed." : "Try again tomorrow. You can keep playing in unranked Practice."));
-		if (state.answer) end.appendChild(element$2("div", "scd-skribble-answer", `The word was '${state.answer}'`));
-		const countdown = element$2("div", "scd-skribble-countdown");
+		const end = element$3("div", "scd-skribble-ending");
+		end.appendChild(element$3("strong", state.status === "solved" ? "scd-skribble-success" : "scd-skribble-warning", state.status === "solved" ? state.rewarded ? `Solved! +${state.rewardAmount} Skribbl Coins` : "Solved! Today\u2019s account reward was already claimed." : "Try again tomorrow. You can keep playing in unranked Practice."));
+		if (state.answer) end.appendChild(element$3("div", "scd-skribble-answer", `The word was '${state.answer}'`));
+		const countdown = element$3("div", "scd-skribble-countdown");
 		countdown.dataset.nextDailyAt = String(state.nextDailyAt);
 		end.appendChild(countdown);
-		const actions = element$2("div", "scd-skribble-ending-actions");
-		const practice = element$2("button", "scd-skribble-practice", "Practice");
+		const actions = element$3("div", "scd-skribble-ending-actions");
+		const practice = element$3("button", "scd-skribble-practice", "Practice");
 		practice.type = "button";
 		practice.addEventListener("click", () => this.requestRound("practice"));
 		this.options.registerTooltip(practice, "Start an unrewarded Practice round");
-		const share = element$2("button", "scd-skribble-secondary", "Copy result");
+		const share = element$3("button", "scd-skribble-secondary", "Copy result");
 		share.type = "button";
 		share.addEventListener("click", () => void this.copyResult(state));
 		actions.append(practice, share);
@@ -43745,11 +43943,11 @@ var SkribbleFeatureUi = class {
 		return end;
 	}
 	returnToDailyButton() {
-		const button = element$2("button", "scd-skribble-secondary scd-skribble-return");
+		const button = element$3("button", "scd-skribble-secondary scd-skribble-return");
 		button.type = "button";
 		const source = progressionAsset("skribbleReturn");
 		if (source) {
-			const image = element$2("img");
+			const image = element$3("img");
 			image.src = source;
 			image.alt = "";
 			button.appendChild(image);
@@ -43760,7 +43958,7 @@ var SkribbleFeatureUi = class {
 	}
 	lossMessageRow(settled) {
 		const text = codePoints("You lose!");
-		const row = element$2("div", `scd-skribble-row scd-skribble-loss-message ${settled ? "settled" : "pending"}`);
+		const row = element$3("div", `scd-skribble-row scd-skribble-loss-message ${settled ? "settled" : "pending"}`);
 		row.style.setProperty("--scd-row-tile-count", String(text.length));
 		text.forEach((character) => {
 			const tile = this.tile(character, "emptyTile");
@@ -43796,10 +43994,10 @@ var SkribbleFeatureUi = class {
 		if (!overlay) return;
 		overlay.querySelector(":scope > .scd-progression-load")?.remove();
 		if (!this.pendingAction) return;
-		const load = element$2("div", "scd-progression-load");
-		const container = element$2("div", "container");
-		const icon = element$2("div", "icon");
-		icon.appendChild(element$2("div", "graphic"));
+		const load = element$3("div", "scd-progression-load");
+		const container = element$3("div", "container");
+		const icon = element$3("div", "icon");
+		icon.appendChild(element$3("div", "graphic"));
 		container.appendChild(icon);
 		load.appendChild(container);
 		overlay.appendChild(load);
@@ -43907,7 +44105,7 @@ var SkribbleFeatureUi = class {
 			const timer = window.setTimeout(() => {
 				this.coinAnimationTimers.delete(timer);
 				if (generation !== this.coinAnimationGeneration) return;
-				const coin = element$2("img", "scd-skribble-coin-particle");
+				const coin = element$3("img", "scd-skribble-coin-particle");
 				coin.src = coinSource;
 				coin.alt = "";
 				coin.style.left = `${sourceRect.left + sourceRect.width / 2 - SKRIBBLE_COIN_PARTICLE_SIZE / 2}px`;
@@ -44196,7 +44394,7 @@ var SLOT_EFFECT_ICONS = /* @__PURE__ */ new Set([
 	"trash",
 	"dice"
 ]);
-function element$1(tag, className = "", text = "") {
+function element$2(tag, className = "", text = "") {
 	const node = document.createElement(tag);
 	node.className = className;
 	if (text) node.textContent = text;
@@ -44329,18 +44527,18 @@ var SkribblSlotsFeatureUi = class {
 	}
 	ensureMounted() {
 		if (!this.launcher) {
-			const launcher = element$1("button", "scd-slots-launcher");
+			const launcher = element$2("button", "scd-slots-launcher");
 			launcher.id = "skribbl-duels-slots-launcher";
 			launcher.type = "button";
 			launcher.dataset.scdRuntimeId = this.options.runtimeId;
 			launcher.setAttribute("aria-label", "Open Skribbl Slots");
 			const logo = progressionAsset("slotsLogo");
 			if (logo) {
-				const image = element$1("img");
+				const image = element$2("img");
 				image.src = logo;
 				image.alt = "Skribbl Slots";
 				launcher.appendChild(image);
-			} else launcher.appendChild(element$1("span", "scd-slots-logo-fallback", "SKRIBBL SLOTS"));
+			} else launcher.appendChild(element$2("span", "scd-slots-logo-fallback", "SKRIBBL SLOTS"));
 			launcher.addEventListener("click", () => this.open());
 			this.options.registerTooltip(launcher, "Open Skribbl Slots", "X");
 			this.launcher = launcher;
@@ -44351,7 +44549,7 @@ var SkribblSlotsFeatureUi = class {
 	}
 	open() {
 		if (this.modal || !this.accountConnected()) return;
-		const overlay = element$1("div", "scd-slots-overlay");
+		const overlay = element$2("div", "scd-slots-overlay");
 		overlay.id = "skribbl-duels-slots";
 		overlay.dataset.scdRuntimeId = this.options.runtimeId;
 		overlay.addEventListener("click", (event) => {
@@ -44412,19 +44610,19 @@ var SkribblSlotsFeatureUi = class {
 		const overlay = this.modal;
 		if (!overlay) return;
 		overlay.replaceChildren();
-		const shell = element$1("div", "scd-slots-modal");
+		const shell = element$2("div", "scd-slots-modal");
 		shell.appendChild(this.bulbs());
-		const header = element$1("div", "scd-slots-header");
+		const header = element$2("div", "scd-slots-header");
 		header.appendChild(this.options.createCoinPill(false));
-		const title = element$1("div", "scd-slots-title");
+		const title = element$2("div", "scd-slots-title");
 		const logo = progressionAsset("slotsLogo");
 		if (logo) {
-			const image = element$1("img");
+			const image = element$2("img");
 			image.src = logo;
 			image.alt = "Skribbl Slots";
 			title.appendChild(image);
 		} else title.textContent = "SKRIBBL SLOTS";
-		const actions = element$1("div", "scd-slots-actions");
+		const actions = element$2("div", "scd-slots-actions");
 		const help = this.headerIconButton("About and help", false);
 		help.addEventListener("click", () => {
 			this.helpOpen = !this.helpOpen;
@@ -44434,23 +44632,23 @@ var SkribblSlotsFeatureUi = class {
 		close.addEventListener("click", () => this.close());
 		actions.append(help, close);
 		header.append(title, actions);
-		const content = element$1("div", "scd-slots-content");
+		const content = element$2("div", "scd-slots-content");
 		const state = this.presentedState ?? this.visibleState;
 		if (this.helpOpen) {
 			content.classList.add("help-view");
-			const toolbar = element$1("div", "scd-slots-help-toolbar");
+			const toolbar = element$2("div", "scd-slots-help-toolbar");
 			toolbar.appendChild(this.returnToSlotsButton());
 			content.append(toolbar, this.helpCard());
-		} else if (!state) content.appendChild(element$1("div", "scd-slots-muted", "Preparing the machine\u2026"));
+		} else if (!state) content.appendChild(element$2("div", "scd-slots-muted", "Preparing the machine\u2026"));
 		else {
-			const machine = element$1("div", "scd-slots-machine");
-			const reels = element$1("div", "scd-slots-reels");
+			const machine = element$2("div", "scd-slots-machine");
+			const reels = element$2("div", "scd-slots-reels");
 			this.displayIcons.forEach((icon, index) => reels.appendChild(this.reel(icon, index)));
-			const controls = element$1("div", "scd-slots-controls");
+			const controls = element$2("div", "scd-slots-controls");
 			controls.appendChild(this.spinButton(state));
 			controls.appendChild(this.heartProgress(state));
 			machine.append(reels, controls);
-			content.append(machine, element$1("div", `scd-slots-result${!this.animating && this.latestOutcome && isWin(this.latestOutcome) ? " win" : ""}`, this.resultMessage));
+			content.append(machine, element$2("div", `scd-slots-result${!this.animating && this.latestOutcome && isWin(this.latestOutcome) ? " win" : ""}`, this.resultMessage));
 		}
 		shell.append(header, content);
 		overlay.appendChild(shell);
@@ -44458,9 +44656,9 @@ var SkribblSlotsFeatureUi = class {
 		this.syncLoadingOverlay();
 	}
 	bulbs() {
-		const row = element$1("div", "scd-slots-bulbs");
+		const row = element$2("div", "scd-slots-bulbs");
 		for (let index = 0; index < 7; index += 1) {
-			const image = element$1("img", "scd-slots-bulb");
+			const image = element$2("img", "scd-slots-bulb");
 			image.alt = "";
 			image.dataset.index = String(index);
 			image.style.setProperty("--scd-bulb-turn", `${index % 2 === 0 ? -10 : 10}deg`);
@@ -44514,23 +44712,23 @@ var SkribblSlotsFeatureUi = class {
 		}
 	}
 	reel(icon, index) {
-		const reel = element$1("div", "scd-slot-reel");
+		const reel = element$2("div", "scd-slot-reel");
 		reel.dataset.index = String(index);
-		const payline = element$1("div", "scd-slot-payline");
+		const payline = element$2("div", "scd-slot-payline");
 		payline.appendChild(this.slotIcon(icon));
 		reel.appendChild(payline);
 		return reel;
 	}
 	slotIcon(icon) {
-		const wrapper = element$1("span", "scd-slot-icon");
+		const wrapper = element$2("span", "scd-slot-icon");
 		wrapper.dataset.icon = icon;
 		const source = progressionAsset(SLOT_ASSETS[icon]);
 		if (source) {
-			const image = element$1("img");
+			const image = element$2("img");
 			image.src = source;
 			image.alt = SLOT_LABELS[icon];
 			wrapper.appendChild(image);
-		} else wrapper.appendChild(element$1("span", "scd-slot-icon-fallback", SLOT_FALLBACKS[icon]));
+		} else wrapper.appendChild(element$2("span", "scd-slot-icon-fallback", SLOT_FALLBACKS[icon]));
 		return wrapper;
 	}
 	setReelIcon(index, icon) {
@@ -44540,7 +44738,7 @@ var SkribblSlotsFeatureUi = class {
 	}
 	spinButton(state) {
 		const free = state.freeSpins > 0;
-		const button = element$1("button", "scd-slots-spin");
+		const button = element$2("button", "scd-slots-spin");
 		button.type = "button";
 		button.disabled = this.animating || Boolean(this.pendingAction) || !state.canSpin;
 		button.appendChild(document.createTextNode(free ? "Free Spin " : `Spin for ${state.spinCost} `));
@@ -44554,7 +44752,7 @@ var SkribblSlotsFeatureUi = class {
 		return button;
 	}
 	heartProgress(state) {
-		const row = element$1("div", "scd-slots-heart-progress");
+		const row = element$2("div", "scd-slots-heart-progress");
 		row.setAttribute("aria-label", `${state.heartProgress} of ${state.heartTarget} hearts collected`);
 		for (let index = 0; index < state.heartTarget; index += 1) {
 			const heart = this.slotIcon("heart");
@@ -44565,9 +44763,9 @@ var SkribblSlotsFeatureUi = class {
 		return row;
 	}
 	imageOrFallback(source, fallback, alt) {
-		const wrapper = element$1("span", "scd-slot-icon");
+		const wrapper = element$2("span", "scd-slot-icon");
 		if (source) {
-			const image = element$1("img");
+			const image = element$2("img");
 			image.src = source;
 			image.alt = alt;
 			wrapper.appendChild(image);
@@ -44575,15 +44773,15 @@ var SkribblSlotsFeatureUi = class {
 		return wrapper;
 	}
 	headerIconButton(tooltip, close) {
-		const button = element$1("button", `scd-icon-button${close ? " scd-modal-close" : ""}`);
+		const button = element$2("button", `scd-icon-button${close ? " scd-modal-close" : ""}`);
 		button.type = "button";
 		if (close) button.textContent = "\u00D7";
 		else {
-			const icon = element$1("span", "scd-icon");
+			const icon = element$2("span", "scd-icon");
 			icon.setAttribute("role", "img");
 			icon.setAttribute("aria-label", "About");
 			if (this.options.aboutIconUrl) {
-				const image = element$1("img", "scd-icon-image");
+				const image = element$2("img", "scd-icon-image");
 				image.alt = "";
 				image.src = this.options.aboutIconUrl;
 				icon.appendChild(image);
@@ -44594,11 +44792,11 @@ var SkribblSlotsFeatureUi = class {
 		return button;
 	}
 	returnToSlotsButton() {
-		const button = element$1("button", "scd-slots-return");
+		const button = element$2("button", "scd-slots-return");
 		button.type = "button";
 		const source = progressionAsset("skribbleReturn");
 		if (source) {
-			const image = element$1("img");
+			const image = element$2("img");
 			image.src = source;
 			image.alt = "";
 			button.appendChild(image);
@@ -44620,29 +44818,29 @@ var SkribblSlotsFeatureUi = class {
 		return "Nothing";
 	}
 	helpCard() {
-		const card = element$1("section", "scd-slots-help");
-		const intro = element$1("div", "scd-slots-help-intro");
+		const card = element$2("section", "scd-slots-help");
+		const intro = element$2("div", "scd-slots-help-intro");
 		const warningSource = progressionAsset("slotsWarning");
 		if (warningSource) {
-			const warning = element$1("img");
+			const warning = element$2("img");
 			warning.src = warningSource;
 			warning.alt = "Important";
 			intro.appendChild(warning);
 		}
-		const copy = element$1("div");
-		copy.append(element$1("strong", "", "How Skribbl Slots works"), element$1("p", "", "Each spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice."), element$1("p", "", "Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the Coin ledger."));
+		const copy = element$2("div");
+		copy.append(element$2("strong", "", "How Skribbl Slots works"), element$2("p", "", "Each spin uses three reels and one payline. Match all three final icons to receive the listed reward. Effects resolve in this order: Fill, Wizard, Eraser, Trash, Dice."), element$2("p", "", "Skribbl Coins cannot be purchased, have no cash value and never affect competitive Duels. Every spend and reward is recorded in the Coin ledger."));
 		intro.appendChild(copy);
 		card.appendChild(intro);
 		const total = Object.values(GATEWAY_SLOT_BASE_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
-		const odds = element$1("div", "scd-slots-odds");
-		odds.appendChild(element$1("strong", "", `Transparent base reel weights \u00B7 ${total} total`));
-		const grid = element$1("div", "scd-slots-odds-grid");
+		const odds = element$2("div", "scd-slots-odds");
+		odds.appendChild(element$2("strong", "", `Transparent base reel weights \u00B7 ${total} total`));
+		const grid = element$2("div", "scd-slots-odds-grid");
 		for (const icon of GATEWAY_SLOT_ICON_IDS) {
-			const item = element$1("div", "scd-slots-odds-item");
-			const details = element$1("div", "scd-slots-odds-details");
-			const heading = element$1("div", "scd-slots-odds-heading");
-			heading.append(element$1("span", "", SLOT_LABELS[icon]), element$1("span", "scd-slots-muted", `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}`));
-			details.append(heading, element$1("div", "scd-slots-odds-reward", this.oddsReward(icon)));
+			const item = element$2("div", "scd-slots-odds-item");
+			const details = element$2("div", "scd-slots-odds-details");
+			const heading = element$2("div", "scd-slots-odds-heading");
+			heading.append(element$2("span", "", SLOT_LABELS[icon]), element$2("span", "scd-slots-muted", `${GATEWAY_SLOT_BASE_WEIGHTS[icon]}/${total}`));
+			details.append(heading, element$2("div", "scd-slots-odds-reward", this.oddsReward(icon)));
 			item.append(this.slotIcon(icon), details);
 			grid.appendChild(item);
 		}
@@ -44797,10 +44995,10 @@ var SkribblSlotsFeatureUi = class {
 		if (!overlay) return;
 		overlay.querySelector(":scope > .scd-progression-load")?.remove();
 		if (!this.pendingAction) return;
-		const load = element$1("div", "scd-progression-load");
-		const container = element$1("div", "container");
-		const icon = element$1("div", "icon");
-		icon.appendChild(element$1("div", "graphic"));
+		const load = element$2("div", "scd-progression-load");
+		const container = element$2("div", "container");
+		const icon = element$2("div", "icon");
+		icon.appendChild(element$2("div", "graphic"));
 		container.appendChild(icon);
 		load.appendChild(container);
 		overlay.appendChild(load);
@@ -44913,6 +45111,779 @@ html[data-scd-slots-scroll-lock],body[data-scd-slots-scroll-lock] { overflow:hid
 		(document.head ?? document.documentElement).appendChild(style);
 	}
 };
+var MESSAGE_STORAGE_PREFIX = "skribblDuelsFriendMessagesV1:";
+var UI_STORAGE_KEY = "skribblDuelsSocialUiV1";
+var EVENT_LIMIT = 100;
+var BUTTON_EVENTS = [
+	"pointerdown",
+	"pointerup",
+	"mousedown",
+	"mouseup",
+	"click",
+	"dblclick",
+	"contextmenu"
+];
+function element$1(tag, className, text) {
+	const node = document.createElement(tag);
+	if (className) node.className = className;
+	if (text !== void 0) node.textContent = text;
+	if (tag === "button" || tag === "input" || tag === "select" || tag === "textarea") {
+		node.style.pointerEvents = "auto";
+		for (const eventName of BUTTON_EVENTS) node.addEventListener(eventName, (event) => event.stopPropagation());
+	}
+	return node;
+}
+function assetUrl(id) {
+	return EMBEDDED_PROGRESSION_ASSETS[id] ?? null;
+}
+function icon(id, label, className = "scd-icon") {
+	const source = assetUrl(id);
+	const wrapper = element$1("span", className);
+	wrapper.setAttribute("role", "img");
+	wrapper.setAttribute("aria-label", label);
+	if (!source) {
+		wrapper.classList.add("scd-icon-fallback");
+		wrapper.textContent = label.slice(0, 1);
+		return wrapper;
+	}
+	const image = element$1("img", "scd-icon-image");
+	image.src = source;
+	image.alt = "";
+	wrapper.appendChild(image);
+	return wrapper;
+}
+function loadUiPreferences() {
+	try {
+		const parsed = JSON.parse(localStorage.getItem(UI_STORAGE_KEY) ?? "null");
+		const anchors = /* @__PURE__ */ new Set([
+			"bottom-left",
+			"bottom-right",
+			"top-left",
+			"top-right"
+		]);
+		return {
+			version: 1,
+			showHomepageList: typeof parsed?.showHomepageList === "boolean" ? parsed.showHomepageList : true,
+			homepageAnchor: anchors.has(String(parsed?.homepageAnchor)) ? parsed.homepageAnchor : "bottom-left"
+		};
+	} catch {
+		return {
+			version: 1,
+			showHomepageList: true,
+			homepageAnchor: "bottom-left"
+		};
+	}
+}
+function presenceLabel(profile) {
+	return profile.presence === "duel" ? "Active Duel" : profile.presence.slice(0, 1).toUpperCase() + profile.presence.slice(1);
+}
+function presenceAsset(profile) {
+	if (profile.presence === "duel") return "friendDuelsLogo";
+	if (profile.presence === "online") return "friendOnline";
+	if (profile.presence === "idle") return "friendIdle";
+	return "friendOffline";
+}
+function socialPreferencesEqual(left, right) {
+	return left.availability === right.availability && left.profileStatusVisibility === right.profileStatusVisibility && left.lobbyStatusVisibility === right.lobbyStatusVisibility && left.allowLobbyJoin === right.allowLobbyJoin && left.receiveFriendRequests === right.receiveFriendRequests && left.receiveMatchInvites === right.receiveMatchInvites;
+}
+var SocialFeatureUi = class {
+	options;
+	modal = null;
+	detailModal = null;
+	homepageList = null;
+	presencePoll = null;
+	lastPresenceFingerprint = "";
+	lastHomepageVisible = null;
+	handledEvents = /* @__PURE__ */ new Set();
+	unread = /* @__PURE__ */ new Set();
+	messages = [];
+	uiPreferences = loadUiPreferences();
+	activeView = "friends";
+	searchRequestId = null;
+	searchQuery = "";
+	matchInviteAcceptancePending = false;
+	constructor(options) {
+		this.options = options;
+	}
+	start() {
+		this.ensureStyles();
+		this.loadMessages();
+		this.syncPresence();
+		this.presencePoll = window.setInterval(() => this.syncPresence(), 2e3);
+		this.renderHomepageList();
+	}
+	stop() {
+		if (this.presencePoll !== null) window.clearInterval(this.presencePoll);
+		this.presencePoll = null;
+		this.closeAll();
+		this.homepageList?.remove();
+		this.homepageList = null;
+		this.matchInviteAcceptancePending = false;
+		document.getElementById("skribbl-duels-social-styles")?.remove();
+	}
+	isModalOpen() {
+		return Boolean(this.modal?.isConnected || this.detailModal?.isConnected);
+	}
+	isMatchInviteAcceptancePending() {
+		return this.matchInviteAcceptancePending;
+	}
+	closeModals() {
+		this.closeAll();
+	}
+	handleGatewayUpdate(previous, next) {
+		if (previous.identity?.accountId !== next.identity?.accountId) this.loadMessages();
+		for (const event of next.socialEvents) {
+			if (this.handledEvents.has(event.eventId)) continue;
+			this.handledEvents.add(event.eventId);
+			this.handleSocialEvent(event);
+		}
+		if (next.error && next.error !== previous.error && this.isModalOpen()) this.options.showToast("Social action unavailable", next.error, 5e3);
+		if (next.error && next.error !== previous.error || previous.match?.matchId !== next.match?.matchId) this.matchInviteAcceptancePending = false;
+		while (this.handledEvents.size > EVENT_LIMIT * 2) {
+			const oldest = this.handledEvents.values().next().value;
+			if (!oldest) break;
+			this.handledEvents.delete(oldest);
+		}
+		if (JSON.stringify(previous.social) !== JSON.stringify(next.social) || previous.match?.matchId !== next.match?.matchId || previous.match?.state.phase !== next.match?.state.phase) {
+			this.renderHomepageList();
+			if (this.modal?.isConnected) this.renderModal();
+			this.refreshProfileControls();
+		}
+		if (next.status === "connected" && previous.status !== "connected") {
+			this.lastPresenceFingerprint = "";
+			this.syncPresence();
+		}
+	}
+	decorateProfileAvatar(avatar) {
+		avatar.classList.add("scd-social-profile-avatar");
+		const current = this.options.getGatewayState();
+		const activeDuel = Boolean(current.match && current.match.state.phase !== "finished" && current.match.state.phase !== "cancelled");
+		const availability = current.social?.preferences.availability ?? "offline";
+		const presence = availability === "offline" ? "offline" : activeDuel ? "duel" : availability;
+		const badge = element$1("button", "scd-social-presence-badge");
+		badge.type = "button";
+		badge.appendChild(icon(presenceAsset({ presence }), presenceLabel({ presence })));
+		badge.addEventListener("click", () => this.openPresencePicker());
+		this.options.registerTooltip(badge, `Presence: ${presenceLabel({ presence })}\nClick to change your visible availability.`, "Y");
+		avatar.appendChild(badge);
+	}
+	createProfileControls() {
+		const controls = element$1("div", "scd-social-profile-controls");
+		const friends = element$1("button", "scd-button scd-social-friends-button");
+		friends.type = "button";
+		friends.addEventListener("click", () => this.openFriends());
+		controls.appendChild(friends);
+		queueMicrotask(() => this.refreshProfileControls());
+		return controls;
+	}
+	openFriends(view = "friends") {
+		if (!this.options.getGatewayState().identity) return;
+		this.activeView = view;
+		this.modal?.remove();
+		const overlay = element$1("div", "scd-modal-overlay scd-social-overlay");
+		overlay.id = "skribbl-duels-friends";
+		overlay.dataset.scdRuntimeId = this.options.runtimeId;
+		const wrapper = element$1("div", "scd-modal-wrapper");
+		const modal = element$1("div", "scd-modal-container scd-social-modal");
+		const header = element$1("div", "scd-social-header");
+		header.append(icon("friendSlimy", "Slimy"), element$1("div", "scd-social-title"), icon("friendSlimy", "Slimy"));
+		const close = element$1("button", "scd-icon-button scd-modal-close", "\u00D7");
+		close.type = "button";
+		close.addEventListener("click", () => this.closeFriends());
+		this.options.registerTooltip(close, "Close friends list", "Y");
+		header.appendChild(close);
+		const body = element$1("div", "scd-social-body");
+		modal.append(header, body);
+		wrapper.appendChild(modal);
+		overlay.appendChild(wrapper);
+		overlay.addEventListener("click", (event) => {
+			if (event.target === overlay) this.closeFriends();
+		});
+		(document.body ?? document.documentElement).appendChild(overlay);
+		this.modal = overlay;
+		this.renderModal();
+		this.options.onModalVisibilityChanged();
+	}
+	renderSettings(target) {
+		const state = this.options.getGatewayState();
+		const snapshot = state.social;
+		const card = element$1("div", "scd-card scd-stack");
+		card.appendChild(element$1("strong", "", "Social privacy"));
+		if (!snapshot || state.status !== "connected") {
+			card.appendChild(element$1("div", "scd-muted", "Connect the authenticated Gateway to manage Social settings."));
+			target.appendChild(card);
+			return;
+		}
+		const draft = { ...snapshot.preferences };
+		const select = (labelText, value, values, update) => {
+			const label = element$1("label", "scd-label");
+			const input = element$1("select");
+			for (const item of values) {
+				const option = element$1("option");
+				option.value = item;
+				option.textContent = item.slice(0, 1).toUpperCase() + item.slice(1);
+				option.selected = item === value;
+				input.appendChild(option);
+			}
+			input.addEventListener("change", () => update(input.value));
+			label.append(element$1("span", "", labelText), input);
+			return label;
+		};
+		const save = () => {
+			if (!socialPreferencesEqual(draft, snapshot.preferences)) this.options.gateway.setSocialPreferences(draft);
+		};
+		card.append(select("Profile status visibility", draft.profileStatusVisibility, [
+			"everyone",
+			"friends",
+			"nobody"
+		], (value) => {
+			draft.profileStatusVisibility = value;
+			save();
+		}), select("Lobby status visibility", draft.lobbyStatusVisibility, [
+			"everyone",
+			"friends",
+			"nobody"
+		], (value) => {
+			draft.lobbyStatusVisibility = value;
+			save();
+		}), this.checkbox("Allow friends to join my public lobby", draft.allowLobbyJoin, (value) => {
+			draft.allowLobbyJoin = value;
+			save();
+		}), this.checkbox("Receive friend requests", draft.receiveFriendRequests, (value) => {
+			draft.receiveFriendRequests = value;
+			save();
+		}), this.checkbox("Receive Match invitations", draft.receiveMatchInvites, (value) => {
+			draft.receiveMatchInvites = value;
+			save();
+		}));
+		const homepage = element$1("div", "scd-card scd-stack");
+		homepage.appendChild(element$1("strong", "", "Homepage friends list"));
+		homepage.appendChild(this.checkbox("Show friends list on homepage", this.uiPreferences.showHomepageList, (value) => {
+			this.uiPreferences.showHomepageList = value;
+			this.saveUiPreferences();
+			this.renderHomepageList();
+		}));
+		homepage.appendChild(select("Position", this.uiPreferences.homepageAnchor, [
+			"bottom-left",
+			"bottom-right",
+			"top-left",
+			"top-right"
+		], (value) => {
+			this.uiPreferences.homepageAnchor = value;
+			this.saveUiPreferences();
+			this.renderHomepageList();
+		}));
+		target.append(card, homepage);
+	}
+	checkbox(labelText, checked, onChange) {
+		const label = element$1("label", "scd-label");
+		const input = element$1("input");
+		input.type = "checkbox";
+		input.checked = checked;
+		input.addEventListener("change", () => onChange(input.checked));
+		label.append(element$1("span", "", labelText), input);
+		return label;
+	}
+	refreshProfileControls() {
+		const current = this.options.getGatewayState();
+		const activeDuel = Boolean(current.match && current.match.state.phase !== "finished" && current.match.state.phase !== "cancelled");
+		const availability = current.social?.preferences.availability ?? "offline";
+		const presence = availability === "offline" ? "offline" : activeDuel ? "duel" : availability;
+		document.querySelectorAll(".scd-social-presence-badge").forEach((badge) => {
+			badge.replaceChildren(icon(presenceAsset({ presence }), presenceLabel({ presence })));
+			this.options.registerTooltip(badge, `Presence: ${presenceLabel({ presence })}\nClick to change your visible availability.`, "Y");
+		});
+		const count = current.social?.requests.filter((request) => request.direction === "incoming").length ?? 0;
+		document.querySelectorAll(".scd-social-friends-button").forEach((button) => {
+			button.replaceChildren(icon("friendList", "Friends list"), element$1("span", "", count > 0 ? `Friends (${count})` : "Friends list"));
+			this.options.registerTooltip(button, count > 0 ? `${count} received friend request${count === 1 ? "" : "s"}` : "Open friends, requests and Quick Messages", "Y");
+		});
+	}
+	renderModal() {
+		const root = this.modal;
+		if (!root) return;
+		const social = this.options.getGatewayState().social;
+		root.querySelector(".scd-social-title")?.replaceChildren(icon("friendList", "Friends list"), element$1("strong", "", "Friends list"));
+		const body = root.querySelector(".scd-social-body");
+		if (!body) return;
+		body.replaceChildren();
+		if (!social) {
+			body.appendChild(element$1("div", "scd-card scd-muted", "Loading your friends from the Gateway\u2026"));
+			return;
+		}
+		const tabs = element$1("div", "scd-social-tabs");
+		const friendsTab = element$1("button", `scd-button${this.activeView === "friends" ? " selected" : ""}`, `Friends (${social.friends.length})`);
+		const requestsTab = element$1("button", `scd-button${this.activeView === "requests" ? " selected" : ""}`, `Pending requests (${social.requests.length})`);
+		friendsTab.type = requestsTab.type = "button";
+		friendsTab.addEventListener("click", () => {
+			this.activeView = "friends";
+			this.renderModal();
+		});
+		requestsTab.addEventListener("click", () => {
+			this.activeView = "requests";
+			this.renderModal();
+		});
+		this.options.registerTooltip(friendsTab, "Show your friends list", "Y");
+		this.options.registerTooltip(requestsTab, "Show received, ignored and outgoing requests", "Y");
+		tabs.append(friendsTab, requestsTab);
+		body.appendChild(tabs);
+		if (this.activeView === "friends") this.renderFriendsView(body, social.friends);
+		else this.renderRequestsView(body, social.requests);
+	}
+	renderFriendsView(body, friends) {
+		const search = element$1("form", "scd-social-search");
+		const input = element$1("input");
+		input.type = "search";
+		input.placeholder = "Discord username (#0 optional)";
+		input.autocomplete = "off";
+		input.maxLength = 66;
+		input.value = this.searchQuery;
+		const submit = element$1("button", "scd-button primary", "Search");
+		submit.type = "submit";
+		search.addEventListener("submit", (event) => {
+			event.preventDefault();
+			this.searchQuery = input.value.trim();
+			if (!this.searchQuery) return;
+			this.searchRequestId = this.options.gateway.searchFriend(this.searchQuery);
+			this.renderModal();
+		});
+		search.append(input, submit);
+		body.appendChild(search);
+		const state = this.options.getGatewayState();
+		if (this.searchRequestId && state.friendSearch?.requestId === this.searchRequestId) body.appendChild(this.createSearchResult(state.friendSearch.profile, state.friendSearch.relationship));
+		else if (this.searchRequestId) body.appendChild(element$1("div", "scd-muted scd-social-search-status", "Searching\u2026"));
+		const list = element$1("div", "scd-social-list");
+		if (friends.length === 0) list.appendChild(element$1("div", "scd-card scd-muted", "No friends yet. Search by Discord username to send a request."));
+		for (const friend of friends) list.appendChild(this.createFriendRow(friend, true));
+		body.appendChild(list);
+	}
+	createSearchResult(profile, relationship) {
+		const result = element$1("div", "scd-social-search-result");
+		if (!profile) {
+			result.appendChild(element$1("div", "scd-muted", "No Skribbl Duels account matched that Discord username."));
+			return result;
+		}
+		result.appendChild(this.createIdentity(profile));
+		const label = relationship === "friend" ? "Already friends" : relationship === "incoming-request" ? "Request received \u2014 open Pending requests" : relationship === "outgoing-request" ? "Request pending" : relationship === "self" ? "This is your account" : relationship === "blocked" ? "Unavailable" : null;
+		if (label) result.appendChild(element$1("span", "scd-muted", label));
+		if (relationship === "none") {
+			const add = element$1("button", "scd-button primary", "Send friend request");
+			add.type = "button";
+			add.addEventListener("click", () => {
+				add.disabled = true;
+				this.options.gateway.sendFriendRequest(profile.accountId);
+				this.searchRequestId = null;
+				this.searchQuery = "";
+				this.renderModal();
+			});
+			this.options.registerTooltip(add, `Send ${profile.displayName} a friend request`, "Y");
+			result.appendChild(add);
+		}
+		return result;
+	}
+	renderRequestsView(body, requests) {
+		const list = element$1("div", "scd-social-list");
+		if (requests.length === 0) list.appendChild(element$1("div", "scd-card scd-muted", "No pending or ignored friend requests."));
+		for (const request of requests) {
+			const row = element$1("div", "scd-social-row");
+			row.appendChild(this.createIdentity(request.profile));
+			row.appendChild(element$1("span", "scd-muted scd-social-request-kind", request.direction === "incoming" ? request.status === "ignored" ? "Ignored request" : "Received request" : "Outgoing request"));
+			const actions = element$1("div", "scd-social-actions");
+			if (request.direction === "incoming") actions.append(this.iconButton("friendCheckmark", "Accept friend request", () => this.options.gateway.respondToFriendRequest(request.friendRequestId, "accept")), this.iconButton("friendCrossmark", "Decline friend request", () => this.options.gateway.respondToFriendRequest(request.friendRequestId, "decline")), this.iconButton("friendIgnore", "Ignore friend request", () => this.options.gateway.respondToFriendRequest(request.friendRequestId, "ignore")), this.iconButton("friendBlock", "Block this account", () => this.options.gateway.respondToFriendRequest(request.friendRequestId, "block")));
+			else actions.appendChild(this.iconButton("friendWithdraw", "Withdraw friend request", () => this.options.gateway.withdrawFriendRequest(request.friendRequestId)));
+			row.appendChild(actions);
+			list.appendChild(row);
+		}
+		body.appendChild(list);
+	}
+	createFriendRow(friend, removable) {
+		const row = element$1("div", `scd-social-row presence-${friend.presence}`);
+		row.appendChild(this.createIdentity(friend));
+		const actions = element$1("div", "scd-social-actions");
+		actions.appendChild(this.iconButton("friendPin", friend.pinned ? "Unpin friend" : "Pin friend", () => this.options.gateway.setFriendPinned(friend.accountId, !friend.pinned), friend.pinned ? "selected" : ""));
+		if (friend.presence === "online" || friend.presence === "idle") actions.appendChild(this.iconButton("friendDuelsLogo", "Invite to a Duel", () => this.openMatchInvitePicker(friend)));
+		actions.appendChild(this.iconButton("friendMessage", "Open Quick Messages", () => this.openMessages(friend), this.unread.has(friend.accountId) ? "unread" : ""));
+		if (friend.lobby) actions.appendChild(this.iconButton(friend.canJoinLobby ? "friendJoin" : "friendLocked", friend.canJoinLobby ? "Join public lobby" : "This friend disabled lobby joining", () => friend.canJoinLobby ? this.joinLobby(friend) : this.showLocked(friend)));
+		if (removable) actions.appendChild(this.iconButton("friendTrash", "Remove friend", () => this.confirmRemoveFriend(friend), "danger"));
+		row.appendChild(actions);
+		return row;
+	}
+	createIdentity(profile) {
+		const identity = element$1("div", "scd-social-identity");
+		const avatarWrap = element$1("div", "scd-social-avatar-wrap");
+		avatarWrap.append(this.options.createAvatar(profile, "scd-social-avatar"), icon(presenceAsset(profile), presenceLabel(profile), "scd-social-status-icon"));
+		const copy = element$1("div", "scd-social-copy");
+		const name = element$1("div", "scd-social-name");
+		appendColoredDuelName(name, profile.displayName, profile.nameColorIndex);
+		const lobby = profile.presence === "duel" ? "Active Duel" : profile.lobby ? `${profile.lobby.languageName} ${profile.lobby.lobbyType === "public" ? "Public" : "Private"} ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}` : profile.presence === "online" || profile.presence === "idle" ? "Viewing Homepage" : "Offline";
+		copy.append(name, element$1("div", "scd-muted scd-social-lobby", lobby));
+		if (profile.statusChallengeId || profile.statusText) {
+			const status = element$1("div", "scd-social-visible-status");
+			if (profile.statusChallengeId) status.appendChild(this.options.createStatusIcon(profile.statusChallengeId));
+			if (profile.statusText) {
+				const text = element$1("span", "scd-social-status-text", profile.statusText);
+				this.options.registerOverflowTooltip(text, profile.statusText);
+				status.appendChild(text);
+			}
+			copy.appendChild(status);
+		}
+		identity.append(avatarWrap, copy);
+		return identity;
+	}
+	iconButton(asset, tooltip, action, extraClass = "") {
+		const button = element$1("button", `scd-icon-button scd-social-icon-button ${extraClass}`.trim());
+		button.type = "button";
+		button.appendChild(icon(asset, tooltip));
+		button.addEventListener("click", action);
+		this.options.registerTooltip(button, tooltip, "Y");
+		return button;
+	}
+	openPresencePicker() {
+		const snapshot = this.options.getGatewayState().social;
+		if (!snapshot) return;
+		this.openDetail("Set online status", (body) => {
+			for (const value of [
+				"online",
+				"idle",
+				"offline"
+			]) {
+				const button = element$1("button", `scd-button scd-social-presence-choice${snapshot.preferences.availability === value ? " selected" : ""}`);
+				button.type = "button";
+				button.append(icon(presenceAsset({ presence: value }), value), element$1("span", "", value.slice(0, 1).toUpperCase() + value.slice(1)));
+				button.addEventListener("click", () => {
+					this.options.gateway.setSocialPreferences({
+						...snapshot.preferences,
+						availability: value
+					});
+					this.closeDetail();
+				});
+				this.options.registerTooltip(button, value === "offline" ? "Hide your online and active-Duel presence from other players" : `Appear ${value} to other players`, "Y");
+				body.appendChild(button);
+			}
+		});
+	}
+	openMessages(friend) {
+		this.unread.delete(friend.accountId);
+		this.renderHomepageList();
+		this.openDetail(`Quick Messages \u00B7 ${friend.displayName}`, (body) => {
+			const history = element$1("div", "scd-social-message-history");
+			const entries = this.messages.filter((item) => item.accountId === friend.accountId);
+			if (entries.length === 0) history.appendChild(element$1("div", "scd-muted", "Messages are stored only in this browser and are delivered only while both friends are online."));
+			for (const message of entries) {
+				const row = element$1("div", `scd-social-message ${message.direction}`);
+				row.append(element$1("span", "scd-social-message-author", message.direction === "outgoing" ? "You" : friend.displayName), element$1("span", "", message.message));
+				history.appendChild(row);
+			}
+			const form = element$1("form", "scd-social-message-form");
+			const input = element$1("input");
+			input.type = "text";
+			input.maxLength = 300;
+			input.placeholder = friend.presence === "offline" ? "Friend is offline" : "Write a Quick Message\u2026";
+			input.disabled = friend.presence === "offline";
+			const send = element$1("button", "scd-button primary", "Send");
+			send.type = "submit";
+			send.disabled = input.disabled;
+			form.addEventListener("submit", (event) => {
+				event.preventDefault();
+				const message = input.value.trim();
+				if (!message) return;
+				this.options.gateway.sendFriendMessage(friend.accountId, message);
+				input.value = "";
+			});
+			form.append(input, send);
+			body.append(history, form);
+			queueMicrotask(() => {
+				history.scrollTop = history.scrollHeight;
+				input.focus();
+			});
+		});
+	}
+	openMatchInvitePicker(friend) {
+		this.openDetail(`Invite ${friend.displayName}`, (body) => {
+			body.appendChild(element$1("div", "scd-muted", "Choose a Duel format. The invitation stays live until accepted, declined or expired."));
+			const actions = element$1("div", "scd-social-format-actions");
+			for (const [format, label] of [["casual", "Casual 3\u00D73"], ["ranked", "Ranked 5\u00D75"]]) {
+				const button = element$1("button", `scd-button ${format === "ranked" ? "primary" : ""}`, label);
+				button.type = "button";
+				button.addEventListener("click", () => {
+					button.disabled = true;
+					this.options.gateway.sendFriendMatchInvite(friend.accountId, format);
+					this.closeDetail();
+					this.options.showToast("Match invitation sent", `${friend.displayName} can now accept your ${label} invitation.`);
+				});
+				this.options.registerTooltip(button, `Invite ${friend.displayName} to ${label}`, "Y");
+				actions.appendChild(button);
+			}
+			body.appendChild(actions);
+		});
+	}
+	confirmRemoveFriend(friend) {
+		this.openDetail(`Remove ${friend.displayName}?`, (body) => {
+			body.appendChild(element$1("p", "scd-muted", "This removes the friendship for both players. Local Quick Messages remain in this browser."));
+			const actions = element$1("div", "scd-social-format-actions");
+			const cancel = element$1("button", "scd-button", "Cancel");
+			const remove = element$1("button", "scd-button danger", "Remove friend");
+			cancel.type = remove.type = "button";
+			cancel.addEventListener("click", () => this.closeDetail());
+			remove.addEventListener("click", () => {
+				remove.disabled = true;
+				this.options.gateway.removeFriend(friend.accountId);
+				this.closeDetail();
+			});
+			actions.append(cancel, remove);
+			body.appendChild(actions);
+		});
+	}
+	openDetail(titleText, render) {
+		this.closeDetail();
+		const overlay = element$1("div", "scd-modal-overlay scd-social-detail-overlay");
+		overlay.dataset.scdRuntimeId = this.options.runtimeId;
+		const wrapper = element$1("div", "scd-modal-wrapper");
+		const modal = element$1("div", "scd-modal-container scd-social-detail-modal");
+		const header = element$1("div", "scd-social-detail-header");
+		header.appendChild(element$1("div", "scd-modal-title", titleText));
+		const close = element$1("button", "scd-icon-button scd-modal-close", "\u00D7");
+		close.type = "button";
+		close.addEventListener("click", () => this.closeDetail());
+		this.options.registerTooltip(close, "Close", "Y");
+		header.appendChild(close);
+		const body = element$1("div", "scd-social-detail-body");
+		render(body);
+		modal.append(header, body);
+		wrapper.appendChild(modal);
+		overlay.appendChild(wrapper);
+		overlay.addEventListener("click", (event) => {
+			if (event.target === overlay) this.closeDetail();
+		});
+		(document.body ?? document.documentElement).appendChild(overlay);
+		this.detailModal = overlay;
+		this.options.onModalVisibilityChanged();
+	}
+	closeDetail() {
+		this.detailModal?.remove();
+		this.detailModal = null;
+		this.options.onModalVisibilityChanged();
+	}
+	closeFriends() {
+		this.closeDetail();
+		this.modal?.remove();
+		this.modal = null;
+		this.options.onModalVisibilityChanged();
+	}
+	closeAll() {
+		this.closeFriends();
+	}
+	handleSocialEvent(event) {
+		if (event.kind === "friend-message-received" && event.message && event.clientMessageId) {
+			this.recordMessage({
+				id: event.clientMessageId,
+				accountId: event.profile.accountId,
+				direction: "incoming",
+				message: event.message,
+				occurredAt: event.occurredAt
+			});
+			this.unread.add(event.profile.accountId);
+			this.actionToast(`${event.profile.displayName} sent a message`, event.message, event.profile, [{
+				label: "Reply",
+				action: () => this.openMessages(event.profile),
+				primary: true
+			}]);
+		} else if (event.kind === "friend-message-sent" && event.message && event.clientMessageId) this.recordMessage({
+			id: event.clientMessageId,
+			accountId: event.profile.accountId,
+			direction: "outgoing",
+			message: event.message,
+			occurredAt: event.occurredAt
+		});
+		else if (event.kind === "friend-request-received" && event.friendRequestId) this.actionToast("Friend request", `${event.profile.displayName} sent you a friend request.`, event.profile, [
+			{
+				label: "Accept",
+				action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId, "accept"),
+				primary: true
+			},
+			{
+				label: "Decline",
+				action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId, "decline")
+			},
+			{
+				label: "Ignore",
+				action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId, "ignore")
+			},
+			{
+				label: "Block",
+				action: () => this.options.gateway.respondToFriendRequest(event.friendRequestId, "block")
+			}
+		]);
+		else if (event.kind === "match-invite-received" && event.inviteId && event.format) {
+			const label = event.format === "ranked" ? "Ranked 5\u00D75" : "Casual 3\u00D73";
+			this.actionToast("Friend Match invitation", `${event.profile.displayName} invited you to ${label}.`, event.profile, [{
+				label: "Accept",
+				action: () => {
+					this.matchInviteAcceptancePending = true;
+					this.options.gateway.respondToFriendMatchInvite(event.inviteId, true);
+				},
+				primary: true
+			}, {
+				label: "Decline",
+				action: () => this.options.gateway.respondToFriendMatchInvite(event.inviteId, false)
+			}]);
+		} else if (event.kind === "friend-request-accepted") this.options.showToast("Friend request accepted", `${event.profile.displayName} is now in your friends list.`);
+		else if (event.kind === "match-invite-declined") this.options.showToast("Match invitation declined", `${event.profile.displayName} declined your invitation.`);
+		else if (event.kind === "friend-removed") this.options.showToast("Friendship updated", `${event.profile.displayName} is no longer in your friends list.`);
+		this.renderHomepageList();
+	}
+	actionToast(titleText, message, profile, actions) {
+		let container = document.querySelector(".typo-toast-container");
+		if (!container) {
+			container = element$1("div", "typo-toast-container");
+			(document.body ?? document.documentElement).appendChild(container);
+		}
+		const toast = element$1("div", "typo-toast scd-duel-toast scd-social-toast");
+		toast.dataset.scdRuntimeId = this.options.runtimeId;
+		const closeToast = () => {
+			toast.classList.add("closing");
+			window.setTimeout(() => toast.remove(), 150);
+		};
+		const close = element$1("span", "close-toast", "\u00D7");
+		close.addEventListener("click", closeToast);
+		const identity = element$1("div", "scd-toast-profile");
+		identity.append(this.options.createAvatar(profile, "scd-toast-avatar"), element$1("strong", "", titleText));
+		const buttons = element$1("div", "typo-toast-confirm");
+		for (const item of actions) {
+			const button = element$1("button", `scd-button${item.primary ? " primary" : ""}`, item.label);
+			button.type = "button";
+			button.addEventListener("click", () => {
+				item.action();
+				closeToast();
+			});
+			buttons.appendChild(button);
+		}
+		toast.append(identity, close, element$1("span", "", message), buttons);
+		container.appendChild(toast);
+	}
+	renderHomepageList() {
+		this.homepageList?.remove();
+		this.homepageList = null;
+		const state = this.options.getGatewayState();
+		if (!this.uiPreferences.showHomepageList || !this.options.isHomepageVisible() || state.status !== "connected" || !state.social) return;
+		const panel = element$1("aside", `scd-home-friends ${this.uiPreferences.homepageAnchor}`);
+		panel.dataset.scdRuntimeId = this.options.runtimeId;
+		const header = element$1("button", "scd-home-friends-header");
+		header.type = "button";
+		header.append(icon("friendList", "Friends list"), element$1("strong", "", `Friends \u00B7 ${state.social.friends.length}`));
+		header.addEventListener("click", () => this.openFriends());
+		this.options.registerTooltip(header, "Open friends list", "Y");
+		const list = element$1("div", "scd-home-friends-list");
+		if (state.social.friends.length === 0) list.appendChild(element$1("div", "scd-muted scd-home-friends-empty", "No friends yet"));
+		for (const friend of state.social.friends) {
+			const row = element$1("div", `scd-home-friend presence-${friend.presence}`);
+			row.appendChild(this.createIdentity(friend));
+			const actions = element$1("div", "scd-home-friend-actions");
+			if (friend.presence === "online" || friend.presence === "idle") actions.appendChild(this.iconButton("friendDuelsLogo", "Invite to a Duel", () => this.openMatchInvitePicker(friend)));
+			actions.appendChild(this.iconButton("friendMessage", "Open Quick Messages", () => this.openMessages(friend), this.unread.has(friend.accountId) ? "unread" : ""));
+			if (friend.lobby) actions.appendChild(this.iconButton(friend.canJoinLobby ? "friendJoin" : "friendLocked", friend.canJoinLobby ? "Join public lobby" : "Lobby joining disabled", () => friend.canJoinLobby ? this.joinLobby(friend) : this.showLocked(friend)));
+			row.appendChild(actions);
+			list.appendChild(row);
+		}
+		panel.append(header, list);
+		(document.body ?? document.documentElement).appendChild(panel);
+		this.homepageList = panel;
+	}
+	joinLobby(friend) {
+		if (!friend.lobby?.lobbyId || !friend.canJoinLobby) {
+			this.showLocked(friend);
+			return;
+		}
+		document.dispatchEvent(new CustomEvent("joinLobby", { detail: friend.lobby.lobbyId }));
+		this.options.showToast("Joining friend", `Opening ${friend.displayName}'s ${friend.lobby.languageName} lobby\u2026`);
+	}
+	showLocked(friend) {
+		const overlay = element$1("div", "scd-social-locked-overlay");
+		overlay.append(icon("friendLocked", "Lobby joining locked"), element$1("strong", "", `${friend.displayName} disabled lobby joining.`));
+		(document.body ?? document.documentElement).appendChild(overlay);
+		window.setTimeout(() => overlay.remove(), 1500);
+	}
+	syncPresence() {
+		const state = this.options.getGatewayState();
+		const homepageVisible = this.options.isHomepageVisible();
+		const homepageVisibilityChanged = homepageVisible !== this.lastHomepageVisible;
+		this.lastHomepageVisible = homepageVisible;
+		if (state.status !== "connected") {
+			this.lastPresenceFingerprint = "";
+			if (homepageVisibilityChanged || this.homepageList) this.renderHomepageList();
+			return;
+		}
+		const lobby = this.options.getLobbySnapshot();
+		const page = lobby.hydrated && lobby.lobbyId ? "lobby" : "home";
+		const socialLobby = page === "lobby" ? {
+			lobbyId: lobby.lobbyId,
+			lobbyType: lobby.lobbyType === 0 ? "public" : "private",
+			languageName: lobby.languageName ?? "Unknown language",
+			playerCount: Math.max(0, lobby.playerCount),
+			maxPlayers: Math.max(1, Math.min(32, lobby.maxPlayers ?? 8))
+		} : null;
+		const fingerprint = JSON.stringify([
+			state.connectionId,
+			page,
+			socialLobby
+		]);
+		if (fingerprint !== this.lastPresenceFingerprint) {
+			this.lastPresenceFingerprint = fingerprint;
+			try {
+				this.options.gateway.setSocialPresence(page, socialLobby);
+			} catch {}
+		}
+		if (homepageVisibilityChanged) this.renderHomepageList();
+	}
+	recordMessage(message) {
+		if (this.messages.some((item) => item.id === message.id)) return;
+		this.messages.push(message);
+		this.messages = this.messages.slice(-500);
+		this.saveMessages();
+	}
+	loadMessages() {
+		this.messages = [];
+		const accountId = this.options.getGatewayState().identity?.accountId;
+		if (!accountId) return;
+		try {
+			const parsed = JSON.parse(localStorage.getItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`) ?? "[]");
+			this.messages = Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.id === "string" && typeof item.accountId === "string" && (item.direction === "incoming" || item.direction === "outgoing") && typeof item.message === "string" && Number.isFinite(item.occurredAt)).slice(-500) : [];
+		} catch {}
+	}
+	saveMessages() {
+		const accountId = this.options.getGatewayState().identity?.accountId;
+		if (!accountId) return;
+		try {
+			localStorage.setItem(`${MESSAGE_STORAGE_PREFIX}${accountId}`, JSON.stringify(this.messages));
+		} catch {}
+	}
+	saveUiPreferences() {
+		try {
+			localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(this.uiPreferences));
+		} catch {}
+	}
+	ensureStyles() {
+		if (document.getElementById("skribbl-duels-social-styles")) return;
+		const style = document.createElement("style");
+		style.id = "skribbl-duels-social-styles";
+		style.textContent = `
+#skribbl-duels-friends,#skribbl-duels-friends *,.scd-social-detail-overlay,.scd-social-detail-overlay *,.scd-home-friends,.scd-home-friends *{box-sizing:border-box}
+.scd-social-modal{width:min(800px,calc(100vw - 24px));max-height:min(760px,calc(100vh - 24px))}.scd-social-header{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr) 44px 44px;align-items:center;gap:6px;padding:8px 10px}.scd-social-header>.scd-icon{width:42px;height:42px}.scd-social-header>.scd-icon:nth-child(3){transform:scaleX(-1)}
+.scd-social-title{display:flex;align-items:center;justify-content:center;gap:8px;font-size:1.25em}.scd-social-title .scd-icon{width:38px;height:38px}.scd-social-body{min-height:240px;overflow:auto;padding:12px}.scd-social-tabs,.scd-social-format-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.scd-social-tabs .selected{background:#53e237}
+.scd-social-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-bottom:10px}.scd-social-search-result{display:flex;align-items:center;gap:10px;padding:9px;margin-bottom:10px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-search-result .scd-social-identity{flex:1}.scd-social-search-status{padding:8px;text-align:center}.scd-social-list{display:flex;flex-direction:column;gap:6px}
+.scd-social-row{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--COLOR_PANEL_BG)}.scd-social-row:nth-child(even){background:var(--COLOR_PANEL_LO)}.scd-social-identity{min-width:0;display:flex;align-items:center;gap:9px;text-align:left}.scd-social-avatar-wrap{position:relative;width:46px;height:46px;flex:none}.scd-social-avatar{width:46px!important;height:46px!important;font-size:18px;display:grid;place-items:center}.scd-social-avatar.scd-avatar-skribbl .scd-skribbl-avatar{width:100%;height:100%}
+.scd-social-status-icon{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;z-index:2}.scd-social-status-icon[aria-label='Online']{width:26px;height:20px;animation:icon_drawing .8s ease-in-out infinite alternate}.scd-social-status-icon .scd-icon-image{object-fit:contain}.scd-social-copy{min-width:0;display:flex;flex-direction:column}.scd-social-name,.scd-social-lobby,.scd-social-status-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.scd-social-name{font-weight:900}.scd-social-lobby{font-size:10px}.scd-social-status-text{max-width:340px;font-size:11px;opacity:.85}.scd-social-visible-status{min-width:0;display:flex;align-items:center;gap:4px}.scd-social-visible-status>.scd-icon{width:20px;height:20px;flex:none}
+.scd-social-actions,.scd-home-friend-actions{display:flex;align-items:center;gap:5px}.scd-social-icon-button{position:relative;width:36px;height:36px;border-radius:6px}.scd-social-icon-button:hover{background:rgba(255,255,255,.1)}.scd-social-icon-button .scd-icon{width:31px;height:31px}.scd-social-icon-button.selected{background:#53e237}.scd-social-icon-button.danger:hover{background:var(--COLOR_CHAT_TEXT_LEAVE)}.scd-social-icon-button.unread::after{content:'';position:absolute;right:-2px;top:-3px;width:15px;height:15px;background:url('${assetUrl("friendPing") ?? ""}') center/contain no-repeat;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.25))}.scd-social-request-kind{justify-self:start;font-size:10px}
+.scd-social-profile-avatar{overflow:visible!important}.scd-social-presence-badge{position:absolute;right:-7px;bottom:-4px;width:38px;height:38px;border:0;padding:0;background:transparent;z-index:4;cursor:pointer}.scd-social-presence-badge .scd-icon{width:100%;height:100%}.scd-social-profile-controls{width:100%}.scd-social-friends-button{width:100%;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800}.scd-social-friends-button .scd-icon{width:34px;height:34px}
+.scd-social-detail-overlay{z-index:2147483647}.scd-social-detail-modal{width:min(580px,calc(100vw - 24px));max-height:min(680px,calc(100vh - 24px))}.scd-social-detail-header{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:center;padding:8px 10px}.scd-social-detail-body{min-height:0;overflow:auto;padding:12px}.scd-social-presence-choice{width:100%;min-height:58px;display:flex;align-items:center;justify-content:flex-start;gap:10px;margin-bottom:7px}.scd-social-presence-choice.selected{background:#53e237}.scd-social-presence-choice .scd-icon{width:42px;height:42px}
+.scd-social-message-history{min-height:180px;max-height:390px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:4px}.scd-social-message{align-self:flex-start;max-width:85%;display:flex;flex-direction:column;padding:7px 9px;border-radius:8px;background:var(--COLOR_PANEL_LO);overflow-wrap:anywhere}.scd-social-message.outgoing{align-self:flex-end;background:var(--SCD_ACCENT)}.scd-social-message-author{font-size:9px;font-weight:900;opacity:.72}.scd-social-message-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}
+.scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow:auto}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
+.scd-social-locked-overlay{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 22px rgba(255,255,255,.45))}@keyframes scd-social-lock-glow{0%{opacity:0;transform:scale(.75)}18%,72%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.06)}}
+@media(max-width:680px){.scd-social-row{grid-template-columns:1fr}.scd-social-actions{justify-content:flex-end}.scd-home-friends{width:min(330px,calc(100vw - 16px))}.scd-social-header{grid-template-columns:34px minmax(0,1fr) 34px 34px}}
+`;
+		document.head.appendChild(style);
+	}
+};
 var DUEL_PROFILE_UI_STORAGE_KEY = "skribblDuelsProfileUiV1";
 var DUEL_PROFILE_STATUS_MAX_LENGTH = 80;
 var ABOUT_TUTORIAL_PAGES = [
@@ -44946,22 +45917,31 @@ function normalizeDuelProfileStatusText(value) {
 	return typeof value === "string" ? Array.from(value.replace(/\s+/g, " ").trim()).slice(0, DUEL_PROFILE_STATUS_MAX_LENGTH).join("") : "";
 }
 function loadDuelProfileUiPreferences() {
+	const defaultMainStatIds = [...DEFAULT_PINNED_PROFILE_STAT_IDS, ...DEFAULT_MAIN_PROFILE_STAT_IDS.filter((id) => !DEFAULT_PINNED_PROFILE_STAT_IDS.includes(id))].slice(0, 12);
 	const fallback = {
-		version: 1,
+		version: 2,
 		statusChallengeId: null,
 		statusText: "",
-		pinnedStatIds: [...DEFAULT_PINNED_PROFILE_STAT_IDS]
+		mainStatIds: defaultMainStatIds
 	};
 	try {
 		const parsed = JSON.parse(localStorage.getItem(DUEL_PROFILE_UI_STORAGE_KEY) ?? "null");
-		if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.pinnedStatIds)) return fallback;
-		const pins = parsed.pinnedStatIds.filter(isProfileStatId);
-		if (pins.length !== 2) return fallback;
+		if (!parsed) return fallback;
+		const ids = (parsed.version === 2 && Array.isArray(parsed.mainStatIds) ? parsed.mainStatIds : parsed.version === 1 && Array.isArray(parsed.pinnedStatIds) ? [...parsed.pinnedStatIds, ...DEFAULT_MAIN_PROFILE_STAT_IDS] : []).filter(isProfileStatId).filter((id, index, all) => all.indexOf(id) === index);
+		for (const id of defaultMainStatIds) {
+			if (ids.length >= 12) break;
+			if (!ids.includes(id)) ids.push(id);
+		}
+		for (const definition of PROFILE_STAT_DEFINITIONS) {
+			if (ids.length >= 12) break;
+			if (!ids.includes(definition.id)) ids.push(definition.id);
+		}
+		if (ids.length !== 12) return fallback;
 		return {
-			version: 1,
+			version: 2,
 			statusChallengeId: typeof parsed.statusChallengeId === "string" ? parsed.statusChallengeId : null,
 			statusText: normalizeDuelProfileStatusText(parsed.statusText),
-			pinnedStatIds: [pins[0], pins[1]]
+			mainStatIds: ids.slice(0, 12)
 		};
 	} catch {
 		return fallback;
@@ -45310,6 +46290,8 @@ html[data-scd-scroll-lock-runtime],body[data-scd-scroll-lock-runtime] { overflow
 .scd-modal-close:hover { color:white; }
 .scd-main-tabs { display:flex;justify-content:center;padding:4px 10px 8px; }
 .scd-main-tabs .scd-tab { min-width:150px;font-weight:700; }
+.scd-settings-tabs { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px; }
+.scd-settings-tabs .scd-tab { font-weight:800; }
 .scd-stage-shell { width:min(880px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto; }
 .scd-versus { width:min(760px,100%);max-height:75vh;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG));border-radius:10px;color:white;box-shadow:0 0 50px rgba(0,0,0,.2); }
 .scd-versus-players { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px; }
@@ -45541,8 +46523,8 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-skribbl-avatar .eyes { background-image:url('https://skribbl.io/img/avatar/eyes_atlas.gif'); }
 .scd-skribbl-avatar .mouth { background-image:url('https://skribbl.io/img/avatar/mouth_atlas.gif'); }
 .scd-skribbl-avatar .special { position:absolute;left:-33%;top:-33%;width:166%;height:166%;background-image:url('https://skribbl.io/img/avatar/special_atlas.gif');background-size:1000% 1000%; }
-.scd-avatar-fallback,.scd-avatar-discord { background:rgba(255,255,255,.1); }
-.scd-avatar-discord { overflow:hidden; }
+.scd-avatar-fallback { background:rgba(255,255,255,.1); }
+.scd-avatar-discord { background:transparent;overflow:hidden; }
 .scd-avatar-skribbl { overflow:visible !important;border-radius:0; }
 .scd-versus-avatar.scd-avatar-skribbl { box-shadow:none; }
 .scd-versus-avatar.scd-avatar-skribbl .scd-skribbl-avatar { width:72%;height:72%; }
@@ -45750,13 +46732,10 @@ var ProductTooltipManager = class {
 	}
 	handlePointerOver(event) {
 		const raw = event.target;
-		const target = raw instanceof Element ? raw.closest("[data-scd-tooltip]") : null;
+		let target = raw instanceof Element ? raw.closest("[data-scd-tooltip]") : null;
+		while (target?.dataset.scdTooltipOverflowOnly === "true" && target.scrollWidth <= target.clientWidth + 1) target = target.parentElement?.closest("[data-scd-tooltip]") ?? null;
 		if (target === this.currentTarget) return;
 		if (!target) {
-			this.hide();
-			return;
-		}
-		if (target.dataset.scdTooltipOverflowOnly === "true" && target.scrollWidth <= target.clientWidth + 1) {
 			this.hide();
 			return;
 		}
@@ -45884,12 +46863,14 @@ var DuelProductFoundation = class {
 	chatStatDisplay;
 	duelChatMessages = [];
 	activeTab;
+	settingsSection = "general";
 	tooltips;
 	soundEffects;
 	authClient;
 	gatewayClient;
 	skribbleUi;
 	slotsUi;
+	socialUi;
 	authState;
 	gatewayState;
 	unsubscribers = [];
@@ -46021,6 +47002,23 @@ var DuelProductFoundation = class {
 			aboutIconUrl: EMBEDDED_ICON_ASSETS["res/challenge-icons/about.gif"],
 			registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
 		});
+		this.socialUi = new SocialFeatureUi({
+			runtimeId: options.runtimeId,
+			gateway: this.gatewayClient,
+			getGatewayState: () => this.gatewayState,
+			getLobbySnapshot: () => options.getSocialLobbySnapshot(),
+			isHomepageVisible: () => this.isHomepageDomVisible(),
+			createAvatar: (profile, className) => this.createParticipantAvatar(profile.displayName, {
+				avatarSource: profile.avatarSource,
+				avatarUrl: profile.avatarUrl,
+				skribblAvatar: profile.skribblAvatar
+			}, className),
+			createStatusIcon: (challengeId) => this.createChallengeIcon(challengeId, "scd-icon"),
+			registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock),
+			registerOverflowTooltip: (target, title, lock) => this.tooltips.registerOverflowOnly(target, title, lock),
+			showToast: (title, message, timeout) => this.showSimpleToast(title, message, timeout),
+			onModalVisibilityChanged: () => this.syncPageScrollLock()
+		});
 	}
 	start() {
 		this.installRuntimeIsolationStyle();
@@ -46031,6 +47029,7 @@ var DuelProductFoundation = class {
 		this.soundEffects.initialize();
 		this.skribbleUi.start();
 		this.slotsUi.start();
+		this.socialUi.start();
 		document.addEventListener("keydown", this.draftKeydown, true);
 		document.addEventListener("visibilitychange", this.visibilityRecovery, true);
 		document.addEventListener("skribblInitialized", this.typoInitialized, true);
@@ -46048,8 +47047,15 @@ var DuelProductFoundation = class {
 			const matchChanged = previous.match?.matchId !== state.match?.matchId || previous.match?.revision !== state.match?.revision;
 			const chatChanged = previous.duelChatMessages.length !== state.duelChatMessages.length;
 			const presentationChanged = matchChanged || chatChanged || previous.status !== state.status || previous.error !== state.error || previous.queue?.requestId !== state.queue?.requestId || previous.queue?.position !== state.queue?.position || previous.invite?.inviteId !== state.invite?.inviteId || previous.invite?.status !== state.invite?.status || previous.invite?.token !== state.invite?.token || previous.identity?.displayName !== state.identity?.displayName || previous.identity?.nameColorIndex !== state.identity?.nameColorIndex;
-			const playerFound = state.match !== null && previous.match?.matchId !== state.match.matchId && (previous.queue !== null || previous.invite?.status === "waiting" || this.pendingInviteToken !== null || this.inviteAcceptanceSubmitted);
+			const playerFound = state.match !== null && previous.match?.matchId !== state.match.matchId && (previous.queue !== null || previous.invite?.status === "waiting" || this.pendingInviteToken !== null || this.inviteAcceptanceSubmitted || this.socialUi.isMatchInviteAcceptancePending());
 			this.gatewayState = state;
+			if (state.social) if (previous.social === null && state.social.revision === 0 && state.social.statusChallengeId === null && state.social.statusText.length === 0 && (this.profileUiPreferences.statusChallengeId !== null || this.profileUiPreferences.statusText.length > 0) && state.status === "connected") this.gatewayClient.setSocialProfileStatus(this.profileUiPreferences.statusChallengeId, this.profileUiPreferences.statusText);
+			else {
+				this.profileUiPreferences.statusChallengeId = state.social.statusChallengeId;
+				this.profileUiPreferences.statusText = state.social.statusText;
+				this.saveProfileUiPreferences();
+			}
+			this.socialUi.handleGatewayUpdate(previous, state);
 			this.slotsUi.update(state);
 			this.skribbleUi.update(state);
 			if (playerFound) {
@@ -46141,9 +47147,9 @@ var DuelProductFoundation = class {
 			if (this.matchState.phase === "countdown") this.updateBoardScore();
 		}, 700);
 		const api = {
-			version: "0.68.0",
+			version: "0.69.0",
 			coreVersion: PRODUCT_CORE_VERSION,
-			gatewayContractVersion: 14,
+			gatewayContractVersion: 15,
 			gatewayClientVersion: GATEWAY_CLIENT_VERSION,
 			authClientVersion: AUTH_CLIENT_VERSION,
 			auth: {
@@ -46248,6 +47254,7 @@ var DuelProductFoundation = class {
 		this.gatewayClient.stop();
 		this.skribbleUi.stop();
 		this.slotsUi.stop();
+		this.socialUi.stop();
 		this.authClient.stop();
 		this.launcher?.remove();
 		this.panel?.remove();
@@ -46291,7 +47298,7 @@ var DuelProductFoundation = class {
 		this.releasePageScrollLock();
 		const isolation = document.getElementById("skribbl-duels-runtime-isolation");
 		if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-		if (window.skribblDuelsProduct?.version === "0.68.0") delete window.skribblDuelsProduct;
+		if (window.skribblDuelsProduct?.version === "0.69.0") delete window.skribblDuelsProduct;
 	}
 	installRuntimeIsolationStyle() {
 		document.getElementById("skribbl-duels-runtime-isolation")?.remove();
@@ -46703,7 +47710,7 @@ var DuelProductFoundation = class {
 	}
 	syncPageScrollLock() {
 		const isVisible = (node) => Boolean(node?.isConnected && node.style.display !== "none");
-		const locked = isVisible(this.panel) || isVisible(this.stage) || isVisible(this.intro) || isVisible(this.profileColorPicker) || isVisible(this.duelProfileModal) || isVisible(this.profileDetailModal) || this.skribbleUi.isModalOpen() || this.slotsUi.isModalOpen();
+		const locked = isVisible(this.panel) || isVisible(this.stage) || isVisible(this.intro) || isVisible(this.profileColorPicker) || isVisible(this.duelProfileModal) || isVisible(this.profileDetailModal) || this.skribbleUi.isModalOpen() || this.slotsUi.isModalOpen() || this.socialUi.isModalOpen();
 		for (const node of [document.documentElement, document.body]) {
 			if (!node) continue;
 			if (locked) node.dataset.scdScrollLockRuntime = this.options.runtimeId;
@@ -47222,20 +48229,25 @@ var DuelProductFoundation = class {
 		icon.setAttribute("aria-label", definition.label);
 		return icon;
 	}
-	createProfileStatCard(definition, pinnedSlot = null) {
-		const card = element(pinnedSlot === null ? "div" : "button", "scd-profile-stat");
-		if (card instanceof HTMLButtonElement) {
+	createProfileStatCard(definition, overviewSlot = null) {
+		const card = element(overviewSlot === null ? "div" : "button", "scd-profile-stat");
+		if (overviewSlot !== null && card instanceof HTMLButtonElement) {
 			card.type = "button";
-			card.addEventListener("click", () => this.openProfileStatPicker(pinnedSlot));
-			const pinPath = STAT_UTILITY_ICON_ASSET_PATHS.pin;
-			const pin = this.createIconAsset(pinPath, "\uD83D\uDCCC", "Pinned statistic") ;
-			pin.classList.add("scd-profile-pin-icon");
-			card.appendChild(pin);
+			card.addEventListener("click", () => this.openProfileStatPicker(overviewSlot));
+			if (overviewSlot < 2) {
+				const pinPath = STAT_UTILITY_ICON_ASSET_PATHS.pin;
+				const pin = this.createIconAsset(pinPath, "\uD83D\uDCCC", "Pinned statistic") ;
+				pin.classList.add("scd-profile-pin-icon");
+				card.appendChild(pin);
+			}
 		}
 		card.dataset.scdProfileStatId = definition.id;
+		const label = element("span", "scd-profile-stat-label", definition.label);
 		const value = element("span", "scd-profile-stat-value", definition.value(this.localStatsSnapshot));
 		value.dataset.role = "value";
-		card.append(this.createProfileStatIcon(definition), element("span", "scd-profile-stat-label", definition.label), value);
+		this.tooltips.registerOverflowOnly(label, definition.label);
+		this.tooltips.registerOverflowOnly(value, value.textContent ?? "");
+		card.append(this.createProfileStatIcon(definition), label, value);
 		this.tooltips.register(card, definition.description);
 		return card;
 	}
@@ -47244,7 +48256,10 @@ var DuelProductFoundation = class {
 			const id = card.dataset.scdProfileStatId;
 			if (!isProfileStatId(id)) return;
 			const value = card.querySelector("[data-role=\"value\"]");
-			if (value) value.textContent = PROFILE_STAT_DEFINITION_BY_ID[id].value(this.localStatsSnapshot);
+			if (value) {
+				value.textContent = PROFILE_STAT_DEFINITION_BY_ID[id].value(this.localStatsSnapshot);
+				this.tooltips.registerOverflowOnly(value, value.textContent);
+			}
 		});
 	}
 	closeProfileDetail() {
@@ -47306,6 +48321,7 @@ var DuelProductFoundation = class {
 			none.addEventListener("click", () => {
 				this.profileUiPreferences.statusChallengeId = null;
 				this.saveProfileUiPreferences();
+				if (this.gatewayState.status === "connected") this.gatewayClient.setSocialProfileStatus(null, this.profileUiPreferences.statusText);
 				this.closeProfileDetail();
 				this.openDuelProfile();
 			});
@@ -47318,6 +48334,7 @@ var DuelProductFoundation = class {
 				choice.addEventListener("click", () => {
 					this.profileUiPreferences.statusChallengeId = entry.id;
 					this.saveProfileUiPreferences();
+					if (this.gatewayState.status === "connected") this.gatewayClient.setSocialProfileStatus(entry.id, this.profileUiPreferences.statusText);
 					this.closeProfileDetail();
 					this.openDuelProfile();
 				});
@@ -47358,6 +48375,7 @@ var DuelProductFoundation = class {
 			const applyStatus = () => {
 				this.profileUiPreferences.statusText = normalizeDuelProfileStatusText(input.value);
 				this.saveProfileUiPreferences();
+				if (this.gatewayState.status === "connected") this.gatewayClient.setSocialProfileStatus(this.profileUiPreferences.statusChallengeId, this.profileUiPreferences.statusText);
 				this.closeProfileDetail();
 				this.openDuelProfile();
 			};
@@ -47374,17 +48392,19 @@ var DuelProductFoundation = class {
 		});
 	}
 	openProfileStatPicker(slot) {
-		this.createProfileDetail(`Choose ${pinnedStatisticOrdinal(slot)} pinned statistic`, (body) => {
+		const title = slot < 2 ? `Choose ${pinnedStatisticOrdinal(slot)} pinned statistic` : `Choose overview statistic ${slot + 1}`;
+		this.createProfileDetail(title, (body) => {
 			const grid = element("div", "scd-profile-choice-grid");
 			for (const definition of PROFILE_STAT_DEFINITIONS) {
 				const choice = element("button", "scd-button scd-profile-choice");
 				choice.type = "button";
-				choice.classList.toggle("selected", this.profileUiPreferences.pinnedStatIds[slot] === definition.id);
+				choice.classList.toggle("selected", this.profileUiPreferences.mainStatIds[slot] === definition.id);
 				choice.append(this.createProfileStatIcon(definition), element("span", "", definition.label));
 				choice.addEventListener("click", () => {
-					const otherSlot = slot === 0 ? 1 : 0;
-					if (this.profileUiPreferences.pinnedStatIds[otherSlot] === definition.id) this.profileUiPreferences.pinnedStatIds[otherSlot] = this.profileUiPreferences.pinnedStatIds[slot];
-					this.profileUiPreferences.pinnedStatIds[slot] = definition.id;
+					const current = this.profileUiPreferences.mainStatIds[slot];
+					const existingSlot = this.profileUiPreferences.mainStatIds.indexOf(definition.id);
+					if (current && existingSlot >= 0 && existingSlot !== slot) this.profileUiPreferences.mainStatIds[existingSlot] = current;
+					this.profileUiPreferences.mainStatIds[slot] = definition.id;
 					this.saveProfileUiPreferences();
 					this.closeProfileDetail();
 					this.openDuelProfile();
@@ -47531,6 +48551,7 @@ var DuelProductFoundation = class {
 		if (this.profileUiPreferences.statusChallengeId && !this.manifest.entries.some((entry) => entry.id === this.profileUiPreferences.statusChallengeId)) {
 			this.profileUiPreferences.statusChallengeId = null;
 			this.saveProfileUiPreferences();
+			if (this.gatewayState.status === "connected") this.gatewayClient.setSocialProfileStatus(null, this.profileUiPreferences.statusText);
 		}
 		const overlay = element("div", "scd-modal-overlay");
 		overlay.id = "skribbl-duels-profile";
@@ -47551,11 +48572,13 @@ var DuelProductFoundation = class {
 		const identityColumn = element("section", "scd-profile-identity");
 		identityColumn.appendChild(this.skribbleUi.createCoinPill(true));
 		const effectiveDisplayName = this.savedSelfDisplayName ?? identity.displayName;
-		identityColumn.appendChild(this.createParticipantAvatar(effectiveDisplayName, {
+		const profileAvatar = this.createParticipantAvatar(effectiveDisplayName, {
 			avatarSource: identity.avatarSource ?? "discord",
 			avatarUrl: identity.avatarSource === "skribbl" ? null : identity.avatarUrl ?? authProfile.avatarUrl,
 			skribblAvatar: identity.skribblAvatar ?? null
-		}, "scd-profile-avatar"));
+		}, "scd-profile-avatar");
+		this.socialUi.decorateProfileAvatar(profileAvatar);
+		identityColumn.appendChild(profileAvatar);
 		const displayName = element("div", "scd-profile-display-name");
 		appendColoredDuelName(displayName, effectiveDisplayName, this.duelNameColorIndex("self"));
 		identityColumn.append(displayName, element("div", "scd-profile-private-copy", `Discord: ${authProfile.username}`));
@@ -47583,22 +48606,17 @@ var DuelProductFoundation = class {
 			this.profileUiPreferences.statusChallengeId = null;
 			this.profileUiPreferences.statusText = "";
 			this.saveProfileUiPreferences();
+			if (this.gatewayState.status === "connected") this.gatewayClient.setSocialProfileStatus(null, "");
 			this.openDuelProfile();
 		});
 		this.tooltips.register(resetStatus, "Clear status icon and text");
 		statusWrapper.append(statusIcon, statusText, resetStatus);
-		identityColumn.append(statusWrapper, element("div", "scd-muted scd-profile-private-copy", authProfile.createdAt === null ? "Member since: unavailable" : `Member since ${formatMemberSince(authProfile.createdAt)}`));
+		identityColumn.append(statusWrapper, this.socialUi.createProfileControls(), element("div", "scd-muted scd-profile-private-copy", authProfile.createdAt === null ? "Member since: unavailable" : `Member since ${formatMemberSince(authProfile.createdAt)}`));
 		const statsColumn = element("section", "scd-profile-stats-column");
 		const statsGrid = element("div", "scd-profile-stats-grid");
-		const pinnedIds = this.profileUiPreferences.pinnedStatIds;
-		statsGrid.append(this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[pinnedIds[0]], 0), this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[pinnedIds[1]], 1));
-		const remainingIds = DEFAULT_MAIN_PROFILE_STAT_IDS.filter((id) => !pinnedIds.includes(id));
-		for (const id of remainingIds.slice(0, 10)) statsGrid.appendChild(this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[id]));
-		for (const definition of PROFILE_STAT_DEFINITIONS) {
-			if (statsGrid.children.length >= 12) break;
-			if (statsGrid.querySelector(`[data-scd-profile-stat-id="${CSS.escape(definition.id)}"]`)) continue;
-			statsGrid.appendChild(this.createProfileStatCard(definition));
-		}
+		this.profileUiPreferences.mainStatIds.forEach((id, slot) => {
+			statsGrid.appendChild(this.createProfileStatCard(PROFILE_STAT_DEFINITION_BY_ID[id], slot));
+		});
 		const viewAll = element("button", "scd-button scd-profile-view-all", "View all Stats");
 		viewAll.type = "button";
 		viewAll.addEventListener("click", () => this.openAllProfileStats());
@@ -48398,6 +49416,24 @@ var DuelProductFoundation = class {
 	renderSettingsTab() {
 		if (!this.panelBody) return;
 		const stack = element("div", "scd-stack");
+		const tabs = element("div", "scd-settings-tabs");
+		for (const [section, label] of [["general", "General"], ["social", "Social"]]) {
+			const tab = element("button", "scd-button scd-tab", label);
+			tab.type = "button";
+			tab.classList.toggle("active", this.settingsSection === section);
+			tab.addEventListener("click", () => {
+				if (this.settingsSection === section) return;
+				this.settingsSection = section;
+				this.renderPanel();
+			});
+			tabs.appendChild(tab);
+		}
+		stack.appendChild(tabs);
+		if (this.settingsSection === "social") {
+			this.socialUi.renderSettings(stack);
+			this.panelBody.appendChild(stack);
+			return;
+		}
 		const identity = this.gatewayState.identity;
 		if (this.authState.status === "signed-in" && identity) {
 			if (this.profileColorDraftIndex === null) this.profileColorDraftIndex = normalizeDuelNameColorIndex(this.savedSelfNameColorIndex ?? identity.nameColorIndex);
@@ -48718,7 +49754,7 @@ var DuelProductFoundation = class {
 		const layout = element("div", "scd-about-layout");
 		const copy = element("div", "scd-about-copy");
 		const connection = element("div", "scd-card");
-		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v14`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
+		connection.append(element("strong", "", `Authentication v${AUTH_CLIENT_VERSION} \u00B7 Gateway Contract v15`), element("p", "scd-muted", this.authState.status === "signed-in" ? `Signed in as ${this.authState.profile?.displayName ?? "Discord user"}. The access token is supplied only to the authenticated Socket.IO handshake.` : "Supabase Discord OAuth is connected on the client. A signed-in session is required for the Gateway."), element("p", "scd-muted", `Client v${GATEWAY_CLIENT_VERSION} status: ${this.gatewayState.status}.`));
 		const freeze = element("div", "scd-card");
 		freeze.append(element("strong", "", "What match freeze means"), element("p", "scd-muted", "The normal Skribbl lobby and local telemetry continue. Duel-server forwarding, board mutation and new claims stop after a win, Forfeit or mutual Draw."));
 		copy.append(connection, freeze);
@@ -49869,6 +50905,7 @@ var DuelProductFoundation = class {
 	closeProductModalsForMatchFound() {
 		this.skribbleUi.closeForMatchFound();
 		this.slotsUi.closeForMatchFound();
+		this.socialUi.closeModals();
 		this.stopAboutTutorial();
 		if (this.introTimer !== null) window.clearTimeout(this.introTimer);
 		this.introTimer = null;
@@ -50098,7 +51135,7 @@ var DuelProductFoundation = class {
 		this.insertCompletion(message, mirrorToSkribbl);
 	}
 };
-var BUILD_VERSION = "0.68.0";
+var BUILD_VERSION = "0.69.0";
 function createRuntimeController() {
 	try {
 		window.skribblDuelsRuntime?.dispose("superseded-by-new-runtime");
@@ -50526,6 +51563,18 @@ async function bootstrap(runtime, authClient) {
 				lobbyId: lobby.lobbyId,
 				playerCount: lobby.userOrder.length,
 				gameStateName: lobby.game.stateName
+			};
+		},
+		getSocialLobbySnapshot() {
+			const lobby = lobbyStore.getSnapshot();
+			const configuredMaxPlayers = lobby.settings[1];
+			return {
+				hydrated: lobby.hydrated,
+				lobbyId: lobby.lobbyId,
+				lobbyType: lobby.lobbyType,
+				languageName: lobby.languageName,
+				playerCount: lobby.userOrder.length,
+				maxPlayers: typeof configuredMaxPlayers === "number" && Number.isInteger(configuredMaxPlayers) ? configuredMaxPlayers : null
 			};
 		},
 		getSelfName() {

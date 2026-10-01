@@ -13,6 +13,8 @@ import type { GatewayMetrics } from './metrics';
 import type { GatewayRealtimeCommand } from './realtimeInfrastructure';
 import { GatewayProgressionService } from './progressionService';
 import type { GatewayProgressionPersistence } from './progressionPersistence';
+import { GatewaySocialService } from './socialService';
+import { SocialPersistenceError, type GatewaySocialPersistence } from './socialPersistence';
 
 interface AuthorityPeerPayload {
   identity: GatewayClientIdentity;
@@ -42,6 +44,7 @@ interface GatewayAuthorityControllerOptions {
   config: GatewayServerConfig;
   persistence?: GatewayMatchAuthorityPersistence;
   progression?: GatewayProgressionPersistence;
+  social?: GatewaySocialPersistence;
   metrics: GatewayMetrics;
   sendToAccount(accountId: string, message: GatewayServerMessage): void;
   sendToConnection(connectionId: string, message: GatewayServerMessage): void;
@@ -104,6 +107,9 @@ export class GatewayAuthorityController {
   private activation: Promise<void> = Promise.resolve();
   private authorityError: Error | null = null;
   private readonly progression: GatewayProgressionService | null;
+  private readonly social: GatewaySocialService | null;
+  private socialRefreshQueued = false;
+  private readonly socialActiveMatch = new Map<string, boolean>();
 
   public constructor(private readonly options: GatewayAuthorityControllerOptions) {
     this.progression = options.progression
@@ -111,6 +117,14 @@ export class GatewayAuthorityController {
           persistence: options.progression,
           dailySecret: options.config.skribbleDailySecret,
           send: (accountId, message) => this.sendAccount(accountId, message)
+        })
+      : null;
+    this.social = options.social
+      ? new GatewaySocialService({
+          persistence: options.social,
+          send: (accountId, message) => this.sendAccount(accountId, message),
+          isAccountInActiveMatch: accountId => this.matchmaker?.hasActiveMatch(accountId) ?? false,
+          log: options.log
         })
       : null;
   }
@@ -133,6 +147,8 @@ export class GatewayAuthorityController {
         this.matchmaker = null;
         this.connections.clear();
         this.queueJoinedAt.clear();
+        this.socialActiveMatch.clear();
+        this.social?.clear();
         await current.close();
       }
     });
@@ -159,8 +175,15 @@ export class GatewayAuthorityController {
       if (current?.connectionId !== commandPayload.connectionId
           || current.connectionEpoch !== commandPayload.connectionEpoch) return;
       this.connections.delete(commandPayload.accountId);
+      this.socialActiveMatch.delete(commandPayload.accountId);
       this.options.metrics.gauge('skribbl_duels_gateway_authority_connections', this.connections.size);
       this.matchmaker.disconnect(commandPayload.accountId);
+      if (this.social) {
+        void this.social.disconnected(commandPayload.accountId).catch(error => this.options.log(
+          'social-disconnect-error',
+          { accountId: commandPayload.accountId, error: error instanceof Error ? error.message : String(error) }
+        ));
+      }
       return;
     }
     const connection = this.connections.get(commandPayload.accountId);
@@ -264,6 +287,16 @@ export class GatewayAuthorityController {
         ));
       }
     }
+    if (this.social) {
+      try {
+        await this.social.connected(command.identity);
+      } catch (error) {
+        this.options.log('social-connect-error', { accountId, error: error instanceof Error ? error.message : String(error) });
+        this.options.sendToConnection(command.connectionId, errorMessage(
+          'SOCIAL_UNAVAILABLE', 'Friends and presence are temporarily unavailable.', true
+        ));
+      }
+    }
   }
 
   private sendAccount(accountId: string, message: GatewayServerMessage): void {
@@ -299,12 +332,93 @@ export class GatewayAuthorityController {
       }
     }
     this.options.sendToAccount(accountId, message);
+    if (message.type === 'MATCH_SNAPSHOT' && this.social) {
+      const active = message.state.phase !== 'finished' && message.state.phase !== 'cancelled';
+      const previous = this.socialActiveMatch.get(accountId) ?? false;
+      this.socialActiveMatch.set(accountId, active);
+      if (active !== previous && !this.socialRefreshQueued) {
+        this.socialRefreshQueued = true;
+        queueMicrotask(() => {
+          this.socialRefreshQueued = false;
+          void this.social?.refreshAll().catch(error => this.options.log('social-match-refresh-error', {
+            error: error instanceof Error ? error.message : String(error)
+          }));
+        });
+      }
+    }
   }
 
   private async processMessage(peer: MatchmakingPeer, message: GatewayClientMessage, correlationId: string): Promise<void> {
     const matchmaker = this.matchmaker;
     if (!matchmaker) return;
     const accountId = peer.identity.accountId;
+    if (message.type === 'SOCIAL_SYNC'
+        || message.type === 'SOCIAL_PREFERENCES_SET'
+        || message.type === 'SOCIAL_PROFILE_STATUS_SET'
+        || message.type === 'SOCIAL_PRESENCE_SET'
+        || message.type === 'FRIEND_SEARCH'
+        || message.type === 'FRIEND_REQUEST_SEND'
+        || message.type === 'FRIEND_REQUEST_RESPOND'
+        || message.type === 'FRIEND_REQUEST_WITHDRAW'
+        || message.type === 'FRIEND_REMOVE'
+        || message.type === 'FRIEND_PIN_SET'
+        || message.type === 'FRIEND_MESSAGE_SEND') {
+      if (!this.social) {
+        this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage('SOCIAL_UNAVAILABLE', 'Friends and presence are not configured.', true, requestId(message)));
+      } else {
+        await this.social.handle(accountId, message);
+      }
+      return;
+    }
+    if (message.type === 'FRIEND_MATCH_INVITE_SEND') {
+      if (!this.social) {
+        this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage('SOCIAL_UNAVAILABLE', 'Friend Match invitations are not configured.', true, message.requestId));
+        return;
+      }
+      try {
+        await this.social.canSendMatchInvite(accountId, message.accountId);
+        const decision = await matchmaker.createInvite(peer, {
+          type: 'INVITE_CREATE', requestId: `friend-${message.requestId}`, format: message.format, page: 'home'
+        });
+        if (!decision.ok) {
+          this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
+            errorMessage(decision.code, decision.message, true, message.requestId));
+          return;
+        }
+        const invite = matchmaker.activeInviteForCreator(accountId);
+        if (!invite) throw new Error('The Match Authority did not expose the created invite.');
+        await this.social.deliverMatchInvite({
+          ...invite, inviteToken: invite.token, senderAccountId: accountId, recipientAccountId: message.accountId
+        });
+      } catch (error) {
+        const code = error instanceof SocialPersistenceError ? error.code : 'FRIEND_MATCH_INVITE_FAILED';
+        const detail = error instanceof SocialPersistenceError ? error.message : 'The friend Match invitation could not be sent.';
+        this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage(code, detail, true, message.requestId));
+      }
+      return;
+    }
+    if (message.type === 'FRIEND_MATCH_INVITE_RESPOND') {
+      const invite = this.social?.matchInvite(message.inviteId, accountId) ?? null;
+      if (!invite || !this.social) {
+        this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage('FRIEND_MATCH_INVITE_NOT_FOUND', 'This friend Match invitation is no longer available.', true, message.requestId));
+        return;
+      }
+      const decision = message.accept
+        ? await matchmaker.acceptInvite(peer, { type: 'INVITE_ACCEPT', requestId: message.requestId, token: invite.inviteToken, page: 'home' })
+        : await matchmaker.cancelInvite(invite.senderAccountId, { type: 'INVITE_CANCEL', requestId: message.requestId, inviteId: invite.inviteId });
+      if (!decision.ok) {
+        this.options.sendToConnection(this.connections.get(accountId)?.connectionId ?? '',
+          errorMessage(decision.code, decision.message, true, message.requestId));
+        return;
+      }
+      await this.social.matchInviteResponded(invite.inviteId, message.accept);
+      await this.social.refreshAll();
+      return;
+    }
     if (message.type === 'SKRIBBLE_OPEN'
         || message.type === 'SKRIBBLE_GUESS'
         || message.type === 'SLOTS_OPEN'

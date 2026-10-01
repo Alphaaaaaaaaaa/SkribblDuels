@@ -1,6 +1,6 @@
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const GATEWAY_CONTRACT_VERSION = 14 as const;
+export const GATEWAY_CONTRACT_VERSION = 15 as const;
 export const GATEWAY_SOCKET_EVENT = 'gateway:message' as const;
 
 export const GATEWAY_SLOT_ICON_IDS = [
@@ -240,6 +240,60 @@ export interface GatewaySlotsSpinMessage {
   sessionId: string;
 }
 
+export type GatewaySocialAvailability = 'online' | 'idle' | 'offline';
+export type GatewaySocialVisibility = 'everyone' | 'friends' | 'nobody';
+export type GatewaySocialPresenceKind = 'duel' | GatewaySocialAvailability;
+
+export interface GatewaySocialLobbyPresence {
+  lobbyId: string;
+  lobbyType: 'public' | 'private';
+  languageName: string;
+  playerCount: number;
+  maxPlayers: number;
+}
+
+export interface GatewaySocialPreferences {
+  availability: GatewaySocialAvailability;
+  profileStatusVisibility: GatewaySocialVisibility;
+  lobbyStatusVisibility: GatewaySocialVisibility;
+  allowLobbyJoin: boolean;
+  receiveFriendRequests: boolean;
+  receiveMatchInvites: boolean;
+}
+
+export interface GatewaySocialSyncMessage { type: 'SOCIAL_SYNC'; requestId: string; }
+export interface GatewaySocialPreferencesSetMessage {
+  type: 'SOCIAL_PREFERENCES_SET'; requestId: string; preferences: GatewaySocialPreferences;
+}
+export interface GatewaySocialProfileStatusSetMessage {
+  type: 'SOCIAL_PROFILE_STATUS_SET'; requestId: string; challengeId: string | null; text: string;
+}
+export interface GatewaySocialPresenceSetMessage {
+  type: 'SOCIAL_PRESENCE_SET'; requestId: string; page: 'home' | 'lobby'; lobby: GatewaySocialLobbyPresence | null;
+}
+export interface GatewayFriendSearchMessage { type: 'FRIEND_SEARCH'; requestId: string; discordUsername: string; }
+export interface GatewayFriendRequestSendMessage { type: 'FRIEND_REQUEST_SEND'; requestId: string; accountId: string; }
+export interface GatewayFriendRequestRespondMessage {
+  type: 'FRIEND_REQUEST_RESPOND'; requestId: string; friendRequestId: string;
+  response: 'accept' | 'decline' | 'ignore' | 'block';
+}
+export interface GatewayFriendRequestWithdrawMessage {
+  type: 'FRIEND_REQUEST_WITHDRAW'; requestId: string; friendRequestId: string;
+}
+export interface GatewayFriendRemoveMessage { type: 'FRIEND_REMOVE'; requestId: string; accountId: string; }
+export interface GatewayFriendPinSetMessage {
+  type: 'FRIEND_PIN_SET'; requestId: string; accountId: string; pinned: boolean;
+}
+export interface GatewayFriendMessageSendMessage {
+  type: 'FRIEND_MESSAGE_SEND'; clientMessageId: string; accountId: string; message: string;
+}
+export interface GatewayFriendMatchInviteSendMessage {
+  type: 'FRIEND_MATCH_INVITE_SEND'; requestId: string; accountId: string; format: 'casual' | 'ranked';
+}
+export interface GatewayFriendMatchInviteRespondMessage {
+  type: 'FRIEND_MATCH_INVITE_RESPOND'; requestId: string; inviteId: string; accept: boolean;
+}
+
 export type GatewayClientMessage =
   | GatewayHelloMessage
   | GatewayMatchmakingJoinMessage
@@ -261,6 +315,19 @@ export type GatewayClientMessage =
   | GatewaySkribbleGuessMessage
   | GatewaySlotsOpenMessage
   | GatewaySlotsSpinMessage
+  | GatewaySocialSyncMessage
+  | GatewaySocialPreferencesSetMessage
+  | GatewaySocialProfileStatusSetMessage
+  | GatewaySocialPresenceSetMessage
+  | GatewayFriendSearchMessage
+  | GatewayFriendRequestSendMessage
+  | GatewayFriendRequestRespondMessage
+  | GatewayFriendRequestWithdrawMessage
+  | GatewayFriendRemoveMessage
+  | GatewayFriendPinSetMessage
+  | GatewayFriendMessageSendMessage
+  | GatewayFriendMatchInviteSendMessage
+  | GatewayFriendMatchInviteRespondMessage
   | GatewayPingMessage;
 
 export interface GatewayWelcomeMessage {
@@ -599,6 +666,74 @@ export interface GatewaySlotsSpinResultMessage {
   coinRevision: number;
 }
 
+export interface GatewaySocialProfile {
+  accountId: string;
+  displayName: string;
+  discordUsername: string;
+  avatarSource: 'discord' | 'skribbl';
+  avatarUrl: string | null;
+  skribblAvatar: readonly [number, number, number, number] | null;
+  specialAvatarId: string | null;
+  invisibleAvatarEntitled: boolean;
+  nameColorIndex: number;
+  statusChallengeId: string | null;
+  statusText: string;
+  presence: GatewaySocialPresenceKind;
+  lastSeenAt: number | null;
+  lobby: GatewaySocialLobbyPresence | null;
+  canJoinLobby: boolean;
+  pinned: boolean;
+}
+
+export interface GatewayFriendRequestSummary {
+  friendRequestId: string;
+  direction: 'incoming' | 'outgoing';
+  status: 'pending' | 'ignored';
+  profile: GatewaySocialProfile;
+  createdAt: number;
+}
+
+export interface GatewaySocialSnapshotMessage {
+  type: 'SOCIAL_SNAPSHOT';
+  requestId: string | null;
+  revision: number;
+  preferences: GatewaySocialPreferences;
+  statusChallengeId: string | null;
+  statusText: string;
+  friends: readonly GatewaySocialProfile[];
+  requests: readonly GatewayFriendRequestSummary[];
+}
+
+export interface GatewayFriendSearchResultMessage {
+  type: 'FRIEND_SEARCH_RESULT';
+  requestId: string;
+  profile: GatewaySocialProfile | null;
+  relationship: 'self' | 'friend' | 'incoming-request' | 'outgoing-request' | 'blocked' | 'none';
+}
+
+export type GatewaySocialEventKind =
+  | 'friend-request-received'
+  | 'friend-request-accepted'
+  | 'friend-removed'
+  | 'friend-message-received'
+  | 'friend-message-sent'
+  | 'match-invite-received'
+  | 'match-invite-declined';
+
+export interface GatewaySocialEventMessage {
+  type: 'SOCIAL_EVENT';
+  eventId: string;
+  kind: GatewaySocialEventKind;
+  profile: GatewaySocialProfile;
+  friendRequestId: string | null;
+  clientMessageId: string | null;
+  message: string | null;
+  inviteId: string | null;
+  inviteToken: string | null;
+  format: 'casual' | 'ranked' | null;
+  occurredAt: number;
+}
+
 export interface GatewayErrorMessage {
   type: 'ERROR';
   code: string;
@@ -621,6 +756,9 @@ export type GatewayServerMessage =
   | GatewaySkribbleGuessResultMessage
   | GatewaySlotsStateMessage
   | GatewaySlotsSpinResultMessage
+  | GatewaySocialSnapshotMessage
+  | GatewayFriendSearchResultMessage
+  | GatewaySocialEventMessage
   | GatewayCoinBalanceMessage
   | GatewayPongMessage
   | GatewayErrorMessage;

@@ -52,6 +52,7 @@
 | v0.66 Slots and progression stability | Complete | Contract v13, authoritative idempotent three-reel sink, embedded arcade assets and stable Daily/Practice client state |
 | v0.67 Auth and Slots rules v2 | Complete | Early PKCE callback recovery, terminal Skribble layout hardening, Contract v14 profitable effect pools and audited tier payouts |
 | v0.68 Firefox Auth and terminal UI polish | Complete | Explicit redundant-store PKCE exchange, symbol-safe profile repair, fast staged Skribble loss and dedicated Slots Help/odds layout |
+| v0.69 Friends and Social presence | Foundation complete | Contract v15 durable graph/privacy/status, live presence and Quick Messages, Friend Match invites, homepage list and configurable Profile overview |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
@@ -178,4 +179,6 @@ release is recorded in `docs/skribbl-slots-skribble-stability-v0.66.0.md`.
 The Contract v14 Auth, Skribble terminal-state and Slots-rules-v2 changes are
 recorded in `docs/auth-skribble-slots-v0.67.0.md`. The Firefox callback/profile
 repair and terminal/Slots presentation follow-up is recorded in
-`docs/firefox-auth-terminal-slots-ui-v0.68.0.md`.
+`docs/firefox-auth-terminal-slots-ui-v0.68.0.md`. The Contract v15 Social
+authority, privacy boundaries, deployment order and deliberately deferred
+decisions are recorded in `docs/friends-social-v0.69.0.md`.

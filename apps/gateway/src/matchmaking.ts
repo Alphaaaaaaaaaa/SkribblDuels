@@ -196,6 +196,13 @@ export type TelemetryDecision = ReadyDecision;
 export type ChatDecision = ReadyDecision;
 export type MatchActionDecision = ReadyDecision;
 
+export interface ActiveInviteSummary {
+  inviteId: string;
+  token: string;
+  format: DuelFormat;
+  expiresAt: number;
+}
+
 export type MatchResumeDecision = {
   status: 'not-requested' | 'resumed' | 'not-found' | 'mismatch';
   matchId: string | null;
@@ -383,6 +390,20 @@ export class GatewayMatchmaker {
       this.reportPersistenceError(error);
       return { ok: false, code: 'INVITE_PERSISTENCE_UNAVAILABLE', message: 'The durable invite service is temporarily unavailable.' };
     }
+  }
+
+  public activeInviteForCreator(accountId: string): ActiveInviteSummary | null {
+    const inviteId = this.inviteByCreator.get(accountId);
+    const invite = inviteId ? this.invites.get(inviteId) : null;
+    return invite?.state === 'waiting' && invite.token
+      ? { inviteId: invite.inviteId, token: invite.token, format: invite.format, expiresAt: invite.expiresAt }
+      : null;
+  }
+
+  public hasActiveMatch(accountId: string): boolean {
+    const matchId = this.accountMatches.get(accountId);
+    const match = matchId ? this.matches.get(matchId) : null;
+    return Boolean(match && match.phase !== 'cancelled' && match.phase !== 'finished');
   }
 
   public async acceptInvite(

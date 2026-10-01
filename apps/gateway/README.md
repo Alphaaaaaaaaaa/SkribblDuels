@@ -1,6 +1,6 @@
 # Skribbl Duels Gateway
 
-The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v14 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v14 also owns the append-only Skribbl Coin balance, Daily Skribble validation/reward path and rules-v2 Skribbl Slots outcomes.
+The Gateway verifies the browser's Supabase access token, loads the matching read-only `public.profiles` row and invisible-avatar entitlement, and returns a Contract v15 `WELCOME`. It owns homepage matchmaking and single-use invite links, reconnect resume, participant profile/avatar/color disclosure, private Duel chat, the 30-second ready check, the 15-second two-option challenge draft, the server-random parity field, the synchronized 10-second match start, authoritative Challenge claims, disconnect wins, immediate Forfeit, mutual Draw and Rematch readiness. Contract v15 also owns the append-only Skribbl Coin balance, Daily Skribble validation/reward path, rules-v2 Skribbl Slots outcomes and the privacy-filtered Friends/Social graph.
 
 ## Local server
 
@@ -11,21 +11,23 @@ The Gateway verifies the browser's Supabase access token, loads the matching rea
    `202609160001_create_skribbl_coin_ledger.sql`, and
    `202609170001_add_skribbl_slots_and_harden_functions.sql`, and
    `202609210001_upgrade_skribbl_slots_rules_v2.sql`, and
-   `202609220001_harden_discord_profile_sync.sql` in that order.
+   `202609220001_harden_discord_profile_sync.sql`, and
+   `202609300001_add_social_graph.sql` in that order.
 2. Copy `.env.example` to `.env` and set the server-only
    `SUPABASE_SERVICE_ROLE_KEY`. Add `REDIS_URL` and `OBSERVABILITY_TOKEN` for
    the production-equivalent multi-instance path. Set a stable, random
    `SKRIBBLE_DAILY_SECRET` with at least 32 characters; it is server-only.
 3. Run `npm run dev:gateway` from the repository root.
 4. Open `http://localhost:3000/healthz` for liveness and `/readyz` for
-   Supabase, progression-ledger, Redis and Match Authority readiness.
+   Supabase, progression-ledger, Social persistence, Redis and Match Authority
+   readiness.
 
 Production requires private Redis. Socket.IO uses its Redis Streams adapter for
 cross-replica account/connection rooms, while a verified 30-second lease allows
 only one replica to restore and mutate the live Matchmaker. Followers forward
 authenticated commands and wait for the leader acknowledgement. Railway has no
 sticky sessions, so the userscript uses WebSocket-only transport. A leader
-change closes cluster sockets once and reuses the durable Contract v14 resume
+change closes cluster sockets once and reuses the durable Contract v15 resume
 path; it never falls back to an independent in-process authority.
 
 `/metrics` and `/diagnostics` require
@@ -80,6 +82,14 @@ spam score adds three below 100 ms, one below 900 ms and removes four after two
 idle seconds; submissions are blocked before the score can exceed Skribbl's
 kick boundary. Client message IDs make resends idempotent; only both match
 participants receive live or replayed messages.
+
+Friends and Social state are Gateway-owned under Contract v15. Durable tables
+store privacy, profile status, requests, canonical friendships, directional
+blocks and per-owner pins. The Gateway filters status and lobby data before it
+leaves the server; manually Offline accounts never expose an active Duel or
+lobby. Quick Messages and Social notifications are live-only and are not
+written to Supabase. Friend Match invitations reuse the hash-only durable
+invite authority rather than introducing a second Match path.
 
 During a running match, each real participant sends contiguous normalized
 telemetry batches. The Gateway acknowledges the last accepted sequence and

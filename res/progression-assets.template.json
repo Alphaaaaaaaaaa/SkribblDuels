@@ -39,5 +39,22 @@
   "slotPeach": "res/skribbl-slots/slot-icons/peach.gif",
   "slotRibbon": "res/skribbl-slots/slot-icons/ribbon.gif",
   "slotSkull": "res/skribbl-slots/slot-icons/skull.gif",
-  "slotPoop": "res/skribbl-slots/slot-icons/poop.gif"
+  "slotPoop": "res/skribbl-slots/slot-icons/poop.gif",
+  "friendBlock": "res/friend-system/block.gif",
+  "friendCheckmark": "res/friend-system/checkmark.gif",
+  "friendCrossmark": "res/friend-system/crossmark.gif",
+  "friendList": "res/friend-system/friends-list.gif",
+  "friendIdle": "res/friend-system/idle.gif",
+  "friendIgnore": "res/friend-system/ignore.gif",
+  "friendJoin": "res/friend-system/join.gif",
+  "friendLocked": "res/friend-system/locked.gif",
+  "friendMessage": "res/friend-system/message.gif",
+  "friendOffline": "res/friend-system/offline.gif",
+  "friendOnline": "res/friend-system/online.gif",
+  "friendPin": "res/friend-system/pin.gif",
+  "friendPing": "res/friend-system/ping.gif",
+  "friendDuelsLogo": "res/friend-system/skribbl-duels-logo.gif",
+  "friendSlimy": "res/friend-system/slimy.gif",
+  "friendTrash": "res/friend-system/trash.gif",
+  "friendWithdraw": "res/friend-system/withdraw.gif"
 }

@@ -1025,6 +1025,7 @@ export class LocalPlayerStatsService {
         break;
       }
       case 'TYPO_LOBBY_LEFT':
+      case 'LOBBY_LEFT':
         this.setLobbyActive(false);
         this.activeDrawingRound = null;
         mutated = true;

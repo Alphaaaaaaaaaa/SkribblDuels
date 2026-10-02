@@ -131,6 +131,10 @@ export interface TelemetryPayloadMap {
   TYPO_LOBBY_LEFT: {
     method: 'typo-dom-event';
   };
+  LOBBY_LEFT: {
+    method: 'duels-socket';
+    reason: string;
+  };
 
   TYPO_SKD_FILE_LOADED: {
     fileName: string;
@@ -292,6 +296,7 @@ export const TELEMETRY_EVENT_CATEGORIES = {
   TYPO_DROP_SPAWNED: 'system',
   TYPO_DROP_MISSED: 'system',
   TYPO_LOBBY_LEFT: 'lobby',
+  LOBBY_LEFT: 'lobby',
   TYPO_SKD_FILE_LOADED: 'system',
   TYPO_SKD_PASTED: 'drawing',
   TYPO_CHALLENGE_STATE_CHANGED: 'system',

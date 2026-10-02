@@ -52,6 +52,7 @@ export class TypoRelayBridge {
   private started = false;
   private retryTimer: number | null = null;
   private retryAttempt = 0;
+  private readonly portCleanups: Array<() => void> = [];
 
   public readonly incoming$: Observable<IncomingRelayEnvelope> =
     this.incomingSubject.asObservable();
@@ -76,6 +77,11 @@ export class TypoRelayBridge {
     if (!this.started) return;
     this.started = false;
     window.removeEventListener('message', this.handleWindowMessage);
+    for (const cleanup of this.portCleanups.splice(0)) cleanup();
+    this.incomingState.ports = new WeakSet<MessagePort>();
+    this.outgoingState.ports = new WeakSet<MessagePort>();
+    this.incomingStatusSubject.next({ ...this.incomingStatusSubject.value, connected: false });
+    this.outgoingStatusSubject.next({ ...this.outgoingStatusSubject.value, connected: false });
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
     this.retryTimer = null;
     this.retryAttempt = 0;
@@ -130,8 +136,8 @@ export class TypoRelayBridge {
 
     const generation = this.incomingState.generation;
 
-    port.addEventListener('message', (event: MessageEvent<unknown>) => {
-      if (!this.started) return;
+    const handleMessage = (event: MessageEvent<unknown>): void => {
+      if (!this.started || generation !== this.incomingState.generation) return;
       this.incomingState.messageCount += 1;
       this.incomingStatusSubject.next({
         relayName: 'skribblMessagePort',
@@ -147,7 +153,9 @@ export class TypoRelayBridge {
         data: event.data,
         portGeneration: generation
       });
-    });
+    };
+    port.addEventListener('message', handleMessage);
+    this.portCleanups.push(() => port.removeEventListener('message', handleMessage));
 
     port.start();
 
@@ -168,8 +176,8 @@ export class TypoRelayBridge {
 
     const generation = this.outgoingState.generation;
 
-    port.addEventListener('message', (message: MessageEvent<unknown>) => {
-      if (!this.started) return;
+    const handleMessage = (message: MessageEvent<unknown>): void => {
+      if (!this.started || generation !== this.outgoingState.generation) return;
       this.outgoingState.messageCount += 1;
       this.outgoingStatusSubject.next({
         relayName: 'skribblEmitPort',
@@ -192,7 +200,9 @@ export class TypoRelayBridge {
         raw,
         portGeneration: generation
       });
-    });
+    };
+    port.addEventListener('message', handleMessage);
+    this.portCleanups.push(() => port.removeEventListener('message', handleMessage));
 
     port.start();
 

@@ -363,11 +363,11 @@
       },
       {
         "source": "stat/best-private-score",
-        "token": ":stat/best-private-score:"
+        "token": ":closed:"
       },
       {
         "source": "stat/best-public-score",
-        "token": ":stat/best-public-score:"
+        "token": ":open:"
       },
       {
         "source": "challenge/spamguessing",

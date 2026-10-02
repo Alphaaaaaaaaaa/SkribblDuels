@@ -128,7 +128,8 @@ export function validateTelemetryFixture(
 
   const metadata = candidate.metadata as TelemetryFixture['metadata'] | undefined;
   if (metadata) {
-    if (metadata.contractVersion !== TELEMETRY_CONTRACT_VERSION) {
+    // v1.2 adds LOBBY_LEFT; existing v1.1 replays remain structurally compatible.
+    if (metadata.contractVersion !== TELEMETRY_CONTRACT_VERSION && metadata.contractVersion !== '1.1.0') {
       issues.push(
         `Fixture contract ${String(metadata.contractVersion)} does not match ${TELEMETRY_CONTRACT_VERSION}.`
       );

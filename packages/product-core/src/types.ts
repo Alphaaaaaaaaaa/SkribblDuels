@@ -4,7 +4,7 @@ import type {
 } from '@skribbl-duels/challenge-engine';
 import type { TelemetryEvent } from '@skribbl-duels/telemetry-contracts';
 
-export const PRODUCT_CORE_VERSION = '0.6.4' as const;
+export const PRODUCT_CORE_VERSION = '0.6.5' as const;
 export const MATCH_STATE_CONTRACT_VERSION = 3 as const;
 export const UI_SETTINGS_VERSION = 7 as const;
 
@@ -237,6 +237,7 @@ export interface ProductUiSettings {
   matchChatPings: boolean;
   wpmChatDisplay: WpmChatDisplayMode;
   guessTimeChatDisplay: GuessTimeChatDisplayMode;
+  telemetryPortMode: 'auto' | 'own' | 'typo';
 }
 
 export interface ChallengeManifestSource {

@@ -1,5 +1,10 @@
 # Skribbl Duels Development Roadmap
 
+The current compact feature/requirements/difficulty/concept table is
+[roadmap-v0.72.0.md](roadmap-v0.72.0.md). The sequence below preserves the
+historical implementation record; its old Typo-only gate is superseded by
+v0.72.0's independent telemetry and per-feature capability checks.
+
 ## Completed foundation
 
 | Phase | Status | Result |
@@ -54,6 +59,9 @@
 | v0.68 Firefox Auth and terminal UI polish | Complete | Explicit redundant-store PKCE exchange, symbol-safe profile repair, fast staged Skribble loss and dedicated Slots Help/odds layout |
 | v0.69 Friends and Social presence | Foundation complete | Contract v15 durable graph/privacy/status, live presence and Quick Messages, Friend Match invites, homepage list and configurable Profile overview |
 | v0.69.1 Social reliability hotfix | Complete | Qualified atomic response RPC, Contract v16 readiness probe, diagnostics, immediate search rendering, optimistic presence and directional Unblock |
+| v0.70 Friends chat and profiles | Complete | Contract v17, rolling 24-hour history/offline delivery, profile cards, immediate messages, friend sorting and presence fixes |
+| v0.71 Social chat polish | Complete | Contract v18, join permissions, actionable invitations, stable grouped sends, curated emojis, keyboard picker and safe chat links |
+| v0.72 Independent telemetry | Implemented; live matrix pending | Contract v19, passive own port with Typo coexistence, source arbitration, feature gates, Match emojis and viewport tooltips |
 | Ate and left no crumbs live certification | Ranked-enabled | Definition v3 is admitted to Ranked after the confirmed live two-client run |
 
 ## Active development sequence
@@ -160,6 +168,8 @@ The complete approved UI direction is recorded in
 The current prioritized implementation sequence, confirmed Bingo MVP and all
 remaining Challenge candidates are consolidated in
 `docs/home-authority-ui-sfx-profile-colors-v0.57.0.md`.
+The updated compact roadmap and retained conceptualization are in
+`docs/roadmap-v0.72.0.md`.
 The v0.58 local-stat schema, privacy boundary and expanded statistics backlog
 are recorded in `docs/local-wpm-word-stats-v0.58.0.md`.
 The v0.59 Profile, SFX/autoplay diagnosis, extension assessment and new

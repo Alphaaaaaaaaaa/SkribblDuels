@@ -41,7 +41,7 @@ export function createHomepageMatchmakingAuthority(
 }
 
 function confirmsHomepage(event: TelemetryEvent): boolean {
-  if (event.type === 'TYPO_LOBBY_LEFT') return true;
+  if (event.type === 'TYPO_LOBBY_LEFT' || event.type === 'LOBBY_LEFT') return true;
   if (SAFE_HOME_EVENT_TYPES.has(event.type)) return true;
   if (event.type !== 'PLAYER_LEFT' || event.actor?.isSelf !== true) return false;
   return typeof event.payload.reasonName === 'string'

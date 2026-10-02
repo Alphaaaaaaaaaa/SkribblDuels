@@ -7,7 +7,7 @@ import { socialPresenceReport } from '../apps/telemetry-inspector/src/socialLobb
 import { LEGACY_SOCIAL_EMOJI_DEFINITIONS } from '../apps/telemetry-inspector/src/generatedSocialEmojiAssets';
 import { SOCIAL_EMOJIS } from '../apps/telemetry-inspector/src/socialEmojis';
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 18);
+assert.equal(GATEWAY_CONTRACT_VERSION, 19);
 const stored: GatewayFriendChatMessage = { messageId: 'message-1', clientMessageId: 'friend-message-1', sequence: 1, senderId: 'self', recipientId: 'friend', message: 'Hello :slot/heart:', occurredAt: Date.now(), readAt: null };
 const newCommands: GatewayClientMessage[] = [
   { type: 'SOCIAL_PROFILE_STATS_SET', requestId: 'social-profile-stats-1', stats: [{ id: 'duel-wins', value: '3' }, { id: 'best-public-score', value: '3,400' }] },

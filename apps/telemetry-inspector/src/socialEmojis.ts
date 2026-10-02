@@ -29,15 +29,22 @@ export function isEmojiOnlyMessage(text: string): boolean {
 
 /** Only registered tokens create images; all remaining user text stays plain text. */
 export function appendSocialMessage(target: HTMLElement, text: string): void {
-  let start = 0;
   target.classList.toggle('scd-social-emoji-only', isEmojiOnlyMessage(text));
-  for (const match of text.matchAll(TOKEN_EXPRESSION)) {
-    const item = byToken.get(match[0]);
-    if (!item?.source) continue;
-    appendChatText(target, text.slice(start, match.index));
-    const image = document.createElement('img');
-    image.className = 'scd-social-emoji'; image.src = item.source; image.alt = item.token; image.title = item.label;
-    target.appendChild(image); start = match.index! + match[0].length;
+  const fragment = document.createDocumentFragment();
+  appendChatText(fragment, text);
+  // URLs are parsed first: emoji-like path/query text must stay in its anchor.
+  for (const node of Array.from(fragment.childNodes)) {
+    if (node.nodeType !== 3) { target.appendChild(node); continue; }
+    const segment = node.textContent ?? '';
+    let start = 0;
+    for (const match of segment.matchAll(TOKEN_EXPRESSION)) {
+      const item = byToken.get(match[0]);
+      if (!item?.source) continue;
+      target.appendChild(document.createTextNode(segment.slice(start, match.index)));
+      const image = document.createElement('img');
+      image.className = 'scd-social-emoji'; image.src = item.source; image.alt = '';
+      target.appendChild(image); start = match.index! + match[0].length;
+    }
+    target.appendChild(document.createTextNode(segment.slice(start)));
   }
-  appendChatText(target, text.slice(start));
 }

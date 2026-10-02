@@ -1,0 +1,30 @@
+{
+  "snapshotSha256": "75bbaa0ea6d17b36d968275487e4c3c0408c7b321116dd8f5c2039d51563e394",
+  "lines": 2540,
+  "networkUsed": false,
+  "emitWrapper": {
+    "inputCommands": 2,
+    "wireDrawBatchSizes": [
+      2,
+      1,
+      2
+    ],
+    "logicalCommandAppearances": 4,
+    "inputUnchanged": true,
+    "undoOffsets": [
+      8
+    ],
+    "chainReturnPreserved": false,
+    "noPayloadError": "TypeError"
+  },
+  "colors": {
+    "paletteIndex25": "ok",
+    "paletteIndex26": "TypeError",
+    "customBlack10000": "TypeError",
+    "customColor10001": "ok"
+  },
+  "socketEmitListenersAfterThreeConnections": 3,
+  "deliveriesPerSingleEvent": 3,
+  "pressureAttributeRunsCode": true,
+  "chatSubstring100SplitsSurrogatePair": true
+}

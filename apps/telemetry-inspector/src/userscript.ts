@@ -28,7 +28,7 @@ import {
   TypoChallengeTelemetryAdapter,
   TelemetryStore,
   LocalPlayerStatsService,
-  TypoRelayBridge,
+  SkribblTelemetryBridge,
   decodeRawRecord,
   filterDecodedRecords,
   filterRawRecords,
@@ -86,8 +86,9 @@ import {
 import { SupabaseDiscordAuthClient } from '@skribbl-duels/auth-client';
 import { DebugPanel } from './debugPanel';
 import { DuelProductFoundation } from './duelProductUi';
+import { LocalStorageProductUiSettingsStore } from '@skribbl-duels/product-core';
 
-const BUILD_VERSION = '0.71.0';
+const BUILD_VERSION = '0.72.0';
 
 interface RuntimePublicApi {
   readonly runtimeId: string;
@@ -285,7 +286,7 @@ async function bootstrap(
   runtime: RuntimeController,
   authClient: SupabaseDiscordAuthClient
 ): Promise<void> {
-  const bridge = new TypoRelayBridge();
+  const bridge = new SkribblTelemetryBridge(new LocalStorageProductUiSettingsStore().get().telemetryPortMode);
   const store = new IndexedDbRawPacketStore();
   // Typo transfers both relay MessagePorts only once during page startup. The
   // listener must therefore be active before any asynchronous storage work.
@@ -303,6 +304,11 @@ async function bootstrap(
   const decoder = new ProtocolDecoder(recorder.records$);
   const lobbyStore = new LobbyStateStore(decoder.decoded$);
   const telemetryStore = new TelemetryStore(decoder.decoded$, lobbyStore.changes$, lobbyStore);
+  const lobbyLeftSubscription = bridge.lobbyLeft$.subscribe(({ reason }) => {
+    telemetryStore.emitDomEvent('LOBBY_LEFT', { method: 'duels-socket', reason }, { confidence: 'confirmed' });
+    lobbyStore.clearLobby();
+  });
+  runtime.addCleanup(() => lobbyLeftSubscription.unsubscribe());
   const avatarTelemetryAdapter = new AvatarTelemetryAdapter(telemetryStore);
   const strokeTelemetryAdapter = new StrokeTelemetryAdapter(telemetryStore, lobbyStore);
   const canvasSnapshotTelemetryAdapter = new CanvasSnapshotTelemetryAdapter(telemetryStore);
@@ -310,7 +316,8 @@ async function bootstrap(
   const homeInteractionTelemetryAdapter = new HomeInteractionTelemetryAdapter(telemetryStore);
   const textInputTelemetryAdapter = new TextInputTelemetryAdapter(telemetryStore, lobbyStore);
   const typoDropTelemetryAdapter = new TypoDropTelemetryAdapter(telemetryStore);
-  const typoLobbyLeftTelemetryAdapter = new TypoLobbyLeftTelemetryAdapter(telemetryStore);
+  const typoLobbyLeftTelemetryAdapter = new TypoLobbyLeftTelemetryAdapter(telemetryStore,
+    () => bridge.getState().activeSource !== 'own');
   const typoAutodrawTelemetryAdapter = new TypoAutodrawTelemetryAdapter(telemetryStore);
   const typoChallengeTelemetryAdapter = new TypoChallengeTelemetryAdapter(telemetryStore);
   const localStats = new LocalPlayerStatsService({
@@ -731,6 +738,11 @@ async function bootstrap(
   window.skribblDuelsLocalStats = localStatsApi;
 
   const productFoundation = new DuelProductFoundation({
+    telemetryPorts: {
+      getState: () => bridge.getState(),
+      setMode: mode => bridge.setMode(mode),
+      subscribe(listener) { const subscription = bridge.state$.subscribe(listener); return () => subscription.unsubscribe(); }
+    },
     runtimeId: runtime.runtimeId,
     authClient,
     definitionsVersion: CHALLENGE_DEFINITIONS_VERSION,

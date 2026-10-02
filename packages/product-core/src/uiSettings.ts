@@ -36,7 +36,8 @@ export const DEFAULT_PRODUCT_UI_SETTINGS: ProductUiSettings = {
   sfxVolume: 82,
   matchChatPings: true,
   wpmChatDisplay: 'disabled',
-  guessTimeChatDisplay: 'disabled'
+  guessTimeChatDisplay: 'disabled',
+  telemetryPortMode: 'auto'
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -73,6 +74,8 @@ export function normalizeProductUiSettings(value: unknown): ProductUiSettings {
 
   return {
     version: UI_SETTINGS_VERSION,
+    telemetryPortMode: input.telemetryPortMode === 'own' || input.telemetryPortMode === 'typo'
+      ? input.telemetryPortMode : 'auto',
     board: {
       visible: typeof boardInput.visible === 'boolean'
         ? boardInput.visible

@@ -7,7 +7,7 @@ export class TypoLobbyLeftTelemetryAdapter {
   private started = false;
   private lastEmissionAt = 0;
 
-  public constructor(private readonly telemetryStore: TelemetryStore) {}
+  public constructor(private readonly telemetryStore: TelemetryStore, private readonly shouldEmit = () => true) {}
 
   public start(): void {
     if (this.started || typeof document === 'undefined') return;
@@ -22,6 +22,7 @@ export class TypoLobbyLeftTelemetryAdapter {
   }
 
   private readonly handleLobbyLeft = (): void => {
+    if (!this.shouldEmit()) return;
     const now = Date.now();
     if (now - this.lastEmissionAt < 250) return;
     this.lastEmissionAt = now;

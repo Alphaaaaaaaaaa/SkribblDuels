@@ -14,7 +14,9 @@ import { EMBEDDED_PROGRESSION_ASSETS, type ProgressionAssetId } from './generate
 import { appendColoredDuelName } from './nameColors';
 import { compareSocialFriends } from '@skribbl-duels/gateway-contracts';
 import { socialPresenceReport, type SocialLobbySnapshot } from './socialLobbyPresence';
-import { SOCIAL_EMOJIS, SOCIAL_EMOJI_GROUPS, appendSocialMessage } from './socialEmojis';
+import { appendSocialMessage } from './socialEmojis';
+import { createChatEmojiPicker } from './chatEmojiPicker';
+import { isTypoRuntimeDetected } from './typoRuntimeDetection';
 import { PROFILE_STAT_DEFINITION_BY_ID, DEFAULT_PINNED_PROFILE_STAT_IDS, isProfileStatId } from './profileStats';
 import { EMBEDDED_STAT_ICON_ASSETS, STAT_ICON_ASSET_PATHS } from './generatedStatIconAssets';
 
@@ -383,7 +385,8 @@ export class SocialFeatureUi {
       for (const item of values) {
         const option = element('option') as HTMLOptionElement;
         option.value = item;
-        option.textContent = item.slice(0, 1).toUpperCase() + item.slice(1);
+        option.textContent = labelText === 'Allow friends to join your lobby' && item === 'private'
+          ? 'Always' : item.slice(0, 1).toUpperCase() + item.slice(1);
         option.selected = item === value;
         input.appendChild(option);
       }
@@ -713,32 +716,15 @@ export class SocialFeatureUi {
   };
 
   private createEmojiPicker(input: HTMLInputElement): HTMLElement {
-    const picker = element('div', 'scd-social-emoji-picker'); picker.hidden = true;
-    picker.setAttribute('aria-label', 'Skribbl emojis');
-    for (const group of SOCIAL_EMOJI_GROUPS) {
-      const section = element('section', 'scd-social-emoji-group');
-      section.appendChild(element('strong', 'scd-social-emoji-group-title', group));
-      const grid = element('div', 'scd-social-emoji-grid');
-      for (const emoji of SOCIAL_EMOJIS.filter(item => item.group === group)) {
-        if (!emoji.source) continue;
-        const button = element('button', 'scd-icon-button scd-social-emoji-choice'); button.type = 'button';
-        const image = element('img'); image.src = emoji.source; image.alt = emoji.token; button.appendChild(image);
-        button.dataset.emojiToken = emoji.token; button.setAttribute('aria-label', emoji.token);
-        button.addEventListener('mousedown', event => event.preventDefault());
-        button.addEventListener('click', event => {
-          const start = input.selectionStart ?? input.value.length; const end = input.selectionEnd ?? start;
-          const value = input.value.slice(0, start) + emoji.token + input.value.slice(end);
-          if (Array.from(value).length > 300) { this.options.showToast('Message too long', 'A message can contain up to 300 characters.'); return; }
-          input.value = value; if (this.activeConversationId) this.conversationDrafts.set(this.activeConversationId, value);
-          if (!event.shiftKey) { picker.hidden = true; this.detailModal?.querySelector('.scd-social-emoji-toggle')?.setAttribute('aria-expanded', 'false'); }
-          input.focus({ preventScroll: true }); input.setSelectionRange(start + emoji.token.length, start + emoji.token.length);
-          this.updateConversationCounter(input);
-        });
-        this.options.registerTooltip(button, emoji.token, 'Y'); grid.appendChild(button);
-      }
-      section.appendChild(grid); picker.appendChild(section);
-    }
-    return picker;
+    return createChatEmojiPicker({ input,
+      onInput: () => {
+        if (this.activeConversationId) this.conversationDrafts.set(this.activeConversationId, input.value);
+        this.updateConversationCounter(input);
+      },
+      onClose: () => this.detailModal?.querySelector('.scd-social-emoji-toggle')?.setAttribute('aria-expanded', 'false'),
+      onTooLong: () => this.options.showToast('Message too long', 'A message can contain up to 300 characters.'),
+      registerTooltip: (target, title, lock) => this.options.registerTooltip(target, title, lock)
+    });
   }
 
   private updateConversationCounter(input: HTMLInputElement): void {
@@ -922,7 +908,7 @@ export class SocialFeatureUi {
   private activityLabel(profile: GatewaySocialProfile): string {
     if (profile.presence === 'duel') return 'Active Duel';
     if (profile.presence === 'offline') return 'Offline';
-    if (profile.lobby) return `${profile.lobby.languageName} ${profile.lobby.lobbyType === 'public' ? 'Public' : 'Private'} ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}`;
+    if (profile.lobby) return `${profile.lobby.languageName} · ${profile.lobby.lobbyType === 'public' ? 'Public' : 'Private'} · ${profile.lobby.playerCount}/${profile.lobby.maxPlayers}`;
     return profile.activity === 'lobby' ? 'Playing Skribbl' : profile.activity === 'home' ? 'Viewing Homepage' : presenceLabel(profile);
   }
 
@@ -1097,7 +1083,12 @@ export class SocialFeatureUi {
 
   private joinLobby(friend: GatewaySocialProfile): void {
     if (!friend.lobby?.lobbyId || !friend.canJoinLobby) { this.showLocked(friend); return; }
-    document.dispatchEvent(new CustomEvent('joinLobby', { detail: friend.lobby.lobbyId }));
+    if (isTypoRuntimeDetected(document.body?.dataset, document.body?.getAttribute('typo-skribbl-loaded'))) {
+      document.dispatchEvent(new CustomEvent('joinLobby', { detail: friend.lobby.lobbyId }));
+    } else {
+      // Vanilla Skribbl reads its invite ID from the URL on a normal page load.
+      window.location.assign(`${window.location.origin}/?${encodeURIComponent(friend.lobby.lobbyId)}`);
+    }
     this.options.showToast('Joining friend', `Opening ${friend.displayName}'s ${friend.lobby.languageName} lobby…`);
   }
 
@@ -1210,6 +1201,8 @@ export class SocialFeatureUi {
 .scd-home-friends{position:fixed;z-index:2147483639;width:min(370px,calc(100vw - 24px));border-radius:9px;background:var(--COLOR_PANEL_BG);color:var(--COLOR_PANEL_TEXT,#fff);filter:drop-shadow(0 8px 16px rgba(0,0,0,.28));overflow:hidden;pointer-events:auto}.scd-home-friends.bottom-left{left:12px;bottom:12px}.scd-home-friends.bottom-right{right:12px;bottom:12px}.scd-home-friends.top-left{left:12px;top:12px}.scd-home-friends.top-right{right:12px;top:12px}.scd-home-friends-header{width:100%;min-height:40px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;padding:5px;background:var(--SCD_ACCENT);color:inherit;font:inherit;cursor:pointer}.scd-home-friends-header:hover{background:var(--SCD_ACCENT_HOVER)}.scd-home-friends-header .scd-icon{width:30px;height:30px}.scd-home-friends-list{max-height:290px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}.scd-home-friend{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px;padding:7px}.scd-home-friend:nth-child(odd){background:var(--COLOR_PANEL_LO)}.scd-home-friend:nth-child(even){background:var(--COLOR_PANEL_HI)}.scd-home-friend .scd-social-avatar-wrap,.scd-home-friend .scd-social-avatar{width:38px!important;height:38px!important}.scd-home-friend .scd-social-status-icon{width:18px;height:18px}.scd-home-friend .scd-social-icon-button{width:30px;height:30px}.scd-home-friend .scd-social-icon-button .scd-icon{width:27px;height:27px}.scd-home-friends-empty{padding:12px;text-align:center}
 .scd-social-locked-overlay{position:fixed;inset:0;width:100vw;height:100dvh;isolation:isolate;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.55);color:#fff;pointer-events:none;animation:scd-social-lock-glow 1.5s ease both}.scd-social-locked-overlay::before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse 100px 100px at 50% calc(50% - 14px),rgba(255,255,255,.24),transparent 100%)}.scd-social-locked-overlay .scd-icon{width:120px;height:120px;filter:none}.scd-social-locked-overlay .scd-icon-image{filter:none}@keyframes scd-social-lock-glow{0%{opacity:0}18%,72%{opacity:1}100%{opacity:0}}
 .scd-social-avatar-wrap{border:0;padding:0;background:transparent;color:inherit;cursor:pointer;overflow:visible}.scd-social-avatar-wrap>.scd-social-avatar{pointer-events:none}
+.scd-home-friend .scd-social-avatar-wrap{transition:transform .16s ease;transform-origin:center}.scd-home-friend .scd-social-avatar-wrap:hover,.scd-home-friend .scd-social-avatar-wrap:focus-visible{transform:scale(1.12)}
+@media(prefers-reduced-motion:reduce){.scd-home-friend .scd-social-avatar-wrap{transition:none}}
 .scd-social-row{position:relative;padding-right:24px}.scd-home-friend{position:relative}.scd-social-list{padding:8px 5px 2px}.scd-home-friends-list{padding:8px 5px 2px}.scd-home-friend{border-radius:7px;margin-bottom:6px}
 .scd-social-pin{position:absolute!important;right:-5px;top:-7px;width:22px!important;height:22px!important;padding:0!important;z-index:3;opacity:.6;background:transparent!important;transition:opacity .18s ease,transform .18s ease;filter:drop-shadow(2px 2px 0 rgba(0,0,0,.35))}.scd-social-pin.pinned{opacity:1}.scd-social-pin:hover{transform:translateY(-1px)}.scd-social-pin .scd-icon{width:22px!important;height:22px!important}
 .scd-social-detail-header .scd-modal-title{min-width:0}.scd-social-detail-header .scd-social-identity{width:100%}.scd-social-detail-header .scd-social-status-text{max-width:360px}

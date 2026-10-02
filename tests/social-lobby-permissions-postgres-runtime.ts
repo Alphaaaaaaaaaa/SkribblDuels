@@ -63,5 +63,5 @@ try {
   }
   await db.exec('set role service_role');
   assert.equal((await db.query<{ version: number }>('select public.gateway_social_contract_version() as version')).rows[0]!.version, 18);
-  console.log('v0.71.0: real PostgreSQL migration, opt-out preservation, private opt-in, revision, role permissions and Contract 18 health check passed.');
+  console.log('v0.72.0: real PostgreSQL migration, opt-out preservation, private opt-in, revision, role permissions and Contract 18 health check passed.');
 } finally { await db.close(); }

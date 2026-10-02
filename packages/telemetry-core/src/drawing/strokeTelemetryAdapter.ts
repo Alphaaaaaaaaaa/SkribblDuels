@@ -127,6 +127,7 @@ export class StrokeTelemetryAdapter {
     if (event.type === 'ROUND_ENDED' ||
         event.type === 'GAME_ENDED' ||
         event.type === 'LOBBY_CHANGED' ||
+        event.type === 'LOBBY_LEFT' ||
         event.type === 'LOBBY_HYDRATED') {
       this.finishActiveStroke(event.occurredAt, event.monotonicMs);
       this.activeRoundSessionId = null;

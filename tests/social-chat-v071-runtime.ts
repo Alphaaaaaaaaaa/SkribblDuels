@@ -4,7 +4,7 @@ import { SocketIoGatewayClient, type GatewayConnectionSnapshot } from '@skribbl-
 import { isGatewayClientMessage, isGatewayServerMessage, type GatewayFriendChatMessage, type GatewaySocialEventMessage, type GatewaySocialPreferences, type GatewaySocialProfile } from '@skribbl-duels/gateway-contracts';
 import { SocialFeatureUi } from '../apps/telemetry-inspector/src/socialUi';
 
-const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: 'https://skribbl.io', pretendToBeVisual: true });
+const dom = new JSDOM('<!doctype html><html><head></head><body data-typo_loaded="true"></body></html>', { url: 'https://skribbl.io', pretendToBeVisual: true });
 const window = dom.window; const document = window.document;
 for (const key of ['window', 'document', 'localStorage', 'HTMLElement', 'HTMLInputElement', 'HTMLButtonElement', 'CustomEvent', 'KeyboardEvent', 'Event']) Object.defineProperty(globalThis, key, {
   configurable: true, value: key === 'window' ? window : (window as unknown as Record<string, unknown>)[key]
@@ -71,7 +71,7 @@ try {
   assert.equal(document.querySelector('.scd-home-friends .scd-social-pin'), null);
   const settings = document.createElement('div'); ui.renderSettings(settings); document.body.appendChild(settings);
   const permission = [...settings.querySelectorAll('select')].find(select => select.parentElement?.textContent?.startsWith('Allow friends to join your lobby'))!;
-  assert.deepEqual([...permission.options].map(option => option.text), ['Public', 'Private', 'None']);
+  assert.deepEqual([...permission.options].map(option => option.text), ['Public', 'Always', 'None']);
   for (const mode of ['private', 'none', 'public']) { permission.value = mode; permission.dispatchEvent(new window.Event('change')); }
   assert.deepEqual(preferenceChanges.map(item => item.lobbyJoinMode), ['private', 'none', 'public']);
   for (const mode of ['public', 'private', 'none']) assert.equal(isGatewayClientMessage({ type: 'SOCIAL_PREFERENCES_SET', requestId: 'social-test', preferences: { ...state.social!.preferences, lobbyJoinMode: mode } }), true);
@@ -157,5 +157,5 @@ try {
   const source = find('#skribbl-duels-social-styles').textContent!;
   assert.doesNotMatch(source.match(/@keyframes scd-social-lock-glow\{.*?\}\}/)![0], /transform|scale/);
   assert.ok(source.includes('bottom:calc(100% + 10px)')); assert.ok(source.includes('overflow-x:hidden'));
-  console.log('v0.71.0: stable rapid-send ordering, grouping, Ctrl+E/Shift, Unicode counter, live actionable invites, private joining and full-screen lock overlay passed.');
+  console.log('v0.72.0: stable rapid-send ordering, grouping, Ctrl+E/Shift, Unicode counter, live actionable invites, private joining and full-screen lock overlay passed.');
 } finally { ui.stop(); Date.now = realNow; dom.window.close(); }

@@ -138,8 +138,8 @@ export class RawPacketRecorder {
         ? redactSensitiveRawValue(socketEvent, envelope.raw)
         : envelope.data,
 
-      occurredAt: timestamp.occurredAt,
-      monotonicMs: timestamp.monotonicMs,
+      occurredAt: envelope.occurredAt ?? timestamp.occurredAt,
+      monotonicMs: envelope.monotonicMs ?? timestamp.monotonicMs,
 
       page: {
         href: location.href,

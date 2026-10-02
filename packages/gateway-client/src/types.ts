@@ -22,7 +22,7 @@ import type {
   GatewayTelemetryAckMessage
 } from '@skribbl-duels/gateway-contracts';
 
-export const GATEWAY_CLIENT_VERSION = '0.71.0' as const;
+export const GATEWAY_CLIENT_VERSION = '0.72.0' as const;
 
 export type GatewayConnectionStatus =
   | 'not-configured'
@@ -72,4 +72,5 @@ export interface SocketIoGatewayClientOptions {
   endpoint: string | null;
   clientVersion: string;
   capabilities: readonly GatewayClientCapability[];
+  getCapabilities?(): readonly GatewayClientCapability[];
 }

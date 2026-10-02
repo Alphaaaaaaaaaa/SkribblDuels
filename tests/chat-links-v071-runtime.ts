@@ -44,6 +44,11 @@ try {
 
   const social = document.createElement('span'); appendSocialMessage(social, 'Hi :heart: https://example.com/?a=1&b=2!');
   assert.equal(social.querySelectorAll('img').length, 1); assert.equal(social.querySelector('a')?.href, 'https://example.com/?a=1&b=2');
+  const pathEmoji = document.createElement('span');
+  appendSocialMessage(pathEmoji, 'https://example.com/:heart:/?emoji=:open:&view=1 :closed:');
+  assert.equal(pathEmoji.querySelector('a')?.textContent, 'https://example.com/:heart:/?emoji=:open:&view=1');
+  assert.equal(pathEmoji.querySelector('a')?.href, 'https://example.com/:heart:/?emoji=:open:&view=1');
+  assert.equal(pathEmoji.querySelectorAll('img').length, 1, 'Emoji tokens inside URLs cannot truncate or alter their destination.');
   linkifier.start();
   const root = document.querySelector('.chat-content')!;
   const line = document.createElement('p'); const author = document.createElement('b'); author.textContent = 'www.author.test: ';
@@ -58,5 +63,5 @@ try {
   const typo = document.createElement('div'); typo.id = 'newChatChatMessages'; typo.textContent = 'https://example.com/typo'; document.body.appendChild(typo);
   await new Promise(resolve => setTimeout(resolve, 0)); assert.equal(typo.querySelectorAll('a').length, 1);
   assert.ok(document.getElementById('skribbl-duels-chat-links')!.textContent!.includes('text-decoration-color:var(--COLOR_PANEL_BORDER_FOCUS)'));
-  console.log('v0.71.0: all 132 emoji assets/aliases, group order, emoji-only rendering, safe chat links and live game/Typo preservation passed.');
+  console.log('v0.72.0: all 132 emoji assets/aliases, group order, emoji-only rendering, safe chat links and live game/Typo preservation passed.');
 } finally { linkifier.stop(); dom.window.close(); }

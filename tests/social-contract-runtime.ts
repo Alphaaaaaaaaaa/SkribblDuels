@@ -6,7 +6,7 @@ import {
   type GatewaySocialProfile
 } from '@skribbl-duels/gateway-contracts';
 
-assert.equal(GATEWAY_CONTRACT_VERSION, 18);
+assert.equal(GATEWAY_CONTRACT_VERSION, 19);
 
 const preferences = {
   availability: 'online',
@@ -103,4 +103,4 @@ assert.equal(isGatewayServerMessage({
   type: 'FRIEND_SEARCH_RESULT', requestId: 'search-missing-unblock', profile, relationship: 'blocked'
 }), false, 'Contract v18 requires an explicit privacy-safe unblock capability flag.');
 
-console.log('Gateway Contract v18 Social message guards passed.');
+console.log('Gateway Contract v19 Social message guards passed.');

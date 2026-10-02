@@ -716,8 +716,8 @@ export const SOCIAL_EMOJI_DEFINITIONS = [
   {
     "group": "Symbols",
     "path": "res/stat-icons/best-private-score.gif",
-    "token": ":stat/best-private-score:",
-    "label": "stat/best-private-score",
+    "token": ":closed:",
+    "label": "closed",
     "aliases": [
       ":stat/best-private-score:"
     ]
@@ -725,8 +725,8 @@ export const SOCIAL_EMOJI_DEFINITIONS = [
   {
     "group": "Symbols",
     "path": "res/stat-icons/best-public-score.gif",
-    "token": ":stat/best-public-score:",
-    "label": "stat/best-public-score",
+    "token": ":open:",
+    "label": "open",
     "aliases": [
       ":stat/best-public-score:"
     ]

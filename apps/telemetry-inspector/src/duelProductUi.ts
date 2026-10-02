@@ -8,6 +8,8 @@ import type {
   LocalWordStatsQuery,
   LocalWordStatsSnapshot
 } from '@skribbl-duels/telemetry-core';
+import type { TelemetryPortMode, TelemetryPortState } from '@skribbl-duels/telemetry-core';
+import { EMBEDDED_PROGRESSION_ASSETS } from './generatedProgressionAssets';
 import {
   createChallengeManifest,
   generateDraftBoard,
@@ -98,9 +100,17 @@ import { isTypoRuntimeDetected } from './typoRuntimeDetection';
 import { SkribbleFeatureUi } from './skribbleUi';
 import { SkribblSlotsFeatureUi } from './slotsUi';
 import { SocialFeatureUi } from './socialUi';
-import { appendChatText, ChatLinkifier } from './chatLinks';
+import { ChatLinkifier } from './chatLinks';
+import { appendSocialMessage } from './socialEmojis';
+import { createChatEmojiPicker } from './chatEmojiPicker';
+import { clampTooltipAnchor } from './tooltipPlacement';
 
 interface ProductFoundationOptions {
+  telemetryPorts?: {
+    getState(): TelemetryPortState;
+    setMode(mode: TelemetryPortMode): void;
+    subscribe(listener: (state: TelemetryPortState) => void): () => void;
+  };
   runtimeId: string;
   authClient: SupabaseDiscordAuthClient;
   definitionsVersion: string;
@@ -691,7 +701,7 @@ class CompletionChatAdapter {
 #game-chat .chat-content p .scd-chat-guess-time { color:var(--COLOR_CHAT_TEXT_GUESSED) !important; }
 #game-chat .chat-content p .scd-chat-wpm { color:var(--COLOR_CHAT_TEXT_GUESSCHAT) !important; }
 .scd-tooltip { position:fixed;display:flex;z-index:2147483647;align-items:center;pointer-events:none;transform-origin:0 0;animation:scd-tooltip-appear .1s forwards ease-out; }
-.scd-tooltip-title { background:var(--COLOR_TOOL_TIP_BG,#20232c);color:var(--COLOR_PANEL_TEXT,#fff);border-radius:var(--BORDER_RADIUS,6px);padding:7px;text-shadow:1px 1px 0 #00000038;text-align:center;font-size:13px;font-weight:700;white-space:pre;max-width:320px; }
+.scd-tooltip-title { box-sizing:border-box;background:var(--COLOR_TOOL_TIP_BG,#20232c);color:var(--COLOR_PANEL_TEXT,#fff);border-radius:var(--BORDER_RADIUS,6px);padding:7px;text-shadow:1px 1px 0 #00000038;text-align:center;font-size:13px;font-weight:700;white-space:pre-wrap;overflow-wrap:anywhere;max-width:min(320px,calc(100vw - 36px)); }
 .scd-tooltip-arrow { height:0;width:0; }
 .scd-tooltip.E { transform:translateY(-50%);flex-direction:row; }
 .scd-tooltip.E .scd-tooltip-arrow { border-right:10px solid var(--COLOR_TOOL_TIP_BG,#20232c);border-top:10px solid transparent;border-bottom:10px solid transparent; }
@@ -1011,6 +1021,9 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
 .scd-chat-rematch-accept:active:not(:disabled) { background:#1361a9; }
 .scd-chat-section { min-width:0;display:grid;grid-template-rows:minmax(0,330px) auto;gap:9px; }
 .scd-chat-form { position:relative;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font:inherit;margin:0;padding:.35em .2em;background:var(--COLOR_PANEL_BG,var(--SCD_PANEL_BG)); }
+.scd-chat-form.scd-duel-chat-composer { grid-template-columns:minmax(0,1fr) 36px auto; }
+.scd-duel-chat-composer .scd-social-emoji-toggle { width:36px;height:36px;border:0;padding:0;background:transparent;cursor:pointer; }
+.scd-duel-chat-composer .scd-social-emoji-toggle img { width:100%;height:100%;object-fit:contain; }
 .scd-chat-input-shell { position:relative;min-width:0;display:flex; }
 .scd-chat-characters { font-weight:700;position:absolute;right:1em;font-size:.9em;color:var(--COLOR_CHAT_INPUT_COUNT);top:1em;opacity:0;pointer-events:none;transition:top 70ms ease-in-out,opacity 70ms ease-in-out; }
 .scd-chat-characters.visible { top:.5em;opacity:1; }
@@ -1160,7 +1173,8 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
       const copy = element('span', 'scd-match-chat-message');
       const author = element('b');
       author.textContent = `${message.author}: `;
-      copy.appendChild(author); appendChatText(copy, message.message);
+      copy.appendChild(author);
+      const text = element('span', 'scd-match-chat-text'); appendSocialMessage(text, message.message); copy.appendChild(text);
       paragraph.append(message.avatar, copy);
       target.appendChild(paragraph);
       target.scrollTop = target.scrollHeight;
@@ -1168,7 +1182,7 @@ button.scd-profile-stat:active { background:var(--SCD_ACCENT_ACTIVE);transform:t
   }
 }
 
-class ProductTooltipManager {
+export class ProductTooltipManager {
   private active: HTMLDivElement | null = null;
   private currentTarget: HTMLElement | null = null;
   private readonly pointerOver = (event: PointerEvent) => this.handlePointerOver(event);
@@ -1248,6 +1262,13 @@ class ProductTooltipManager {
     tooltip.style.top = `${anchorY}px`;
     tooltip.append(element('div', 'scd-tooltip-arrow'), element('div', 'scd-tooltip-title', title));
     document.body.appendChild(tooltip);
+    // Measure layout dimensions, unaffected by the entrance animation's scale.
+    const placed = clampTooltipAnchor(anchorX, anchorY, tooltip.offsetWidth, tooltip.offsetHeight,
+      direction, window.innerWidth, window.innerHeight);
+    tooltip.style.left = `${placed.x}px`; tooltip.style.top = `${placed.y}px`;
+    const arrow = tooltip.querySelector<HTMLElement>('.scd-tooltip-arrow');
+    if (arrow) arrow.style.transform = direction === 'N' || direction === 'S'
+      ? `translateX(${placed.arrowX}px)` : `translateY(${placed.arrowY}px)`;
     this.currentTarget = target;
     this.active = tooltip;
   }
@@ -1380,6 +1401,7 @@ export class DuelProductFoundation {
   private duelChatScrollTop = 0;
   private duelChatStickToBottom = true;
   private duelChatDraft = '';
+  private duelEmojiPickerOpen = false;
   private duelChatSpam: DuelChatSpamState = emptyDuelChatSpamState();
   private readonly pendingDuelChatMessages = new Map<string, string>();
   private notifiedRematchRequestKey: string | null = null;
@@ -1459,7 +1481,8 @@ export class DuelProductFoundation {
     this.gatewayClient = new SocketIoGatewayClient({
       endpoint: GATEWAY_URL,
       clientVersion: GATEWAY_CLIENT_VERSION,
-      capabilities: GATEWAY_CAPABILITIES
+      capabilities: GATEWAY_CAPABILITIES,
+      getCapabilities: () => this.currentGatewayCapabilities()
     });
     this.telemetryGateway.setTransport(envelope => {
       this.gatewayClient.queueTelemetryEnvelope(envelope);
@@ -1637,6 +1660,7 @@ export class DuelProductFoundation {
     this.unsubscribers.push(this.settingsStore.subscribe(settings => {
       const tabChanged = this.activeTab !== settings.panelTab;
       this.settings = settings;
+      this.options.telemetryPorts?.setMode(settings.telemetryPortMode);
       this.soundEffects.setVolume(settings.sfxVolume);
       this.chatStatDisplay.refresh();
       this.activeTab = settings.panelTab;
@@ -1646,6 +1670,14 @@ export class DuelProductFoundation {
       this.renderStage();
       this.renderBoard();
       if (tabChanged || settings.panelOpen) this.renderPanel();
+    }));
+    if (this.options.telemetryPorts) this.unsubscribers.push(this.options.telemetryPorts.subscribe(() => {
+      if (this.destroyed) return;
+      if (this.settings.panelOpen) this.renderPanel();
+      if (this.isTelemetryAvailable()) {
+        this.handleInviteAuthenticationState();
+        this.handleInviteGatewayState(this.gatewayState, this.gatewayState);
+      }
     }));
     this.unsubscribers.push(this.matchStore.subscribe(event => {
       if (event.type !== 'MATCH_FINISHED' || !event.state.matchId) return;
@@ -1681,7 +1713,7 @@ export class DuelProductFoundation {
     }, 700);
 
     const api: ProductPublicApi = {
-      version: '0.71.0',
+      version: '0.72.0',
       coreVersion: PRODUCT_CORE_VERSION,
       gatewayContractVersion: GATEWAY_CONTRACT_VERSION,
       gatewayClientVersion: GATEWAY_CLIENT_VERSION,
@@ -1843,7 +1875,7 @@ export class DuelProductFoundation {
     this.releasePageScrollLock();
     const isolation = document.getElementById('skribbl-duels-runtime-isolation');
     if (isolation?.dataset.scdRuntimeId === this.options.runtimeId) isolation.remove();
-    if (window.skribblDuelsProduct?.version === '0.71.0') delete window.skribblDuelsProduct;
+    if (window.skribblDuelsProduct?.version === '0.72.0') delete window.skribblDuelsProduct;
   }
 
   private installRuntimeIsolationStyle(): void {
@@ -3613,7 +3645,7 @@ export class DuelProductFoundation {
     const heading = element('strong', '', 'Homepage matchmaking');
     card.appendChild(heading);
     const homepage = this.isHomepageVisible();
-    const typoDetected = this.isTypoDetected();
+    const typoDetected = this.isTelemetryAvailable();
     const gatewayMatch = this.gatewayState.match;
     const queue = this.gatewayState.queue;
     const invite = this.gatewayState.invite;
@@ -3745,7 +3777,7 @@ export class DuelProductFoundation {
     }
 
     const homepageUnavailable = 'Matchmaking is only possible on the Skribbl homepage, not inside an active lobby.';
-    const typoUnavailable = 'Enable Typo to use Matchmaking.';
+    const typoUnavailable = this.telemetryUnavailableMessage();
     const gatewayUnavailable = 'Connect the authenticated Gateway to use Matchmaking.';
     const queueUnavailable = !typoDetected
       ? typoUnavailable
@@ -4141,7 +4173,8 @@ export class DuelProductFoundation {
             ? 'var(--COLOR_CHAT_TEXT_OWNER,#ffa844)'
             : 'var(--SCD_ACCENT)';
         }
-        line.appendChild(author); appendChatText(line, message.message);
+        line.appendChild(author);
+        const text = element('span', 'scd-match-chat-text'); appendSocialMessage(text, message.message); line.appendChild(text);
         line.appendChild(element('small', 'scd-muted', ` · ${formatTime(message.occurredAt)}`));
         log.appendChild(line);
       }
@@ -4181,7 +4214,7 @@ export class DuelProductFoundation {
       log.classList.toggle('at-top', log.scrollTop <= 1);
     }, { passive: true });
 
-    const form = element('form', 'scd-chat-form');
+    const form = element('form', 'scd-chat-form scd-duel-chat-composer');
     const inputShell = element('div', 'scd-chat-input-shell');
     const input = element('input') as HTMLInputElement;
     input.dataset.scdDuelChatInput = 'true';
@@ -4223,9 +4256,26 @@ export class DuelProductFoundation {
     send.type = 'submit';
     send.disabled = !gatewayChatActive;
     this.tooltips.register(send, 'Send a private Duel message once the gateway is connected');
-    form.append(inputShell, send);
+    const picker = createChatEmojiPicker({ input, onInput: updateCount,
+      onClose: () => { this.duelEmojiPickerOpen = false; emojis.setAttribute('aria-expanded', 'false'); },
+      onTooLong: () => this.showSimpleToast('Message too long', 'A message can contain up to 300 characters.'),
+      registerTooltip: (target, title, lock) => this.tooltips.register(target, title, lock)
+    });
+    const emojis = element('button', 'scd-social-emoji-toggle scd-duel-emoji-toggle') as HTMLButtonElement;
+    emojis.type = 'button'; emojis.disabled = !gatewayChatActive;
+    const slimy = document.createElement('img'); slimy.src = EMBEDDED_PROGRESSION_ASSETS.friendSlimy ?? ''; slimy.alt = ''; emojis.appendChild(slimy);
+    emojis.setAttribute('aria-label', 'Choose a Skribbl emoji');
+    emojis.setAttribute('aria-expanded', String(this.duelEmojiPickerOpen)); picker.hidden = !this.duelEmojiPickerOpen;
+    emojis.addEventListener('mousedown', event => event.preventDefault());
+    emojis.addEventListener('click', () => {
+      this.duelEmojiPickerOpen = !this.duelEmojiPickerOpen; picker.hidden = !this.duelEmojiPickerOpen;
+      emojis.setAttribute('aria-expanded', String(this.duelEmojiPickerOpen)); input.focus({ preventScroll: true });
+    });
+    this.tooltips.register(emojis, 'Choose a Skribbl emoji (Ctrl+E)', 'Y');
+    form.append(inputShell, emojis, send, picker);
     form.addEventListener('submit', event => {
       event.preventDefault();
+      this.duelEmojiPickerOpen = false;
       this.submitDuelChatMessage(input.value, document.activeElement === input);
     });
 
@@ -4339,8 +4389,16 @@ export class DuelProductFoundation {
     if (!(target instanceof HTMLInputElement)) return;
     if (target.dataset.scdDuelChatInput === 'true') {
       event.stopImmediatePropagation();
-      if (event.key === 'Escape') {
+      if (event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'e' && !event.isComposing) {
         event.preventDefault();
+        if (!event.repeat) target.form?.querySelector<HTMLButtonElement>('.scd-duel-emoji-toggle')?.click();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        const picker = target.form?.querySelector<HTMLElement>('.scd-social-emoji-picker');
+        if (picker && !picker.hidden) {
+          picker.hidden = true; this.duelEmojiPickerOpen = false;
+          target.form?.querySelector('.scd-duel-emoji-toggle')?.setAttribute('aria-expanded', 'false'); return;
+        }
         this.duelChatFocusRequested = false;
         target.blur();
       } else if (event.key === 'Enter' && !event.isComposing) {
@@ -4573,6 +4631,26 @@ export class DuelProductFoundation {
       this.socialUi.renderSettings(stack);
       this.panelBody.appendChild(stack);
       return;
+    }
+    if (this.options.telemetryPorts) {
+      const telemetry = element('div', 'scd-card scd-stack');
+      telemetry.appendChild(element('strong', '', 'Game telemetry'));
+      const label = element('label', 'scd-label');
+      const portMode = element('select') as HTMLSelectElement;
+      for (const [value, title] of [['auto', 'Auto · Duels + Typo compatible'], ['own', 'Duels port'], ['typo', 'Typo port (legacy)']] as const) {
+        const option = element('option', '', title) as HTMLOptionElement;
+        option.value = value; option.selected = this.settings.telemetryPortMode === value; portMode.appendChild(option);
+      }
+      portMode.addEventListener('change', () => this.settingsStore.update({ telemetryPortMode: portMode.value as TelemetryPortMode }));
+      label.append(element('span', '', 'Telemetry port'), portMode);
+      const state = this.options.telemetryPorts.getState();
+      telemetry.append(label, element('div', 'scd-muted',
+        state.reloadRequired ? 'The new port applies after leaving this lobby or reloading Skribbl.'
+          : state.activeSource === 'own' ? 'Duels port connected. Typo can run alongside it.'
+          : state.activeSource === 'typo' ? 'Using the Typo relay.'
+          : state.nativeReady ? 'Duels port ready for the next lobby. Typo is optional.'
+          : 'Waiting for the game connection. Reload Skribbl if no data arrives.'));
+      stack.appendChild(telemetry);
     }
     const identity = this.gatewayState.identity;
     if (this.authState.status === 'signed-in' && identity) {
@@ -5224,13 +5302,31 @@ export class DuelProductFoundation {
   }
 
   private isMatchmakingAvailable(): boolean {
-    return this.isTypoDetected() && this.isHomepageVisible();
+    return this.isTelemetryAvailable() && this.isHomepageVisible();
+  }
+
+  private isTelemetryAvailable(): boolean {
+    const ports = this.options.telemetryPorts?.getState();
+    if (!ports) return this.isTypoDetected();
+    const mode = ports.reloadRequired ? ports.activeSource : ports.mode;
+    return mode === 'own' ? ports.nativeReady : mode === 'typo' ? ports.typoReady : ports.nativeReady || ports.typoReady;
+  }
+
+  private currentGatewayCapabilities(): readonly GatewayClientCapability[] {
+    return this.isTypoDetected() ? GATEWAY_CAPABILITIES
+      : GATEWAY_CAPABILITIES.filter(capability => !capability.startsWith('typo'));
+  }
+
+  private telemetryUnavailableMessage(): string {
+    return this.options.telemetryPorts
+      ? 'The game telemetry port is not ready. Reload Skribbl, or select Auto in General settings.'
+      : 'Enable Typo to use Matchmaking.';
   }
 
   private matchmakingUnavailableMessage(): string {
-    return this.isTypoDetected()
+    return this.isTelemetryAvailable()
       ? 'Matchmaking is only possible on the Skribbl homepage, not inside an active lobby.'
-      : 'Enable Typo to use Matchmaking.';
+      : this.telemetryUnavailableMessage();
   }
 
   private startTypoDetectionPolling(): void {
@@ -5251,6 +5347,9 @@ export class DuelProductFoundation {
       return;
     }
     this.typoDetected = detected;
+    // A fresh HELLO advertises actual extension capabilities. Existing boards
+    // retain their original contract; new drafts never offer missing Typo mods.
+    if (!this.gatewayState.match && this.gatewayState.status === 'connected') this.gatewayClient.reconnect();
     this.inviteTypoNoticeShown = false;
     if (detected) this.stopTypoDetectionPolling();
     else this.startTypoDetectionPolling();
@@ -5263,8 +5362,8 @@ export class DuelProductFoundation {
 
   private beginMatchmaking(format: 'casual' | 'ranked'): string {
     this.matchmakingError = null;
-    if (!this.isTypoDetected()) {
-      this.matchmakingError = 'Enable Typo to use Matchmaking. Skribbl Duels will detect it automatically.';
+    if (!this.isTelemetryAvailable()) {
+      this.matchmakingError = this.telemetryUnavailableMessage();
       this.renderPanel();
       throw new Error(this.matchmakingError);
     }
@@ -5288,8 +5387,8 @@ export class DuelProductFoundation {
 
   private async beginInviteCreation(): Promise<void> {
     this.matchmakingError = null;
-    if (!this.isTypoDetected()) {
-      this.showSimpleToast('Typo required', 'Enable Typo to create a Duel invite. Skribbl Duels will detect it automatically.');
+    if (!this.isTelemetryAvailable()) {
+      this.showSimpleToast('Telemetry unavailable', this.telemetryUnavailableMessage());
       return;
     }
     if (!this.isHomepageVisible()) {
@@ -5355,10 +5454,10 @@ export class DuelProductFoundation {
     }
     if (state.status === 'connected'
         && this.pendingInviteToken
-        && !this.isTypoDetected()) {
+        && !this.isTelemetryAvailable()) {
       if (!this.inviteTypoNoticeShown) {
         this.inviteTypoNoticeShown = true;
-        this.showSimpleToast('Typo required', 'Enable Typo to accept this Duel invite. Skribbl Duels will detect it automatically.', 6_000);
+        this.showSimpleToast('Telemetry unavailable', this.telemetryUnavailableMessage(), 6_000);
       }
       return;
     }
@@ -5379,10 +5478,10 @@ export class DuelProductFoundation {
 
   private handleInviteAuthenticationState(): void {
     if (!this.pendingInviteToken) return;
-    if (!this.isTypoDetected()) {
+    if (!this.isTelemetryAvailable()) {
       if (!this.inviteTypoNoticeShown) {
         this.inviteTypoNoticeShown = true;
-        this.showSimpleToast('Typo required', 'Enable Typo to accept this Duel invite. Skribbl Duels will detect it automatically.', 6_000);
+        this.showSimpleToast('Telemetry unavailable', this.telemetryUnavailableMessage(), 6_000);
       }
       return;
     }

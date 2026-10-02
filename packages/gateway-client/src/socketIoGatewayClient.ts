@@ -505,7 +505,7 @@ export class SocketIoGatewayClient {
         type: 'HELLO',
         contractVersion: GATEWAY_CONTRACT_VERSION,
         clientVersion: this.options.clientVersion,
-        capabilities: this.options.capabilities,
+        capabilities: this.options.getCapabilities?.() ?? this.options.capabilities,
         ...(this.resumeCursor ? {
           resumeMatchId: this.resumeCursor.matchId,
           lastServerRevision: this.resumeCursor.revision

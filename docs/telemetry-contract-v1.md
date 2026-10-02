@@ -6,10 +6,15 @@ Challenge code may import `@skribbl-duels/telemetry-contracts` only. It must not
 
 ## Versioning
 
-- Contract version: `1.0.0`
+- Contract version: `1.2.0`
 - Event schema version: `1`
 - Adding an optional payload field is backwards-compatible.
 - Removing a field, changing its type or changing the meaning/timing of an event requires a contract version bump.
+- v1.2 adds `LOBBY_LEFT` with `{ method: 'duels-socket', reason }` for native
+  socket departures. Consumers close lobby-scoped observation; the protocol
+  state store clears after the departure event has captured its old context.
+- The replay reader accepts stored v1.1 fixtures as well as v1.2. Schema 1 is
+  unchanged; Gateway wire versioning is a separate contract.
 
 ## Round identity
 
@@ -41,4 +46,5 @@ The Telemetry Inspector is a development app. The production Skribbl Duels app w
 - `Ultimate Comeback`: if the target player leaves, the opportunity may become impossible; no replacement target is guaranteed.
 - Opponents see field status only, never exact progress.
 - A challenge appears at most once per board.
-- Typo remains a permanent prerequisite.
+- v0.72.0 provides independent Skribbl telemetry. Only definitions requiring
+  Typo-specific Challenges, Drops or Image Lab retain those capability gates.

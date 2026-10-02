@@ -1,9 +1,32 @@
-# Skribbl Duels v0.71.0
+# Skribbl Duels v0.72.0
 
 This monorepo contains the growing 53-Challenge telemetry/challenge system, Product UI,
-Gateway Contract v18, Discord OAuth through Supabase Auth, authoritative Duel
+Gateway Contract v19, Discord OAuth through Supabase Auth, authoritative Duel
 profiles, private Gateway chat, resumable matchmaking and server-validated
 challenge claims.
+
+## v0.72.0
+
+- Adds an independent passive game-socket port with Auto/Own/Legacy source
+  selection and simultaneous Typo support. One source feeds each lobby;
+  incoming captures are cloned and login codes remain redacted.
+- Removes the blanket Typo requirement for ordinary Skribbl telemetry;
+  feature-dependent Typo Challenges remain excluded when unavailable.
+- Adds the grouped emoji picker to Match chat, preserves old emoji aliases,
+  uses `:closed:`/`:open:` and removes image alt/title text.
+- Uses `German · Private · 1/8` lobby details and Public/Always/None permission
+  labels, retaining existing public/private opt-ins without a schema rewrite.
+- Adds homepage avatar hover scaling and viewport-contained tooltips.
+- Includes the compact feature/concept roadmap and a full offline review of
+  the supplied Typo gamePatch, with reproducible client findings and separate
+  backend verification questions.
+
+From v0.71.0, deploy Gateway v0.14.0 (Contract 19), then update the userscript
+and reload Skribbl. No new SQL migration or Railway variable is required.
+Social database readiness stays at revision 18. See
+`docs/START-HERE-v0.72.0.md`, `docs/independent-telemetry-v0.72.0.md`,
+`docs/roadmap-v0.72.0.md` and `docs/gamepatch-review-v0.72.0.md`.
+The live two-browser game/Typo matrix remains a certification gate.
 
 ## v0.71.0
 

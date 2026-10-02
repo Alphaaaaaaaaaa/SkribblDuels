@@ -44,6 +44,13 @@ export class LobbyStateStore {
     return structuredClone(this.currentState);
   }
 
+  public clearLobby(): void {
+    if (this.drawEmitTimer !== null) window.clearTimeout(this.drawEmitTimer);
+    this.drawEmitTimer = null;
+    this.currentState = createEmptyLobbyState();
+    this.emitStateNow();
+  }
+
   public getStats(): LobbyStateStats {
     return { ...this.statsSubject.value };
   }

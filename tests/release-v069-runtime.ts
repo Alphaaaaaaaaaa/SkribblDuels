@@ -17,13 +17,13 @@ const [rootPackageRaw, inspectorPackageRaw, gatewayPackageRaw, contractsPackageR
   readFile('res/progression-assets.template.json', 'utf8')
 ]);
 
-assert.equal(JSON.parse(rootPackageRaw).version, '0.71.0');
-assert.equal(JSON.parse(inspectorPackageRaw).version, '0.71.0');
-assert.equal(JSON.parse(gatewayPackageRaw).version, '0.13.0');
-assert.equal(JSON.parse(contractsPackageRaw).version, '0.11.0');
-assert.equal(JSON.parse(clientPackageRaw).version, '0.12.0');
-assert.match(userscript, /BUILD_VERSION = '0\.71\.0'/);
-assert.match(product, /version: '0\.71\.0'/);
+assert.equal(JSON.parse(rootPackageRaw).version, '0.72.0');
+assert.equal(JSON.parse(inspectorPackageRaw).version, '0.72.0');
+assert.equal(JSON.parse(gatewayPackageRaw).version, '0.14.0');
+assert.equal(JSON.parse(contractsPackageRaw).version, '0.12.0');
+assert.equal(JSON.parse(clientPackageRaw).version, '0.13.0');
+assert.match(userscript, /BUILD_VERSION = '0\.72\.0'/);
+assert.match(product, /version: '0\.72\.0'/);
 assert.match(product, /new SocialFeatureUi/);
 assert.match(product, /this\.socialUi\.handleGatewayUpdate\(previous, state\)/);
 assert.match(product, /this\.socialUi\.decorateProfileAvatar\(profileAvatar\)/);
@@ -47,7 +47,7 @@ for (const required of [
   'friendLocked'
 ]) assert.ok(socialUi.includes(required), `Social UI is missing ${required}.`);
 
-assert.match(contracts, /GATEWAY_CONTRACT_VERSION = 18/);
+assert.match(contracts, /GATEWAY_CONTRACT_VERSION = 19/);
 assert.match(contracts, /type: 'SOCIAL_SNAPSHOT'/);
 assert.match(contracts, /type: 'FRIEND_SEARCH_RESULT'/);
 
@@ -70,4 +70,4 @@ for (const [id, path] of friendAssets) {
   assert.match(generatedAssets, new RegExp(`"${id}": "data:image\\/gif;base64,`));
 }
 
-console.log('v0.69.0 Friends, Social privacy, homepage presence and profile-stat regressions remain intact in v0.71.0.');
+console.log('v0.69.0 Friends, Social privacy, homepage presence and profile-stat regressions remain intact in v0.72.0.');

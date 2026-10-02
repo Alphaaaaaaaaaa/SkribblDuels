@@ -1,4 +1,4 @@
-import type { RelayDirection } from '../bridge/relayTypes';
+import type { RelayDirection, RelayName } from '../bridge/relayTypes';
 
 export interface RawSocketRecord {
   recordId: string;
@@ -6,7 +6,7 @@ export interface RawSocketRecord {
   sequence: number;
 
   direction: RelayDirection;
-  relayName: 'skribblMessagePort' | 'skribblEmitPort';
+  relayName: RelayName;
   portGeneration: number;
 
   socketEvent: string | null;
